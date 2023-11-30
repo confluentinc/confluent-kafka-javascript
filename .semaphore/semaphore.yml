@@ -45,10 +45,23 @@ blocks:
         - name: "Build from source and test"
           commands:
             - sudo apt install -y  libcurl4-openssl-dev libcrypto++-dev libssl-dev libzstd-dev
-            - npm install # this will actually not build anything, but rather, fetch things using node-pre-gyp - so change this later.
+            - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
             - make test
         - name: "ESLint"
           commands:
             - npm install --only=dev
             - npx eslint lib/kafkajs
+
+  - name: 'OSX arm64/m1'
+    dependencies: []
+    task:
+      agent:
+        machine:
+          type: s1-prod-macos-arm64
+      jobs:
+        - name: 'Build from source and test'
+          commands:
+            - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+            - make test
+
 
