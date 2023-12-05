@@ -19,7 +19,12 @@ if (isWin) {
 var childProcess = require('child_process');
 
 try {
-  childProcess.execSync('./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir, {
+  process.stderr.write('./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir + '\n');
+  childProcess.execSync(`echo ${releaseDir} ; ls -R .`, {
+    cwd: baseDir,
+    stdio: [0,1,2]
+  });
+  childProcess.execSync('echo ${releaseDir} ; ls -R .; ./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir, {
     cwd: baseDir,
     stdio: [0,1,2]
   });
