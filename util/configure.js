@@ -19,7 +19,8 @@ if (isWin) {
 var childProcess = require('child_process');
 
 try {
-  childProcess.execSync('./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir, {
+  process.stderr.write('Running configure : ' + 'STATIC_LIB_libzstd=$(brew ls -v zstd | grep libzstd.a$) ./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir + '\n');
+  childProcess.execSync('STATIC_LIB_libzstd=$(brew ls -v zstd | grep libzstd.a$) ./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir, {
     cwd: baseDir,
     stdio: [0,1,2]
   });
