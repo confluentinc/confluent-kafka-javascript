@@ -19,6 +19,7 @@ if (isWin) {
 var childProcess = require('child_process');
 
 try {
+  process.stderr.write('./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir + '\n');
   childProcess.execSync('./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi --prefix=' + releaseDir + ' --libdir=' + releaseDir, {
     cwd: baseDir,
     stdio: [0,1,2]
