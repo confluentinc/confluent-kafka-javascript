@@ -25,38 +25,180 @@ global_job_config:
   prologue:
     commands:
       - checkout
-      - make show-args
-      - . vault-setup
-      - . vault-sem-get-secret cpd_gcloud
-      - . vault-sem-get-secret ci-reporting
-      - . vault-sem-get-secret v1/ci/kv/service-foundations/cc-mk-include
-      - make init-ci
-  epilogue:
-    always:
-      commands:
-        - make epilogue-ci
+
+
+
 
 blocks:
-  - name: "Build, Test, Release"
-    run:
-      # don't run the build or unit tests on non-functional changes...
-      when: "change_in('/', {exclude: ['/.deployed-versions/', '.github/']})"
+  # - name: "Linux arm64: Build and test"
+  #   dependencies: [ ]
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-ubuntu20-04-arm64-1
+  #     prologue:
+  #       commands:
+  #         - sem-version node 18.19.0
+  #         - node --version
+  #         - npm --version
+  #         - npx --version
+  #         - sudo apt-get update -q
+  #         - git submodule update --init --recursive
+  #         - export LDFLAGS="-L$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/ -Wl,-rpath,$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+  #         - echo $LDFLAGS
+  #     jobs:
+  #       - name: "Test"
+  #         commands:
+  #           - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+  #           - make test
+
+  - name: 'macOS arm64/m1: Build and test'
+    dependencies: []
     task:
-       # You can customize your CI job here
-#      env_vars:
-#        # custom env_vars
-#      prologue:
-#        commands:
-#          # custom vault secrets
-#          # custom prologue commands
+      agent:
+        machine:
+          type: s1-prod-macos-arm64
+      prologue:
+        commands:
+          - sem-version node 18.19.0
+          - node --version
+          - npm --version
+          - npx --version
+          # - git clone https://github.com/confluentinc/librdkafka
+          # - cd librdkafka
+          # - export LDFLAGS="-L$(pwd)/mklove/deps/dest/$(pwd)/testbuild/deps/"
+          # - ./configure --install-deps --source-deps-only --disable-lz4-ext --enable-static --enable-strip --disable-gssapi
+          # --prefix="$(pwd)/testbuild/deps"  --libdir="$(pwd)/testbuild/deps";
+          - git submodule update --init --recursive
+          - export LDFLAGS="-L$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+          - echo $LDFLAGS
+          - export LD_LIBRARY_PATH="$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+          - export DYLD_LIBRARY_PATH="$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+          # - export IS_ON_CI="true"
       jobs:
-        - name: "Build, Test, Release"
+        - name: 'Build from source and test'
           commands:
-            - make build
+            - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
             - make test
-            - make release-ci
-      epilogue:
-        always:
-          commands:
-            - make epilogue-ci
-            - make testbreak-after
+
+  # - name: "Linux amd64: Build, test, lint"
+  #   dependencies: [ ]
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-ubuntu20-04-amd64-2
+  #     prologue:
+  #       commands:
+  #         - sem-version node 18.19.0
+  #         - node --version
+  #         - npm --version
+  #         - npx --version
+  #         - sudo apt-get update -q
+  #         - git submodule update --init --recursive
+  #         - export LDFLAGS="-L$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/ -Wl,-rpath,$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+  #         - echo $LDFLAGS
+  #         - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+  #     jobs:
+  #       - name: "Test"
+  #         commands:
+  #           - make test
+  #       - name: "ESLint"
+  #         commands:
+  #           - npx eslint lib/kafkajs
+
+
+  # - name: "Linux amd64: Release"
+  #   dependencies: [ ]
+  #   run:
+  #     when: "tag =~ '^v[0-9]\\.'"
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-ubuntu20-04-amd64-2
+  #     env_vars:
+  #       - name: ARCHITECTURE
+  #         value: "amd64"
+  #       - name: PLATFORM
+  #         value: "linux-glibc"
+  #     prologue:
+  #       commands:
+  #         - sem-version node 18.19.0
+  #         - node --version
+  #         - npm --version
+  #         - npx --version
+  #         - sudo apt-get update -q
+  #         - git submodule update --init --recursive
+  #         - export LDFLAGS="-L$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+  #         - echo $LDFLAGS
+  #     jobs:
+  #       - name: "Release"
+  #         commands:
+  #           - export ARTIFACT_KEY="node-librdkafka-${SEMAPHORE_GIT_TAG_NAME}-node-v108-${PLATFORM}-${ARCHITECTURE}.tar.gz"
+  #           - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+  #           - npx node-pre-gyp package --target_platform="${PLATFORM}" --target_arch="${ARCHITECTURE}"
+  #           - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
+  #           - artifact push project "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+
+  # - name: "Linux arm64: Release"
+  #   dependencies: [ ]
+  #   run:
+  #     when: "tag =~ '^v[0-9]\\.'"
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-ubuntu20-04-arm64-1
+  #     env_vars:
+  #       - name: ARCHITECTURE
+  #         value: "arm64"
+  #       - name: PLATFORM
+  #         value: "linux-glibc"
+  #     prologue:
+  #       commands:
+  #         - sem-version node 18.19.0
+  #         - node --version
+  #         - npm --version
+  #         - npx --version
+  #         - sudo apt-get update -q
+  #         - git submodule update --init --recursive
+  #         - export LDFLAGS="-L$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+  #         - echo $LDFLAGS
+  #     jobs:
+  #       - name: "Release"
+  #         commands:
+  #           - export ARTIFACT_KEY="node-librdkafka-${SEMAPHORE_GIT_TAG_NAME}-node-v108-${PLATFORM}-${ARCHITECTURE}.tar.gz"
+  #           - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+  #           - npx node-pre-gyp package --target_platform="${PLATFORM}" --target_arch="${ARCHITECTURE}"
+  #           - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
+  #           - artifact push project "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+
+  # - name: "macOS arm64/m1: Release"
+  #   dependencies: [ ]
+  #   run:
+  #     when: "tag =~ '^v[0-9]\\.'"
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-macos-arm64
+  #     env_vars:
+  #       - name: ARCHITECTURE
+  #         value: "arm64"
+  #       - name: PLATFORM
+  #         value: "darwin"
+  #     prologue:
+  #       commands:
+  #         - sem-version node 18.19.0
+  #         - node --version
+  #         - npm --version
+  #         - npx --version
+  #         - git submodule update --init --recursive
+  #         - export LDFLAGS="-L$(pwd)/deps/librdkafka/mklove/deps/dest/$(pwd)/build/deps/"
+  #         - echo $LDFLAGS
+  #     jobs:
+  #       - name: "Release"
+  #         commands:
+  #           - export ARTIFACT_KEY="node-librdkafka-${SEMAPHORE_GIT_TAG_NAME}-node-v108-${PLATFORM}-${ARCHITECTURE}.tar.gz"
+  #           - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+  #           - npx node-pre-gyp package --target_platform="${PLATFORM}" --target_arch="${ARCHITECTURE}"
+  #           - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
+  #           - artifact push project "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+
