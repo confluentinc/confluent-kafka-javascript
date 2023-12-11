@@ -139,7 +139,6 @@
 
 #### Semantic and Per-Method Changes
 
-* `sendBatch` is not supported (YET). However, the actual batching semantics are handled by librdkafka.
 * Changes to `send`:
   * `acks`, `compression` and `timeout` are not set on a per-send basis. Rather, they must be configured in the configuration.
     Before:
@@ -178,6 +177,7 @@
     ```
 
   * Error-handling for a failed `send` is stricter. While sending multiple messages, even if one of the messages fails, the method throws an error.
+* `sendBatch` is supported. However, the actual batching semantics are handled by librdkafka, and it just acts as a wrapper around `send` (See `send` for changes).
 
 ### Consumer
 
@@ -219,7 +219,10 @@
 #### Semantic and Per-Method Changes
 
 
- * While passing a list of topics to `subscribe`, the `fromBeginning` property is not supported. Instead, the property `auto.offset.reset` needs to be used.
+ * Changes to subscribe:
+  * Regex flags are ignored while passing a topic subscription (like 'i' or 'g').
+  * Subscribe must be called after `connect`.
+  * While passing a list of topics to `subscribe`, the `fromBeginning` property is not supported. Instead, the property `auto.offset.reset` needs to be used.
    Before:
     ```javascript
       const kafka = new Kafka({ /* ... */ });
@@ -229,7 +232,6 @@
       await consumer.connect();
       await consumer.subscribe({ topics: ["topic"], fromBeginning: true});
     ```
-
    After:
     ```javascript
       const kafka = new Kafka({ /* ... */ });
@@ -289,6 +291,9 @@
   * `commitOffsets` does not (YET) support sending metadata for topic partitions being committed.
   * `paused()` is not (YET) supported.
   * Custom partition assignors are not supported.
+  * Changes to `seek`:
+    * The restriction to call seek only after `run` is removed.
+    * Rather than the `autoCommit` property of `run` deciding if the offset is committed, the librdkafka property `enable.auto.commit` of the consumer config is used.
 
 ### Admin Client
 
