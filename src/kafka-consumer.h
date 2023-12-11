@@ -110,6 +110,7 @@ class KafkaConsumer : public Connection {
   static NAN_METHOD(NodeUnsubscribe);
   static NAN_METHOD(NodeCommit);
   static NAN_METHOD(NodeCommitSync);
+  static NAN_METHOD(NodeCommitCb);
   static NAN_METHOD(NodeOffsetsStore);
   static NAN_METHOD(NodeCommitted);
   static NAN_METHOD(NodePosition);
