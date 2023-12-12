@@ -77,6 +77,18 @@ export interface ProducerRecord {
   compression?: CompressionTypes
 }
 
+export interface TopicMessages {
+  topic: string
+  messages: Message[]
+}
+
+export interface ProducerBatch {
+  acks?: number
+  timeout?: number
+  compression?: CompressionTypes
+  topicMessages?: TopicMessages[]
+}
+
 export type RecordMetadata = {
   topicName: string
   partition: number
@@ -364,7 +376,9 @@ export type EachBatchHandler = (payload: EachBatchPayload) => Promise<void>
 
 export type EachMessageHandler = (payload: EachMessagePayload) => Promise<void>
 
-export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; fromBeginning?: boolean }
+export type ConsumerSubscribeTopic = { topic: string | RegExp; fromBeginning?: boolean, replace?: boolean }
+
+export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; fromBeginning?: boolean, replace?: boolean }
 
 export type ConsumerRunConfig = {
   autoCommit?: boolean
