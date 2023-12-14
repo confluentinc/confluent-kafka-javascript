@@ -1,4 +1,5 @@
 import * as tls from 'tls'
+import { ConsumerGlobalConfig, ConsumerTopicConfig, GlobalConfig, ProducerGlobalConfig, ProducerTopicConfig, TopicConfig } from './config'
 
 export type BrokersFunction = () => string[] | Promise<string[]>
 
@@ -28,6 +29,7 @@ export interface KafkaConfig {
   reauthenticationThreshold?: number
   requestTimeout?: number
   enforceRequestTimeout?: boolean
+  rdKafka?: { topicConfig?: TopicConfig, globalConfig?: GlobalConfig };
 }
 
 export interface ProducerConfig {
@@ -37,6 +39,7 @@ export interface ProducerConfig {
   transactionalId?: string
   transactionTimeout?: number
   maxInFlightRequests?: number
+  rdKafka?: { topicConfig?: ProducerTopicConfig, globalConfig?: ProducerGlobalConfig }
 }
 
 export interface IHeaders {
@@ -72,6 +75,18 @@ export interface ProducerRecord {
   acks?: number
   timeout?: number
   compression?: CompressionTypes
+}
+
+export interface TopicMessages {
+  topic: string
+  messages: Message[]
+}
+
+export interface ProducerBatch {
+  acks?: number
+  timeout?: number
+  compression?: CompressionTypes
+  topicMessages?: TopicMessages[]
 }
 
 export type RecordMetadata = {
@@ -124,6 +139,7 @@ export interface ConsumerConfig {
   maxInFlightRequests?: number
   readUncommitted?: boolean
   rackId?: string
+  rdKafka?: { topicConfig?: ConsumerTopicConfig, globalConfig?: ConsumerGlobalConfig }
 }
 
 export type ConsumerEvents = {
@@ -145,6 +161,27 @@ export type ConsumerEvents = {
   REQUEST_QUEUE_SIZE: 'consumer.network.request_queue_size'
 }
 
+export interface AdminConfig {
+  retry?: RetryOptions
+}
+
+export interface ITopicConfig {
+  topic: string
+  numPartitions?: number
+  replicationFactor?: number
+  replicaAssignment?: ReplicaAssignment[]
+  configEntries?: IResourceConfigEntry[]
+}
+
+export interface ReplicaAssignment {
+  partition: number
+  replicas: Array<number>
+}
+
+export interface IResourceConfigEntry {
+  name: string
+  value: string
+}
 
 export enum logLevel {
   NOTHING = 0,
@@ -339,7 +376,9 @@ export type EachBatchHandler = (payload: EachBatchPayload) => Promise<void>
 
 export type EachMessageHandler = (payload: EachMessagePayload) => Promise<void>
 
-export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; fromBeginning?: boolean }
+export type ConsumerSubscribeTopic = { topic: string | RegExp; fromBeginning?: boolean, replace?: boolean }
+
+export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; fromBeginning?: boolean, replace?: boolean }
 
 export type ConsumerRunConfig = {
   autoCommit?: boolean
@@ -409,7 +448,7 @@ export type GroupDescription = {
 export type Consumer = {
   connect(): Promise<void>
   disconnect(): Promise<void>
-  subscribe(subscription: ConsumerSubscribeTopics ): Promise<void>
+  subscribe(subscription: ConsumerSubscribeTopics): Promise<void>
   stop(): Promise<void>
   run(config?: ConsumerRunConfig): Promise<void>
   commitOffsets(topicPartitions: Array<TopicPartitionOffsetAndMetadata>): Promise<void>

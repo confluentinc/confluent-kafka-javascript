@@ -86,34 +86,34 @@
                   ],
                   'conditions': [
                     [
-                      ['OS=="linux"', 'CKJS_LINKING="dynamic"'],
+                      'CKJS_LINKING=="dynamic"',
                       {
-                        "libraries": [
-                          "../build/deps/librdkafka.so",
-                          "../build/deps/librdkafka++.so",
-                          "-Wl,-rpath='$$ORIGIN/../deps'",
-                        ],
-                      }
-                    ],
-                    [
-                      ['OS=="linux"', 'CKJS_LINKING!="dynamic"'],
+                        "conditions": [
+                            [
+                                'OS=="mac"',
+                                {
+                                  "libraries": [
+                                    "../build/deps/librdkafka.dylib",
+                                    "../build/deps/librdkafka++.dylib",
+                                  ],
+                                },
+                                {
+                                    "libraries": [
+                                      "../build/deps/librdkafka.so",
+                                      "../build/deps/librdkafka++.so",
+                                    ],
+                                },
+                            ]
+                        ]
+                      },
                       {
                         "libraries": [
                           "../build/deps/librdkafka-static.a",
                           "../build/deps/librdkafka++.a",
-                          "-Wl,-rpath='$$ORIGIN/../deps'",
+                          "-Wl,-rpath,'$$ORIGIN/../deps'",
                         ],
                       }
                     ],
-                    [
-                      'OS=="mac"',
-                      {
-                        "libraries": [
-                          "../build/deps/librdkafka.dylib",
-                          "../build/deps/librdkafka++.dylib",
-                        ],
-                      }
-                    ]
                   ],
                 },
                 # Else link against globally installed rdkafka and use
