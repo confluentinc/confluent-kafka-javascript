@@ -1,5 +1,10 @@
+This project is based on node-rdkafka (github.com/Blizzard/node-rdkafka).
+The license notice is reproduced below.
+
+--------
+
 The MIT License (MIT)
-Copyright (c) 2023 Confluent, Inc.
+Copyright (c) 2016 Blizzard Entertainment
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
