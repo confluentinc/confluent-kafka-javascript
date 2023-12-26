@@ -3,24 +3,28 @@ const { Kafka } = require('../..').KafkaJS
 
 async function eosStart() {
     const kafka = new Kafka({
-        brokers: ['<fill>'],
-        ssl: true,
-        sasl: {
-            mechanism: 'plain',
-            username: '<fill>',
-            password: '<fill>',
+        kafkaJs: {
+            brokers: ['<fill>'],
+            ssl: true,
+            sasl: {
+                mechanism: 'plain',
+                username: '<fill>',
+                password: '<fill>',
+            }
         }
     });
 
     const consumer = kafka.consumer({
-        groupId: 'groupId',
-        rdKafka: {
-            "enable.auto.commit": false,
-        },
+        kafkaJs: {
+            groupId: 'groupId',
+            autoCommit: false,
+        }
     });
 
     const producer = kafka.producer({
-        transactionalId: 'txid'
+        kafkaJs: {
+            transactionalId: 'txid'
+        }
     });
 
     await consumer.connect();
@@ -34,7 +38,8 @@ async function eosStart() {
     // The run method acts like a consume-transform-produce loop.
     consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
-            const msgAckString = JSON.stringify({topic,
+            const msgAckString = JSON.stringify({
+                topic,
                 partition,
                 offset: message.offset,
                 key: message.key?.toString(),
