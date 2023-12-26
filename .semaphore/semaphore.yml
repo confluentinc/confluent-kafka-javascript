@@ -35,46 +35,57 @@ global_job_config:
 
 
 blocks:
-  - name: "Linux arm64: Build and test"
+  - name: "Linux amd64 (musl): Build and test"
     dependencies: [ ]
     task:
       agent:
         machine:
           type: s1-prod-ubuntu20-04-arm64-1
       jobs:
-        - name: "Build from source and test"
+        - name: "Build from source and test for musl"
           commands:
-            - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
-            - make test
+            - exec docker run  --user "$(id -u):$(id -g)" -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
 
-  - name: 'macOS arm64/m1: Build and test'
-    dependencies: []
-    task:
-      agent:
-        machine:
-          type: s1-prod-macos-arm64
-      jobs:
-        - name: 'Build from source and test'
-          commands:
-            - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
-            - make test
+  # - name: "Linux arm64: Build and test"
+  #   dependencies: [ ]
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-ubuntu20-04-arm64-1
+  #     jobs:
+  #       - name: "Build from source and test"
+  #         commands:
+  #           - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+  #           - make test
 
-  - name: "Linux amd64: Build, test, lint"
-    dependencies: [ ]
-    task:
-      agent:
-        machine:
-          type: s1-prod-ubuntu20-04-amd64-2
-      prologue:
-        commands:
-          - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
-      jobs:
-        - name: "Test"
-          commands:
-            - make test
-        - name: "ESLint"
-          commands:
-            - npx eslint lib/kafkajs
+  # - name: 'macOS arm64/m1: Build and test'
+  #   dependencies: []
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-macos-arm64
+  #     jobs:
+  #       - name: 'Build from source and test'
+  #         commands:
+  #           - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+  #           - make test
+
+  # - name: "Linux amd64: Build, test, lint"
+  #   dependencies: [ ]
+  #   task:
+  #     agent:
+  #       machine:
+  #         type: s1-prod-ubuntu20-04-amd64-2
+  #     prologue:
+  #       commands:
+  #         - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+  #     jobs:
+  #       - name: "Test"
+  #         commands:
+  #           - make test
+  #       - name: "ESLint"
+  #         commands:
+  #           - npx eslint lib/kafkajs
 
 
   - name: "Linux amd64: Release"
