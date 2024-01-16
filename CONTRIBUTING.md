@@ -103,15 +103,8 @@ In short:
 
 ### JavaScript Styleguide
 
-* Place `module.exports` at or near the top of the file.
-  * Defined functions are hoisted, so it is appropriate to define the
-    function after you export it.
-  * When exporting an object, define it first, then export it, and then add
-    methods or properties.
-* Do not use ES2015 specific features (for example, do not use `let`, `const`,
-  or `class`).
 * All callbacks should follow the standard Node.js callback signature.
-* Your JavaScript should properly pass the linter (`make jslint`).
+* Your JavaScript should properly pass the linter (`make jslint` and `make eslint`).
 
 ### C++ Styleguide
 
@@ -195,7 +188,7 @@ You can add breakpoints and so on after that.
 
 ## Updating librdkafka version
 
-The librdkafka should be periodically updated to the latest release in https://github.com/edenhill/librdkafka/releases
+The librdkafka should be periodically updated to the latest release in https://github.com/confluentinc/librdkafka/releases
 
 Steps to update:
 1. Update the `librdkafka` property in [`package.json`](https://github.com/confluentinc/confluent-kafka-js/blob/master/package.json) to the desired version.
