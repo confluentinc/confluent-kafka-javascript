@@ -103,15 +103,8 @@ In short:
 
 ### JavaScript Styleguide
 
-* Place `module.exports` at or near the top of the file.
-  * Defined functions are hoisted, so it is appropriate to define the
-    function after you export it.
-  * When exporting an object, define it first, then export it, and then add
-    methods or properties.
-* Do not use ES2015 specific features (for example, do not use `let`, `const`,
-  or `class`).
 * All callbacks should follow the standard Node.js callback signature.
-* Your JavaScript should properly pass the linter (`make jslint`).
+* Your JavaScript should properly pass the linter (`make jslint` and `make eslint`).
 
 ### C++ Styleguide
 
@@ -195,7 +188,7 @@ You can add breakpoints and so on after that.
 
 ## Updating librdkafka version
 
-The librdkafka should be periodically updated to the latest release in https://github.com/edenhill/librdkafka/releases
+The librdkafka should be periodically updated to the latest release in https://github.com/confluentinc/librdkafka/releases
 
 Steps to update:
 1. Update the `librdkafka` property in [`package.json`](https://github.com/confluentinc/confluent-kafka-js/blob/master/package.json) to the desired version.
@@ -213,7 +206,6 @@ Steps to update:
     ```bash
     node ci/librdkafka-defs-generator.js
     ```
-    Note: This is ran automatically during CI flows but it's good to run it during the version upgrade pull request.
 
 1. Run `npm install --lockfile-version 2` to build with the new version and fix any build errors that occur.
 
@@ -221,8 +213,16 @@ Steps to update:
 
 1. Update the version numbers referenced in the [`README.md`](https://github.com/confluentinc/confluent-kafka-js/blob/master/README.md) file to the new version.
 
-## Publishing new npm version
+## Releasing
 
-1. Increment the `version` in `package.json` and merge that change in.
+1. Increment the `version` in `package.json` and change README.md to point to the new version.
 
-1. Create a new github release. Set the tag & release title to the same string as `version` in `package.json`.
+1. Run `npm install` to update the `package-lock.json` file.
+
+1. Create a PR and merge the above changes, and tag the merged commit with the new version, e.g. `git tag vx.y.z && git push origin vx.y.z`.
+   This should be the same string as `version` in `package.json`.
+
+1. The CI will run on the tag, which will create the release artifacts in Semaphore CI.
+
+1. Create a new GitHub release with the tag, and upload the release artifacts from Semaphore CI.
+   The release title should be the same string as `version` in `package.json`.
