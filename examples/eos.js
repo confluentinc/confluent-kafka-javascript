@@ -1,32 +1,17 @@
-// require('kafkajs') is replaced with require('confluent-kafka-js').KafkaJS.
-// Since this example is within the package itself, we use '../..', but code
-// will typically use 'confluent-kafka-js'.
-const { Kafka } = require('../..').KafkaJS;
+const { Kafka } = require('../').KafkaJS;
+//const { Kafka } = require('kafkajs')
 
 async function eosStart() {
-    const kafka = new Kafka({
-        kafkaJS: {
-            brokers: ['<fill>'],
-            ssl: true,
-            sasl: {
-                mechanism: 'plain',
-                username: '<fill>',
-                password: '<fill>',
-            }
-        }
+    const consumer = new Kafka().consumer({
+        'bootstrap.servers': 'localhost:9092',
+        'group.id': 'test-group4',
+        'enable.auto.commit': false,
+        'auto.offset.reset': 'earliest',
     });
 
-    const consumer = kafka.consumer({
-        kafkaJS: {
-            groupId: 'groupId',
-            autoCommit: false,
-        }
-    });
-
-    const producer = kafka.producer({
-        kafkaJS: {
-            transactionalId: 'txid'
-        }
+    const producer = new Kafka().producer({
+        'bootstrap.servers': 'localhost:9092',
+        'transactional.id': 'txid',
     });
 
     await consumer.connect();
@@ -36,7 +21,6 @@ async function eosStart() {
         topics: ["consumeTopic"]
     });
 
-    // Similar to https://github.com/tulios/kafkajs/issues/1221
     // The run method acts like a consume-transform-produce loop.
     consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
@@ -61,11 +45,7 @@ async function eosStart() {
                 });
 
                 await transaction.sendOffsets({
-                    // Either a consumer can be used, which is typically used to consume
-                    // in the EOS consume-transform-produce looop.
-                    // Or use consumer group id (like KafkaJS - but it's recommended to use consumer).
                     consumer,
-                    // consumerGroupId: 'groupdId',
                     topics: [
                         {
                             topic,
