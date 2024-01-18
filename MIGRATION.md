@@ -301,6 +301,10 @@ producerRun().then(consumerRun).catch(console.error);
       does not support `replicaAssignment`.
     * The `deleteTopics` method is fully supported.
 
+## Using the Schema Registry
+
+In case you are using the Schema Registry client at `kafkajs/confluent-schema-registry`, you will not need to make any changes to the usage.
+An example is made available [here](../examples/kafkajs/sr.js).
 
 #### Error Handling
 
