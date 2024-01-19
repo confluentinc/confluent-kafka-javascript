@@ -9,9 +9,16 @@ const { SchemaRegistry, SchemaType } = require('@kafkajs/confluent-schema-regist
 
 const registry = new SchemaRegistry({ host: '<fill>' })
 const kafka = new Kafka({
-    brokers: ['<fill>'],
-    clientId: 'example-consumer',
-})
+    kafkaJS: {
+        brokers: ['<fill>'],
+        ssl: true,
+        sasl: {
+            mechanism: 'plain',
+            username: '<fill>',
+            password: '<fill>',
+        },
+    }
+});
 let consumer = kafka.consumer({ groupId: 'test-group' , fromBeginning: true, } );
 let producer = kafka.producer();
 
