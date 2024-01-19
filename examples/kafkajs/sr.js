@@ -19,7 +19,12 @@ const kafka = new Kafka({
         },
     }
 });
-let consumer = kafka.consumer({ groupId: 'test-group' , fromBeginning: true, } );
+let consumer = kafka.consumer({
+  kafkaJS: {
+    groupId: "test-group",
+    fromBeginning: false,
+  },
+});
 let producer = kafka.producer();
 
 const schemaA = {
