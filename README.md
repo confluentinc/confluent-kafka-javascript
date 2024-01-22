@@ -2,7 +2,7 @@ Confluent's Javascript Client for Apache Kafka<sup>TM</sup>
 =====================================================
 
 **confluent-kafka-js** is Confluent's JavaScript client for [Apache Kafka](http://kafka.apache.org/) and the
-[Confluent Platform](https://www.confluent.io/product/compare/). This is an **early access** library. The goal is to provide an highly performant, reliable and easy to use JavaScript client that is API compatible with [KafkaJS](https://github.com/tulios/kafkajs) to provide flexibility to users and streamline migrations from other clients. 
+[Confluent Platform](https://www.confluent.io/product/compare/). This is an **early access** library. The goal is to provide an highly performant, reliable and easy to use JavaScript client that is based on [node-rdkafka](https://github.com/Blizzard/node-rdkafka) yet also API compatible with [KafkaJS](https://github.com/tulios/kafkajs) to provide flexibility to users and streamline migrations from other clients. 
 
 This library leverages the work and concepts from two popular Apache Kafka JavaScript clients: [node-rdkafka](https://github.com/Blizzard/node-rdkafka) and [KafkaJS](https://github.com/tulios/kafkajs). The core is heavily based on the node-rdkafka library, which uses our own [librdkafka](https://github.com/confluentinc/librdkafka/tree/v2.3.0) library for core client functionality. However, we leverage a promisified API and a more idiomatic interface, similar to the one in KafkaJS, making it easy for developers to migrate and adopt this client depending on the patterns and interface they prefer.
 __This library currently uses `librdkafka` based off of the master branch.__
@@ -43,10 +43,8 @@ Yarn and pnpm support is experimental.
 
 Below is a simple produce example for users migrating from KafkaJS. 
 
-```
+```javascript 
 // require('kafkajs') is replaced with require('confluent-kafka-js').KafkaJS.
-// Since this example is within the package itself, we use '../..', but code
-// will typically use 'confluent-kafka-js'.
 const { Kafka } = require("confluent-kafka-js").KafkaJS;
 
 async function producerStart() {
