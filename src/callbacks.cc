@@ -1,5 +1,5 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
  *
@@ -291,7 +291,7 @@ void DeliveryReportDispatcher::Flush() {
 
     if (event.is_error) {
         // If it is an error we need the first argument to be set
-        argv[0] = Nan::Error(event.error_string.c_str());
+        argv[0] = Nan::New(event.error_code);
     } else {
         argv[0] = Nan::Null();
     }
