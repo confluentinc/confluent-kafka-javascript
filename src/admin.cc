@@ -1,5 +1,5 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
  *
@@ -88,6 +88,7 @@ void AdminClient::Init(v8::Local<v8::Object> exports) {
 
   Nan::SetPrototypeMethod(tpl, "connect", NodeConnect);
   Nan::SetPrototypeMethod(tpl, "disconnect", NodeDisconnect);
+  Nan::SetPrototypeMethod(tpl, "setSaslCredentials", NodeSetSaslCredentials);
 
   constructor.Reset(
     (tpl->GetFunction(Nan::GetCurrentContext())).ToLocalChecked());
