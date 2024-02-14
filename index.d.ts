@@ -198,12 +198,14 @@ export abstract class Client<Events extends string> extends EventEmitter {
     queryWatermarkOffsets(topic: string, partition: number, timeout: number, cb?: (err: LibrdKafkaError, offsets: WatermarkOffsets) => any): any;
     queryWatermarkOffsets(topic: string, partition: number, cb?: (err: LibrdKafkaError, offsets: WatermarkOffsets) => any): any;
 
+    setSaslCredentials(username: string, password: string): void;
+
     on<E extends Events>(event: E, listener: EventListener<E>): this;
     once<E extends Events>(event: E, listener: EventListener<E>): this;
 }
 
 export class KafkaConsumer extends Client<KafkaConsumerEvents> {
-    constructor(conf: ConsumerGlobalConfig, topicConf: ConsumerTopicConfig);
+    constructor(conf: ConsumerGlobalConfig | ConsumerTopicConfig, topicConf?: ConsumerTopicConfig);
 
     assign(assignments: Assignment[]): this;
 
@@ -256,7 +258,7 @@ export class KafkaConsumer extends Client<KafkaConsumerEvents> {
 }
 
 export class Producer extends Client<KafkaProducerEvents> {
-    constructor(conf: ProducerGlobalConfig, topicConf?: ProducerTopicConfig);
+    constructor(conf: ProducerGlobalConfig | ProducerTopicConfig, topicConf?: ProducerTopicConfig);
 
     flush(timeout?: NumberNullUndefined, cb?: (err: LibrdKafkaError) => void): this;
 
