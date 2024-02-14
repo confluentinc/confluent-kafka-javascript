@@ -5,7 +5,7 @@ import os
 import glob
 
 with open('../package.json') as f:
-    librdkafkaVersion = json.load(f)['librdkafka']
+    librdkafkaVersion = json.load(f)['librdkafka_win']
 librdkafkaWinSufix = '7' if librdkafkaVersion == '0.11.5' else '';
 
 depsPrecompiledDir = '../deps/precompiled'
