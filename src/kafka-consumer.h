@@ -1,7 +1,8 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
+ *           (c) 2023 Confluent, Inc.
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE.txt file for details.
@@ -74,6 +75,11 @@ class KafkaConsumer : public Connection {
   Baton Assign(std::vector<RdKafka::TopicPartition*>);
   Baton Unassign();
 
+  Baton IncrementalAssign(std::vector<RdKafka::TopicPartition*>);
+  Baton IncrementalUnassign(std::vector<RdKafka::TopicPartition*>);
+
+  std::string RebalanceProtocol();
+
   Baton Seek(const RdKafka::TopicPartition &partition, int timeout_ms);
 
   std::string Name();
@@ -106,7 +112,10 @@ class KafkaConsumer : public Connection {
   static NAN_METHOD(NodeDisconnect);
   static NAN_METHOD(NodeAssign);
   static NAN_METHOD(NodeUnassign);
+  static NAN_METHOD(NodeIncrementalAssign);
+  static NAN_METHOD(NodeIncrementalUnassign);
   static NAN_METHOD(NodeAssignments);
+  static NAN_METHOD(NodeRebalanceProtocol);
   static NAN_METHOD(NodeUnsubscribe);
   static NAN_METHOD(NodeCommit);
   static NAN_METHOD(NodeCommitSync);
