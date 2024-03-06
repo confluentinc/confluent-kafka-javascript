@@ -1,7 +1,8 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
+ *           (c) 2023 Confluent, Inc.
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE.txt file for details.
@@ -55,6 +56,7 @@ class Connection : public Nan::ObjectWrap {
   Baton GetMetadata(bool, std::string, int);
   Baton QueryWatermarkOffsets(std::string, int32_t, int64_t*, int64_t*, int);
   Baton OffsetsForTimes(std::vector<RdKafka::TopicPartition*> &, int);
+  Baton SetSaslCredentials(std::string, std::string);
 
   RdKafka::Handle* GetClient();
 
@@ -74,6 +76,7 @@ class Connection : public Nan::ObjectWrap {
 
   static Nan::Persistent<v8::Function> constructor;
   static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  Baton rdkafkaErrorToBaton(RdKafka::Error* error);
 
   bool m_has_been_disconnected;
   bool m_is_closing;
@@ -90,6 +93,7 @@ class Connection : public Nan::ObjectWrap {
   static NAN_METHOD(NodeGetMetadata);
   static NAN_METHOD(NodeQueryWatermarkOffsets);
   static NAN_METHOD(NodeOffsetsForTimes);
+  static NAN_METHOD(NodeSetSaslCredentials);
 };
 
 }  // namespace NodeKafka

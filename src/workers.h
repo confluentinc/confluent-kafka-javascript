@@ -1,7 +1,8 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
+ *           (c) 2023 Confluent, Inc.
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE.txt file for details.
@@ -36,8 +37,13 @@ class ErrorAwareWorker : public Nan::AsyncWorker {
   void HandleErrorCallback() {
     Nan::HandleScope scope;
 
+    // Construct error and add code to it.
+    v8::Local<v8::Value> error = Nan::Error(ErrorMessage());
+    Nan::Set(error.As<v8::Object>(), Nan::New("code").ToLocalChecked(),
+      Nan::New(GetErrorCode()));
+
     const unsigned int argc = 1;
-    v8::Local<v8::Value> argv[argc] = { Nan::Error(ErrorMessage()) };
+    v8::Local<v8::Value> argv[argc] = { error };
 
     callback->Call(argc, argv);
   }
