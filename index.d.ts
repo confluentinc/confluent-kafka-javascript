@@ -198,12 +198,14 @@ export abstract class Client<Events extends string> extends EventEmitter {
     queryWatermarkOffsets(topic: string, partition: number, timeout: number, cb?: (err: LibrdKafkaError, offsets: WatermarkOffsets) => any): any;
     queryWatermarkOffsets(topic: string, partition: number, cb?: (err: LibrdKafkaError, offsets: WatermarkOffsets) => any): any;
 
+    setSaslCredentials(username: string, password: string): void;
+
     on<E extends Events>(event: E, listener: EventListener<E>): this;
     once<E extends Events>(event: E, listener: EventListener<E>): this;
 }
 
 export class KafkaConsumer extends Client<KafkaConsumerEvents> {
-    constructor(conf: ConsumerGlobalConfig, topicConf: ConsumerTopicConfig);
+    constructor(conf: ConsumerGlobalConfig | ConsumerTopicConfig, topicConf?: ConsumerTopicConfig);
 
     assign(assignments: Assignment[]): this;
 
@@ -256,7 +258,7 @@ export class KafkaConsumer extends Client<KafkaConsumerEvents> {
 }
 
 export class Producer extends Client<KafkaProducerEvents> {
-    constructor(conf: ProducerGlobalConfig, topicConf?: ProducerTopicConfig);
+    constructor(conf: ProducerGlobalConfig | ProducerTopicConfig, topicConf?: ProducerTopicConfig);
 
     flush(timeout?: NumberNullUndefined, cb?: (err: LibrdKafkaError) => void): this;
 
@@ -331,6 +333,22 @@ export interface NewTopic {
     } | { [cfg: string]: string; };
 }
 
+export enum ConsumerGroupStates {
+    UNKNOWN = 0,
+    PREPARING_REBALANCE = 1,
+    COMPLETING_REBALANCE = 2,
+    STABLE = 3,
+    DEAD = 4,
+    EMPTY = 5,
+}
+
+export interface GroupOverview {
+    groupId: string;
+    protocolType: string;
+    isSimpleConsumerGroup: boolean;
+    state: ConsumerGroupStates;
+}
+
 export interface IAdminClient {
     createTopic(topic: NewTopic, cb?: (err: LibrdKafkaError) => void): void;
     createTopic(topic: NewTopic, timeout?: number, cb?: (err: LibrdKafkaError) => void): void;
@@ -340,6 +358,10 @@ export interface IAdminClient {
 
     createPartitions(topic: string, desiredPartitions: number, cb?: (err: LibrdKafkaError) => void): void;
     createPartitions(topic: string, desiredPartitions: number, timeout?: number, cb?: (err: LibrdKafkaError) => void): void;
+
+    listGroups(cb?: (err: LibrdKafkaError, result: { groups: GroupOverview[], errors: LibrdKafkaError[] }) => any): void;
+    listGroups(options: { timeout?: number, matchConsumerGroupStates?: ConsumerGroupStates[] },
+        cb?: (err: LibrdKafkaError, result: { groups: GroupOverview[], errors: LibrdKafkaError[] }) => any): void;
 
     disconnect(): void;
 }
