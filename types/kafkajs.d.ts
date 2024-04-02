@@ -1,4 +1,10 @@
 import * as tls from 'tls'
+import { ConsumerGlobalConfig, ConsumerTopicConfig, GlobalConfig, ProducerGlobalConfig, ProducerTopicConfig, TopicConfig } from './config'
+import { ConsumerGroupStates, GroupOverview, LibrdKafkaError, GroupDescription, GroupDescriptions, DeleteGroupsResult } from '../index'
+
+// Admin API related interfaces, types etc; and Error types are common, so
+// just re-export them from here too.
+export { ConsumerGroupStates, GroupOverview, LibrdKafkaError, GroupDescriptions, DeleteGroupsResult } from '../index'
 
 export type BrokersFunction = () => string[] | Promise<string[]>
 
@@ -30,6 +36,10 @@ export interface KafkaConfig {
   enforceRequestTimeout?: boolean
 }
 
+export interface CommonConstructorConfig extends GlobalConfig {
+  kafkaJS?: KafkaConfig;
+}
+
 export interface ProducerConfig {
   metadataMaxAge?: number
   allowAutoTopicCreation?: boolean
@@ -37,6 +47,11 @@ export interface ProducerConfig {
   transactionalId?: string
   transactionTimeout?: number
   maxInFlightRequests?: number
+  rdKafka?: { topicConfig?: ProducerTopicConfig, globalConfig?: ProducerGlobalConfig }
+}
+
+export interface ProducerConstructorConfig extends ProducerGlobalConfig {
+  kafkaJS?: ProducerConfig;
 }
 
 export interface IHeaders {
@@ -74,6 +89,18 @@ export interface ProducerRecord {
   compression?: CompressionTypes
 }
 
+export interface TopicMessages {
+  topic: string
+  messages: Message[]
+}
+
+export interface ProducerBatch {
+  acks?: number
+  timeout?: number
+  compression?: CompressionTypes
+  topicMessages?: TopicMessages[]
+}
+
 export type RecordMetadata = {
   topicName: string
   partition: number
@@ -86,9 +113,9 @@ export type RecordMetadata = {
 }
 
 export class Kafka {
-  constructor(config: KafkaConfig)
-  producer(config?: ProducerConfig): Producer
-  consumer(config: ConsumerConfig): Consumer
+  constructor(config: CommonConstructorConfig)
+  producer(config?: ProducerConstructorConfig): Producer
+  consumer(config: ConsumerConstructorConfig): Consumer
 }
 
 type Sender = {
@@ -124,6 +151,11 @@ export interface ConsumerConfig {
   maxInFlightRequests?: number
   readUncommitted?: boolean
   rackId?: string
+  rdKafka?: { topicConfig?: ConsumerTopicConfig, globalConfig?: ConsumerGlobalConfig }
+}
+
+export interface ConsumerConstructorConfig extends ConsumerGlobalConfig {
+  kafkaJS?: ConsumerConfig;
 }
 
 export type ConsumerEvents = {
@@ -145,6 +177,23 @@ export type ConsumerEvents = {
   REQUEST_QUEUE_SIZE: 'consumer.network.request_queue_size'
 }
 
+export interface AdminConfig {
+  retry?: RetryOptions
+}
+
+export interface AdminConstructorConfig extends GlobalConfig {
+  kafkaJS?: AdminConfig;
+}
+
+export interface ReplicaAssignment {
+  partition: number
+  replicas: Array<number>
+}
+
+export interface IResourceConfigEntry {
+  name: string
+  value: string
+}
 
 export enum logLevel {
   NOTHING = 0,
@@ -339,7 +388,9 @@ export type EachBatchHandler = (payload: EachBatchPayload) => Promise<void>
 
 export type EachMessageHandler = (payload: EachMessagePayload) => Promise<void>
 
-export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; fromBeginning?: boolean }
+export type ConsumerSubscribeTopic = { topic: string | RegExp; fromBeginning?: boolean, replace?: boolean }
+
+export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; fromBeginning?: boolean, replace?: boolean }
 
 export type ConsumerRunConfig = {
   autoCommit?: boolean
@@ -357,7 +408,6 @@ export interface TopicOffsets {
   topic: string
   partitions: PartitionOffset[]
 }
-
 
 export interface PartitionOffset {
   partition: number
@@ -382,34 +432,10 @@ export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
 
-export type MemberDescription = {
-  clientHost: string
-  clientId: string
-  memberId: string
-  memberAssignment: Buffer
-  memberMetadata: Buffer
-}
-
-export type ConsumerGroupState =
-  | 'Unknown'
-  | 'PreparingRebalance'
-  | 'CompletingRebalance'
-  | 'Stable'
-  | 'Dead'
-  | 'Empty'
-
-export type GroupDescription = {
-  groupId: string
-  members: MemberDescription[]
-  protocol: string
-  protocolType: string
-  state: ConsumerGroupState
-}
-
 export type Consumer = {
   connect(): Promise<void>
   disconnect(): Promise<void>
-  subscribe(subscription: ConsumerSubscribeTopics ): Promise<void>
+  subscribe(subscription: ConsumerSubscribeTopics): Promise<void>
   stop(): Promise<void>
   run(config?: ConsumerRunConfig): Promise<void>
   commitOffsets(topicPartitions: Array<TopicPartitionOffsetAndMetadata>): Promise<void>
@@ -491,3 +517,37 @@ export type Consumer = {
   readonly events: ConsumerEvents
 }
 
+export interface ITopicConfig {
+  topic: string
+  numPartitions?: number
+  replicationFactor?: number
+  replicaAssignment?: ReplicaAssignment[]
+  configEntries?: IResourceConfigEntry[]
+}
+
+export interface ITopicPartitionConfig {
+  topic: string
+  count: number
+  assignments?: Array<Array<number>>
+}
+
+export type Admin = {
+  connect(): Promise<void>
+  disconnect(): Promise<void>
+  createTopics(options: {
+    validateOnly?: boolean
+    waitForLeaders?: boolean
+    timeout?: number
+    topics: ITopicConfig[]
+  }): Promise<boolean>
+  deleteTopics(options: { topics: string[]; timeout?: number }): Promise<void>
+  listTopics(options?: { timeout?: number }): Promise<string[]>
+  listGroups(options?: {
+    timeout?: number,
+    matchConsumerGroupStates?: ConsumerGroupStates[]
+  }): Promise<{ groups: GroupOverview[], errors: LibrdKafkaError[] }>
+  describeGroups(
+    groups: string[],
+    options?: {timeout?: number, includeAuthorizedOperations?: boolean }): Promise<GroupDescriptions>
+  deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
+}
