@@ -1,7 +1,8 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
+ *           (c) 2024 Confluent, Inc.
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE.txt file for details.
@@ -199,6 +200,11 @@ ProducerConnect::ProducerConnect(Nan::Callback *callback, Producer* producer):
 ProducerConnect::~ProducerConnect() {}
 
 void ProducerConnect::Execute() {
+  // Activate the dispatchers before the connection, as some callbacks may run
+  // on the background thread.
+  // We will deactivate them if the connection fails.
+  producer->ActivateDispatchers();
+
   Baton b = producer->Connect();
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
@@ -217,14 +223,13 @@ void ProducerConnect::HandleOKCallback() {
 
   v8::Local<v8::Value> argv[argc] = { Nan::Null(), obj};
 
-  // Activate the dispatchers
-  producer->ActivateDispatchers();
-
   callback->Call(argc, argv);
 }
 
 void ProducerConnect::HandleErrorCallback() {
   Nan::HandleScope scope;
+
+  producer->DeactivateDispatchers();
 
   const unsigned int argc = 1;
   v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
@@ -557,6 +562,11 @@ KafkaConsumerConnect::KafkaConsumerConnect(Nan::Callback *callback,
 KafkaConsumerConnect::~KafkaConsumerConnect() {}
 
 void KafkaConsumerConnect::Execute() {
+  // Activate the dispatchers before the connection, as some callbacks may run
+  // on the background thread.
+  // We will deactivate them if the connection fails.
+  consumer->ActivateDispatchers();
+
   Baton b = consumer->Connect();
   // consumer->Wait();
 
@@ -576,13 +586,14 @@ void KafkaConsumerConnect::HandleOKCallback() {
     Nan::New(consumer->Name()).ToLocalChecked());
 
   v8::Local<v8::Value> argv[argc] = { Nan::Null(), obj };
-  consumer->ActivateDispatchers();
 
   callback->Call(argc, argv);
 }
 
 void KafkaConsumerConnect::HandleErrorCallback() {
   Nan::HandleScope scope;
+
+  consumer->DeactivateDispatchers();
 
   const unsigned int argc = 1;
   v8::Local<v8::Value> argv[argc] = { Nan::Error(ErrorMessage()) };
@@ -1239,6 +1250,170 @@ void AdminClientCreatePartitions::HandleErrorCallback() {
 
   callback->Call(argc, argv);
 }
+
+/**
+ * @brief List consumer groups in an asynchronous worker.
+ *
+ * This callback will list consumer groups.
+ *
+ */
+AdminClientListGroups::AdminClientListGroups(
+    Nan::Callback* callback, AdminClient* client, bool is_match_states_set,
+    std::vector<rd_kafka_consumer_group_state_t>& match_states,
+    const int& timeout_ms)
+    : ErrorAwareWorker(callback),
+      m_client(client),
+      m_is_match_states_set(is_match_states_set),
+      m_match_states(match_states),
+      m_timeout_ms(timeout_ms) {}
+
+AdminClientListGroups::~AdminClientListGroups() {
+  if (this->m_event_response) {
+    rd_kafka_event_destroy(this->m_event_response);
+  }
+}
+
+void AdminClientListGroups::Execute() {
+  Baton b = m_client->ListGroups(m_is_match_states_set, m_match_states,
+                                 m_timeout_ms, &m_event_response);
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    SetErrorBaton(b);
+  }
+}
+
+void AdminClientListGroups::HandleOKCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 2;
+  v8::Local<v8::Value> argv[argc];
+
+  argv[0] = Nan::Null();
+
+  const rd_kafka_ListConsumerGroups_result_t* result =
+      rd_kafka_event_ListConsumerGroups_result(m_event_response);
+
+  argv[1] = Conversion::Admin::FromListConsumerGroupsResult(result);
+
+  callback->Call(argc, argv);
+}
+
+void AdminClientListGroups::HandleErrorCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 1;
+  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+
+  callback->Call(argc, argv);
+}
+
+/**
+ * @brief Describe consumer groups in an asynchronous worker.
+ *
+ * This callback will describe consumer groups.
+ *
+ */
+AdminClientDescribeGroups::AdminClientDescribeGroups(
+    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    std::vector<std::string>& groups, bool include_authorized_operations,
+    const int& timeout_ms)
+    : ErrorAwareWorker(callback),
+      m_client(client),
+      m_groups(groups),
+      m_include_authorized_operations(include_authorized_operations),
+      m_timeout_ms(timeout_ms) {}
+
+AdminClientDescribeGroups::~AdminClientDescribeGroups() {
+  if (this->m_event_response) {
+    rd_kafka_event_destroy(this->m_event_response);
+  }
+}
+
+void AdminClientDescribeGroups::Execute() {
+  Baton b = m_client->DescribeGroups(m_groups, m_include_authorized_operations,
+                                     m_timeout_ms, &m_event_response);
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    SetErrorBaton(b);
+  }
+}
+
+void AdminClientDescribeGroups::HandleOKCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 2;
+  v8::Local<v8::Value> argv[argc];
+
+  argv[0] = Nan::Null();
+  argv[1] = Conversion::Admin::FromDescribeConsumerGroupsResult(
+      rd_kafka_event_DescribeConsumerGroups_result(m_event_response));
+
+  callback->Call(argc, argv);
+}
+
+void AdminClientDescribeGroups::HandleErrorCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 1;
+  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+
+  callback->Call(argc, argv);
+}
+
+/**
+ * @brief Delete consumer groups in an asynchronous worker.
+ *
+ * This callback will delete consumer groups.
+ *
+ */
+AdminClientDeleteGroups::AdminClientDeleteGroups(
+    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    rd_kafka_DeleteGroup_t **group_list,
+    size_t group_cnt,
+    const int& timeout_ms)
+    : ErrorAwareWorker(callback),
+      m_client(client),
+      m_group_list(group_list),
+      m_group_cnt(group_cnt),
+      m_timeout_ms(timeout_ms) {}
+
+AdminClientDeleteGroups::~AdminClientDeleteGroups() {
+  if (m_group_list) {
+    rd_kafka_DeleteGroup_destroy_array(m_group_list, m_group_cnt);
+    free(m_group_list);
+  }
+
+  if (this->m_event_response) {
+    rd_kafka_event_destroy(this->m_event_response);
+  }
+}
+
+void AdminClientDeleteGroups::Execute() {
+  Baton b = m_client->DeleteGroups(m_group_list, m_group_cnt, m_timeout_ms, &m_event_response);
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    SetErrorBaton(b);
+  }
+}
+
+void AdminClientDeleteGroups::HandleOKCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 2;
+  v8::Local<v8::Value> argv[argc];
+
+  argv[0] = Nan::Null();
+  argv[1] = Conversion::Admin::FromDeleteGroupsResult(rd_kafka_event_DeleteGroups_result(m_event_response));
+
+  callback->Call(argc, argv);
+}
+
+void AdminClientDeleteGroups::HandleErrorCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 1;
+  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+
+  callback->Call(argc, argv);
+}
+
 
 }  // namespace Workers
 }  // namespace NodeKafka
