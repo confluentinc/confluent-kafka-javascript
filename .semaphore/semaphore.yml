@@ -30,6 +30,7 @@ global_job_config:
       - git fetch origin
       - cd ../../
       - cache clear
+      - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
