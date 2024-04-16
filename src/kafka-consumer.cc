@@ -253,7 +253,7 @@ Baton KafkaConsumer::IncrementalUnassign(std::vector<RdKafka::TopicPartition*> p
       for (unsigned int j = 0; j < m_partitions.size(); j++) {
         if (partitions[i]->partition() == m_partitions[j]->partition() &&
             partitions[i]->topic() == m_partitions[j]->topic()) {
-          delete_partitions.insert(delete_partitions.end(), m_partitions.begin() + j, m_partitions.begin() + j + 1);
+          delete_partitions.push_back(m_partitions[j]);
           m_partitions.erase(m_partitions.begin() + j);
           m_partition_cnt--;
           break;
