@@ -264,6 +264,9 @@ Baton KafkaConsumer::IncrementalUnassign(std::vector<RdKafka::TopicPartition*> p
 
   // Destroy the old list of partitions since we are no longer using it
   RdKafka::TopicPartition::destroy(delete_partitions);
+
+  // Destroy the partition args since those are only used to lookup the partitions
+  // that needed to be deleted.
   RdKafka::TopicPartition::destroy(partitions);
 
   return rdkafkaErrorToBaton(error);
