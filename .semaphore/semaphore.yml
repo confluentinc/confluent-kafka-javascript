@@ -96,6 +96,7 @@ blocks:
       jobs:
         - name: "Test"
           commands:
+            - echo "Testing..."
             - make test
         - name: "ESLint"
           commands:
