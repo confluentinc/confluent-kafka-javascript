@@ -1,7 +1,8 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
+ *           (c) 2023 Confluent, Inc.
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE.txt file for details.
@@ -31,7 +32,8 @@ KafkaConsumer::KafkaConsumer(Conf* gconfig, Conf* tconfig):
   Connection(gconfig, tconfig) {
     std::string errstr;
 
-    m_gconfig->set("default_topic_conf", m_tconfig, errstr);
+    if (m_tconfig)
+      m_gconfig->set("default_topic_conf", m_tconfig, errstr);
 
     m_consume_loop = nullptr;
   }
@@ -46,6 +48,11 @@ Baton KafkaConsumer::Connect() {
     return Baton(RdKafka::ERR_NO_ERROR);
   }
 
+  Baton baton = setupSaslOAuthBearerConfig();
+  if (baton.err() != RdKafka::ERR_NO_ERROR) {
+    return baton;
+  }
+
   std::string errstr;
   {
     scoped_shared_write_lock lock(m_connection_lock);
@@ -54,6 +61,11 @@ Baton KafkaConsumer::Connect() {
 
   if (!m_client || !errstr.empty()) {
     return Baton(RdKafka::ERR__STATE, errstr);
+  }
+
+  baton = setupSaslOAuthBearerBackgroundQueue();
+  if (baton.err() != RdKafka::ERR_NO_ERROR) {
+    return baton;
   }
 
   if (m_partitions.size() > 0) {
@@ -199,6 +211,65 @@ Baton KafkaConsumer::Unassign() {
   m_partition_cnt = 0;
 
   return Baton(RdKafka::ERR_NO_ERROR);
+}
+
+Baton KafkaConsumer::IncrementalAssign(std::vector<RdKafka::TopicPartition*> partitions) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE, "KafkaConsumer is disconnected");
+  }
+
+  RdKafka::KafkaConsumer* consumer =
+    dynamic_cast<RdKafka::KafkaConsumer*>(m_client);
+
+  RdKafka::Error* error = consumer->incremental_assign(partitions);
+
+  if (error == NULL) {
+    m_partition_cnt += partitions.size();
+    // We assume here that there are no duplicate assigns and just transfer.
+    m_partitions.insert(m_partitions.end(), partitions.begin(), partitions.end());
+  } else {
+    // If we're in error, destroy it, otherwise, don't (since we're using them).
+    RdKafka::TopicPartition::destroy(partitions);
+  }
+
+  return rdkafkaErrorToBaton(error);
+}
+
+Baton KafkaConsumer::IncrementalUnassign(std::vector<RdKafka::TopicPartition*> partitions) {
+  if (!IsClosing() && !IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  RdKafka::KafkaConsumer* consumer =
+    dynamic_cast<RdKafka::KafkaConsumer*>(m_client);
+
+  RdKafka::Error* error = consumer->incremental_unassign(partitions);
+
+  std::vector<RdKafka::TopicPartition*> delete_partitions;
+
+  if (error == NULL) {
+    // For now, use two for loops. Make more efficient if needed at a later point.
+    for (unsigned int i = 0; i < partitions.size(); i++) {
+      for (unsigned int j = 0; j < m_partitions.size(); j++) {
+        if (partitions[i]->partition() == m_partitions[j]->partition() &&
+            partitions[i]->topic() == m_partitions[j]->topic()) {
+          delete_partitions.push_back(m_partitions[j]);
+          m_partitions.erase(m_partitions.begin() + j);
+          m_partition_cnt--;
+          break;
+        }
+      }
+    }
+  }
+
+  // Destroy the old list of partitions since we are no longer using it
+  RdKafka::TopicPartition::destroy(delete_partitions);
+
+  // Destroy the partition args since those are only used to lookup the partitions
+  // that needed to be deleted.
+  RdKafka::TopicPartition::destroy(partitions);
+
+  return rdkafkaErrorToBaton(error);
 }
 
 Baton KafkaConsumer::Commit(std::vector<RdKafka::TopicPartition*> toppars) {
@@ -469,11 +540,15 @@ Baton KafkaConsumer::RefreshAssignments() {
   }
 }
 
-std::string KafkaConsumer::Name() {
+std::string KafkaConsumer::RebalanceProtocol() {
   if (!IsConnected()) {
-    return std::string("");
+    return std::string("NONE");
   }
-  return std::string(m_client->name());
+
+  RdKafka::KafkaConsumer* consumer =
+    dynamic_cast<RdKafka::KafkaConsumer*>(m_client);
+
+  return consumer->rebalance_protocol();
 }
 
 Nan::Persistent<v8::Function> KafkaConsumer::constructor;
@@ -503,6 +578,10 @@ void KafkaConsumer::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "queryWatermarkOffsets", NodeQueryWatermarkOffsets);  // NOLINT
   Nan::SetPrototypeMethod(tpl, "offsetsForTimes", NodeOffsetsForTimes);
   Nan::SetPrototypeMethod(tpl, "getWatermarkOffsets", NodeGetWatermarkOffsets);
+  Nan::SetPrototypeMethod(tpl, "setSaslCredentials", NodeSetSaslCredentials);
+  Nan::SetPrototypeMethod(tpl, "setOAuthBearerToken", NodeSetOAuthBearerToken);
+  Nan::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
+                          NodeSetOAuthBearerTokenFailure);
 
   /*
    * @brief Methods exposed to do with message retrieval
@@ -528,7 +607,10 @@ void KafkaConsumer::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "position", NodePosition);
   Nan::SetPrototypeMethod(tpl, "assign", NodeAssign);
   Nan::SetPrototypeMethod(tpl, "unassign", NodeUnassign);
+  Nan::SetPrototypeMethod(tpl, "incrementalAssign", NodeIncrementalAssign);
+  Nan::SetPrototypeMethod(tpl, "incrementalUnassign", NodeIncrementalUnassign);
   Nan::SetPrototypeMethod(tpl, "assignments", NodeAssignments);
+  Nan::SetPrototypeMethod(tpl, "rebalanceProtocol", NodeRebalanceProtocol);
 
   Nan::SetPrototypeMethod(tpl, "commit", NodeCommit);
   Nan::SetPrototypeMethod(tpl, "commitSync", NodeCommitSync);
@@ -553,10 +635,6 @@ void KafkaConsumer::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     return Nan::ThrowError("Global configuration data must be specified");
   }
 
-  if (!info[1]->IsObject()) {
-    return Nan::ThrowError("Topic configuration must be specified");
-  }
-
   std::string errstr;
 
   Conf* gconfig =
@@ -567,15 +645,19 @@ void KafkaConsumer::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     return Nan::ThrowError(errstr.c_str());
   }
 
-  Conf* tconfig =
-    Conf::create(RdKafka::Conf::CONF_TOPIC,
+  // If tconfig isn't set, then just let us pick properties from gconf.
+  Conf* tconfig = nullptr;
+  if (info[1]->IsObject()) {
+    tconfig = Conf::create(RdKafka::Conf::CONF_TOPIC,
       (info[1]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
 
-  if (!tconfig) {
-    delete gconfig;
-    return Nan::ThrowError(errstr.c_str());
+    if (!tconfig) {
+      delete gconfig;
+      return Nan::ThrowError(errstr.c_str());
+    }
   }
 
+  // TODO: fix this - this memory is leaked.
   KafkaConsumer* consumer = new KafkaConsumer(gconfig, tconfig);
 
   // Wrap it
@@ -651,7 +733,7 @@ NAN_METHOD(KafkaConsumer::NodeSubscription) {
 
   std::vector<std::string> * topics = b.data<std::vector<std::string>*>();
 
-  info.GetReturnValue().Set(Conversion::Topic::ToV8Array(*topics));
+  info.GetReturnValue().Set(Conversion::Util::ToV8Array(*topics));
 
   delete topics;
 }
@@ -699,6 +781,12 @@ NAN_METHOD(KafkaConsumer::NodeAssignments) {
 
   info.GetReturnValue().Set(
     Conversion::TopicPartition::ToV8Array(consumer->m_partitions));
+}
+
+NAN_METHOD(KafkaConsumer::NodeRebalanceProtocol) {
+  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+  std::string protocol = consumer->RebalanceProtocol();
+  info.GetReturnValue().Set(Nan::New<v8::String>(protocol).ToLocalChecked());
 }
 
 NAN_METHOD(KafkaConsumer::NodeAssign) {
@@ -778,6 +866,125 @@ NAN_METHOD(KafkaConsumer::NodeUnassign) {
 
   info.GetReturnValue().Set(Nan::True());
 }
+
+NAN_METHOD(KafkaConsumer::NodeIncrementalAssign) {
+  Nan::HandleScope scope;
+
+  if (info.Length() < 1 || !info[0]->IsArray()) {
+    // Just throw an exception
+    return Nan::ThrowError("Need to specify an array of partitions");
+  }
+
+  v8::Local<v8::Array> partitions = info[0].As<v8::Array>();
+  std::vector<RdKafka::TopicPartition*> topic_partitions;
+
+  for (unsigned int i = 0; i < partitions->Length(); ++i) {
+    v8::Local<v8::Value> partition_obj_value;
+    if (!(
+          Nan::Get(partitions, i).ToLocal(&partition_obj_value) &&
+          partition_obj_value->IsObject())) {
+      Nan::ThrowError("Must pass topic-partition objects");
+    }
+
+    v8::Local<v8::Object> partition_obj = partition_obj_value.As<v8::Object>();
+
+    // Got the object
+    int64_t partition = GetParameter<int64_t>(partition_obj, "partition", -1);
+    std::string topic = GetParameter<std::string>(partition_obj, "topic", "");
+
+    if (!topic.empty()) {
+      RdKafka::TopicPartition* part;
+
+      if (partition < 0) {
+        part = Connection::GetPartition(topic);
+      } else {
+        part = Connection::GetPartition(topic, partition);
+      }
+
+      // Set the default value to offset invalid. If provided, we will not set
+      // the offset.
+      int64_t offset = GetParameter<int64_t>(
+        partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
+      if (offset != RdKafka::Topic::OFFSET_INVALID) {
+        part->set_offset(offset);
+      }
+
+      topic_partitions.push_back(part);
+    }
+  }
+
+  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+
+  // Hand over the partitions to the consumer.
+  Baton b = consumer->IncrementalAssign(topic_partitions);
+
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    v8::Local<v8::Value> errorObject = b.ToObject();
+    Nan::ThrowError(errorObject);
+  }
+
+  info.GetReturnValue().Set(Nan::True());
+}
+
+NAN_METHOD(KafkaConsumer::NodeIncrementalUnassign) {
+  Nan::HandleScope scope;
+
+  if (info.Length() < 1 || !info[0]->IsArray()) {
+    // Just throw an exception
+    return Nan::ThrowError("Need to specify an array of partitions");
+  }
+
+  v8::Local<v8::Array> partitions = info[0].As<v8::Array>();
+  std::vector<RdKafka::TopicPartition*> topic_partitions;
+
+  for (unsigned int i = 0; i < partitions->Length(); ++i) {
+    v8::Local<v8::Value> partition_obj_value;
+    if (!(
+          Nan::Get(partitions, i).ToLocal(&partition_obj_value) &&
+          partition_obj_value->IsObject())) {
+      Nan::ThrowError("Must pass topic-partition objects");
+    }
+
+    v8::Local<v8::Object> partition_obj = partition_obj_value.As<v8::Object>();
+
+    // Got the object
+    int64_t partition = GetParameter<int64_t>(partition_obj, "partition", -1);
+    std::string topic = GetParameter<std::string>(partition_obj, "topic", "");
+
+    if (!topic.empty()) {
+      RdKafka::TopicPartition* part;
+
+      if (partition < 0) {
+        part = Connection::GetPartition(topic);
+      } else {
+        part = Connection::GetPartition(topic, partition);
+      }
+
+      // Set the default value to offset invalid. If provided, we will not set
+      // the offset.
+      int64_t offset = GetParameter<int64_t>(
+        partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
+      if (offset != RdKafka::Topic::OFFSET_INVALID) {
+        part->set_offset(offset);
+      }
+
+      topic_partitions.push_back(part);
+    }
+  }
+
+  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+
+  // Hand over the partitions to the consumer.
+  Baton b = consumer->IncrementalUnassign(topic_partitions);
+
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    v8::Local<v8::Value> errorObject = b.ToObject();
+    Nan::ThrowError(errorObject);
+  }
+
+  info.GetReturnValue().Set(Nan::True());
+}
+
 
 NAN_METHOD(KafkaConsumer::NodeUnsubscribe) {
   Nan::HandleScope scope;
@@ -886,7 +1093,8 @@ NAN_METHOD(KafkaConsumer::NodeSubscribe) {
   KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
 
   v8::Local<v8::Array> topicsArray = info[0].As<v8::Array>();
-  std::vector<std::string> topics = Conversion::Topic::ToStringVector(topicsArray);  // NOLINT
+  std::vector<std::string> topics =
+      Conversion::Util::ToStringVector(topicsArray);
 
   Baton b = consumer->Subscribe(topics);
 
