@@ -96,8 +96,9 @@ export interface DeliveryReport extends TopicPartitionOffset {
 export type NumberNullUndefined = number | null | undefined;
 
 export type MessageKey = Buffer | string | null | undefined;
-export type MessageHeader = Buffer | string | null;
-export type MessageHeaders = { [key: string]: MessageHeader };
+export type MessageHeaderValue = Buffer | string | number | null;
+export type MessageHeader = Record<string, MessageHeaderValue>;
+export type MessageHeaderList = MessageHeader[];
 export type MessageValue = Buffer | null;
 export type SubscribeTopic = string | RegExp;
 export type SubscribeTopicList = SubscribeTopic[];
@@ -108,7 +109,7 @@ export interface Message extends TopicPartitionOffset {
     topic: string;
     key?: MessageKey;
     timestamp?: number;
-    headers?: MessageHeaders;
+    headers?: MessageHeaderList;
     opaque?: any;
 }
 
@@ -266,7 +267,7 @@ export class Producer extends Client<KafkaProducerEvents> {
 
     poll(): this;
 
-    produce(topic: string, partition: NumberNullUndefined, message: MessageValue, key?: MessageKey, timestamp?: NumberNullUndefined, opaque?: any, headers?: MessageHeaders): any;
+    produce(topic: string, partition: NumberNullUndefined, message: MessageValue, key?: MessageKey, timestamp?: NumberNullUndefined, opaque?: any, headers?: MessageHeaderList): any;
 
     setPollInterval(interval: number): this;
 
@@ -285,7 +286,7 @@ export class Producer extends Client<KafkaProducerEvents> {
 
 export class HighLevelProducer extends Producer {
   produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, callback: (err: any, offset?: NumberNullUndefined) => void): any;
-  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeaders, callback: (err: any, offset?: NumberNullUndefined) => void): any;
+  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeaderList, callback: (err: any, offset?: NumberNullUndefined) => void): any;
 
   setKeySerializer(serializer: (key: any, cb: (err: any, key: MessageKey) => void) => void): void;
   setKeySerializer(serializer: (key: any) => MessageKey | Promise<MessageKey>): void;
