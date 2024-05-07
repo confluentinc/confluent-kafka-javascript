@@ -97,6 +97,11 @@ blocks:
         - name: "Test"
           commands:
             - make test
+        - name: "Promisified Tests"
+          commands:
+            - docker compose up -d
+            - npx jest --detectOpenHandles --runInBand --forceExit  --verbose --ci test/promisified
+            - docker compose down -v
         - name: "ESLint"
           commands:
             - npx eslint lib/kafkajs
