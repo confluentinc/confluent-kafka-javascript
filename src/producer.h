@@ -1,5 +1,5 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
  *
@@ -74,8 +74,6 @@ class Producer : public Connection {
     const void* key, size_t key_len,
     int64_t timestamp, void* opaque,
     RdKafka::Headers* headers);
-
-  std::string Name();
 
   void ActivateDispatchers();
   void DeactivateDispatchers();
