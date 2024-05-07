@@ -1,7 +1,8 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
+ *           (c) 2023 Confluent, Inc.
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE.txt file for details.
@@ -35,7 +36,9 @@ Producer::Producer(Conf* gconfig, Conf* tconfig):
   m_partitioner_cb() {
     std::string errstr;
 
-    m_gconfig->set("default_topic_conf", m_tconfig, errstr);
+    if (m_tconfig)
+      m_gconfig->set("default_topic_conf", m_tconfig, errstr);
+
     m_gconfig->set("dr_cb", &m_dr_cb, errstr);
   }
 
@@ -69,6 +72,10 @@ void Producer::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "getMetadata", NodeGetMetadata);
   Nan::SetPrototypeMethod(tpl, "queryWatermarkOffsets", NodeQueryWatermarkOffsets);  // NOLINT
   Nan::SetPrototypeMethod(tpl, "poll", NodePoll);
+  Nan::SetPrototypeMethod(tpl, "setSaslCredentials", NodeSetSaslCredentials);
+  Nan::SetPrototypeMethod(tpl, "setOAuthBearerToken", NodeSetOAuthBearerToken);
+  Nan::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
+                          NodeSetOAuthBearerTokenFailure);
 
   /*
    * @brief Methods exposed to do with message production
@@ -110,10 +117,6 @@ void Producer::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     return Nan::ThrowError("Global configuration data must be specified");
   }
 
-  if (!info[1]->IsObject()) {
-    return Nan::ThrowError("Topic configuration must be specified");
-  }
-
   std::string errstr;
 
   Conf* gconfig =
@@ -124,14 +127,17 @@ void Producer::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     return Nan::ThrowError(errstr.c_str());
   }
 
-  Conf* tconfig =
-    Conf::create(RdKafka::Conf::CONF_TOPIC,
-      (info[1]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
+  // If tconfig isn't set, then just let us pick properties from gconf.
+  Conf* tconfig = nullptr;
+  if (info[1]->IsObject()) {
+    tconfig = Conf::create(RdKafka::Conf::CONF_TOPIC,
+                 (info[1]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
 
-  if (!tconfig) {
-    // No longer need this since we aren't instantiating anything
-    delete gconfig;
-    return Nan::ThrowError(errstr.c_str());
+    if (!tconfig) {
+      // No longer need this since we aren't instantiating anything
+      delete gconfig;
+      return Nan::ThrowError(errstr.c_str());
+    }
   }
 
   Producer* producer = new Producer(gconfig, tconfig);
@@ -159,39 +165,39 @@ v8::Local<v8::Object> Producer::NewInstance(v8::Local<v8::Value> arg) {
   return scope.Escape(instance);
 }
 
-
-std::string Producer::Name() {
-  if (!IsConnected()) {
-    return std::string("");
-  }
-  return std::string(m_client->name());
-}
-
 Baton Producer::Connect() {
   if (IsConnected()) {
     return Baton(RdKafka::ERR_NO_ERROR);
   }
 
   std::string errstr;
+
+  Baton baton = setupSaslOAuthBearerConfig();
+  if (baton.err() != RdKafka::ERR_NO_ERROR) {
+    return baton;
+  }
+
   {
     scoped_shared_read_lock lock(m_connection_lock);
     m_client = RdKafka::Producer::create(m_gconfig, errstr);
   }
 
   if (!m_client) {
-    // @todo implement errstr into this somehow
     return Baton(RdKafka::ERR__STATE, errstr);
   }
 
-  return Baton(RdKafka::ERR_NO_ERROR);
+  baton = setupSaslOAuthBearerBackgroundQueue();
+  return baton;
 }
 
 void Producer::ActivateDispatchers() {
+  m_gconfig->listen();               // From global config.
   m_event_cb.dispatcher.Activate();  // From connection
   m_dr_cb.dispatcher.Activate();
 }
 
 void Producer::DeactivateDispatchers() {
+  m_gconfig->stop();                   // From global config.
   m_event_cb.dispatcher.Deactivate();  // From connection
   m_dr_cb.dispatcher.Deactivate();
 }
@@ -347,18 +353,6 @@ void Producer::ConfigureCallback(const std::string &string_key, const v8::Local<
     }
   } else {
     Connection::ConfigureCallback(string_key, cb, add);
-  }
-}
-
-Baton rdkafkaErrorToBaton(RdKafka::Error* error) {
-  if ( NULL == error) {
-    return Baton(RdKafka::ERR_NO_ERROR);
-  }
-  else {
-    Baton result(error->code(), error->str(), error->is_fatal(),
-                 error->is_retriable(), error->txn_requires_abort());
-    delete error;
-    return result;
   }
 }
 
