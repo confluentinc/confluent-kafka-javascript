@@ -15,7 +15,7 @@ auto_cancel:
     when: "branch != 'master'"
 
 execution_time_limit:
-  hours: 1
+  hours: 3
 
 queue:
   - when: "branch != 'master'"
