@@ -1,0 +1,43 @@
+version: v1.0
+name: tag-release
+agent:
+  machine:
+    type: s1-prod-ubuntu20-04-amd64-1
+
+auto_cancel:
+  running:
+    when: "branch != 'master'"
+
+execution_time_limit:
+  hours: 1
+
+queue:
+  - when: "branch != 'master'"
+    processing: parallel
+
+global_job_config:
+  prologue:
+    commands:
+      - checkout
+      - git fetch --unshallow
+      - git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+      - git fetch --all
+
+blocks:
+  - name: "Tag and push tag"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu20-04-amd64-2
+      jobs:
+        - name: "Tag and push tag"
+          commands:
+            - echo tag_name $TAG_NAME and commit hash is $COMMIT_HASH
+            - git remote -v
+            - git fetch
+            - git fetch origin
+            - git checkout $COMMIT_HASH
+            - git tag $TAG_NAME
+            - git push origin $TAG_NAME --dry-run
+            - git push origin $TAG_NAME
