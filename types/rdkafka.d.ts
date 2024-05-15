@@ -96,7 +96,7 @@ export interface DeliveryReport extends TopicPartitionOffset {
 export type NumberNullUndefined = number | null | undefined;
 
 export type MessageKey = Buffer | string | null | undefined;
-export type MessageHeaderValue = Buffer | string | number | null;
+export type MessageHeaderValue = Buffer | string | null;
 export type MessageHeader = Record<string, MessageHeaderValue>;
 export type MessageHeaderList = MessageHeader[] | null | undefined;
 export type MessageValue = Buffer | null;
