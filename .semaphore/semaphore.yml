@@ -25,15 +25,19 @@ global_job_config:
   prologue:
     commands:
       - checkout
-      - git submodule update --init --recursive
-      - cd deps/librdkafka
-      - git fetch origin
-      - cd ../../
-      - cache clear
+      - make show-args
+      - . vault-setup
+      - . vault-sem-get-secret ci-reporting
+      - . vault-sem-get-secret v1/ci/kv/service-foundations/cc-mk-include
+      - make init-ci
+  epilogue:
+    always:
+      commands:
+        - make epilogue-ci
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -47,7 +51,7 @@ blocks:
             - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
 
   - name: "Linux arm64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -58,10 +62,10 @@ blocks:
       jobs:
         - name: "Build from source and test for musl"
           commands:
-              - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
+            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
 
   - name: "Linux arm64: Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -85,7 +89,7 @@ blocks:
             - make test
 
   - name: "Linux amd64: Build, test, lint"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -108,7 +112,7 @@ blocks:
             - npx eslint lib/kafkajs
 
   - name: "Linux amd64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -155,7 +159,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -202,7 +206,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux amd64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -243,7 +247,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -284,7 +288,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "macOS arm64/m1: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -328,7 +332,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Windows x64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
