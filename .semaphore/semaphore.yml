@@ -110,8 +110,6 @@ blocks:
 
   - name: "Linux amd64: Release"
     dependencies: [ ]
-    run:
-      when: "tag =~ '^v[0-9]\\.'"
     task:
       agent:
         machine:
@@ -166,8 +164,6 @@ blocks:
 
   - name: "Linux arm64: Release"
     dependencies: [ ]
-    run:
-      when: "tag =~ '^v[0-9]\\.'"
     task:
       agent:
         machine:
@@ -222,8 +218,6 @@ blocks:
 
   - name: "Linux amd64 musl: Release"
     dependencies: [ ]
-    run:
-      when: "tag =~ '^v[0-9]\\.'"
     task:
       agent:
         machine:
@@ -272,8 +266,6 @@ blocks:
 
   - name: "Linux arm64 musl: Release"
     dependencies: [ ]
-    run:
-      when: "tag =~ '^v[0-9]\\.'"
     task:
       agent:
         machine:
@@ -322,8 +314,6 @@ blocks:
 
   - name: "macOS arm64/m1: Release"
     dependencies: [ ]
-    run:
-      when: "tag =~ '^v[0-9]\\.'"
     task:
       agent:
         machine:
@@ -375,8 +365,6 @@ blocks:
 
   - name: "Windows x64: Release"
     dependencies: [ ]
-    run:
-      when: "tag =~ '^v[0-9]\\.'"
     task:
       agent:
         machine:
@@ -461,24 +449,3 @@ blocks:
             - npx node-pre-gyp package
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
             - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
-
-  - name: 'Packaging: tar all release artifacts'
-    dependencies:
-      - 'Linux amd64: Release'
-      - 'Linux arm64: Release'
-      - 'Linux amd64 musl: Release'
-      - 'Linux arm64 musl: Release'
-      - 'macOS arm64/m1: Release'
-      - 'Windows x64: Release'
-    run:
-      when: "tag =~ '^v[0-9]\\.'"
-    task:
-      agent:
-        machine:
-          type: s1-prod-ubuntu20-04-amd64-2
-      jobs:
-        - name: "Tarball"
-          commands:
-            - artifact pull workflow releases
-            - tar -czvf releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz releases
-            - artifact push project "releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz"
