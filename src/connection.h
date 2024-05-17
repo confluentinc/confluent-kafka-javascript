@@ -1,7 +1,8 @@
 /*
- * confluent-kafka-js - Node.js wrapper  for RdKafka C/C++ library
+ * confluent-kafka-javascript - Node.js wrapper  for RdKafka C/C++ library
  *
  * Copyright (c) 2016-2023 Blizzard Entertainment
+ *           (c) 2023 Confluent, Inc.
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE.txt file for details.
@@ -46,8 +47,8 @@ namespace NodeKafka {
 
 class Connection : public Nan::ObjectWrap {
  public:
-  bool IsConnected();
-  bool IsClosing();
+  bool IsConnected() const;
+  bool IsClosing() const;
 
   // Baton<RdKafka::Topic*>
   Baton CreateTopic(std::string);
@@ -55,6 +56,10 @@ class Connection : public Nan::ObjectWrap {
   Baton GetMetadata(bool, std::string, int);
   Baton QueryWatermarkOffsets(std::string, int32_t, int64_t*, int64_t*, int);
   Baton OffsetsForTimes(std::vector<RdKafka::TopicPartition*> &, int);
+  Baton SetSaslCredentials(std::string, std::string);
+  Baton SetOAuthBearerToken(const std::string&, int64_t, const std::string&,
+                            const std::list<std::string>&);
+  Baton SetOAuthBearerTokenFailure(const std::string&);
 
   RdKafka::Handle* GetClient();
 
@@ -68,12 +73,18 @@ class Connection : public Nan::ObjectWrap {
 
   virtual void ConfigureCallback(const std::string &string_key, const v8::Local<v8::Function> &cb, bool add);
 
+  std::string Name() const;
+
  protected:
   Connection(Conf*, Conf*);
   ~Connection();
 
   static Nan::Persistent<v8::Function> constructor;
   static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  static Baton rdkafkaErrorToBaton(RdKafka::Error* error);
+
+  Baton setupSaslOAuthBearerConfig();
+  Baton setupSaslOAuthBearerBackgroundQueue();
 
   bool m_has_been_disconnected;
   bool m_is_closing;
@@ -90,6 +101,10 @@ class Connection : public Nan::ObjectWrap {
   static NAN_METHOD(NodeGetMetadata);
   static NAN_METHOD(NodeQueryWatermarkOffsets);
   static NAN_METHOD(NodeOffsetsForTimes);
+  static NAN_METHOD(NodeSetSaslCredentials);
+  static NAN_METHOD(NodeSetOAuthBearerToken);
+  static NAN_METHOD(NodeSetOAuthBearerTokenFailure);
+  static NAN_METHOD(NodeName);
 };
 
 }  // namespace NodeKafka
