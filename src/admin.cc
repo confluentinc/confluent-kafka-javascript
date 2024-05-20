@@ -671,15 +671,17 @@ Baton AdminClient::DeleteGroups(rd_kafka_DeleteGroup_t **group_list,
   }
 }
 
-Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
-                                size_t req_cnt, bool require_stable_offsets,
-                                int timeout_ms,
-                                rd_kafka_event_t **event_response) {
+Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req, 
+                                size_t req_cnt,
+                                bool require_stable_offsets, 
+                                int timeout_ms, 
+                                rd_kafka_event_t** event_response ) {
   if (!IsConnected()) {
     return Baton(RdKafka::ERR__STATE);
   }
 
   {
+    std::cout<<"Reached src/admin.cc Baton FetchOffsets"<<std::endl;
     scoped_shared_write_lock lock(m_connection_lock);
     if (!IsConnected()) {
       return Baton(RdKafka::ERR__STATE);
@@ -698,8 +700,8 @@ Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
 
     if (require_stable_offsets) {
       rd_kafka_error_t *error =
-          rd_kafka_AdminOptions_set_require_stable_offsets(
-              options, require_stable_offsets);
+          rd_kafka_AdminOptions_set_require_stable_offsets(options,
+                                                           require_stable_offsets);
       if (error) {
         return Baton::BatonFromErrorAndDestroy(error);
       }
@@ -708,8 +710,8 @@ Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
     // Create queue just for this operation.
     rd_kafka_queue_t *rkqu = rd_kafka_queue_new(m_client->c_ptr());
 
-    rd_kafka_ListConsumerGroupOffsets(m_client->c_ptr(), req, req_cnt, options,
-                                      rkqu);
+    rd_kafka_ListConsumerGroupOffsets(m_client->c_ptr(), req, req_cnt,
+                                      options, rkqu);
 
     // Poll for an event by type in that queue
     // DON'T destroy the event. It is the out parameter, and ownership is
@@ -736,24 +738,12 @@ Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
       return Baton(static_cast<RdKafka::ErrorCode>(errcode));
     }
 
-    const rd_kafka_ListConsumerGroupOffsets_result_t *result =
-        rd_kafka_event_ListConsumerGroupOffsets_result(*event_response);
-
-    size_t result_cnt;
-    const rd_kafka_group_result_t **results =
-        rd_kafka_ListConsumerGroupOffsets_result_groups(result, &result_cnt);
-
-    // Change the type of the 'error' pointer to 'const rd_kafka_error_t *'
-    const rd_kafka_error_t *error = rd_kafka_group_result_error(results[0]);
-    if (error) {
-      // Use the 'rd_kafka_error_code' function to get the error code
-      return Baton(static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error)));
-    }
-
     // At this point, event_response contains the result, which needs
     // to be parsed/converted by the caller.
     return Baton(RdKafka::ERR_NO_ERROR);
-  }
+
+}
+
 }
 
 void AdminClient::ActivateDispatchers() {

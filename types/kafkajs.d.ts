@@ -261,6 +261,10 @@ export interface PartitionOffset {
   offset: string
 }
 
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null }
+
+export type TopicInput = string | { topic: string; partitions: number[] }
+
 export interface TopicOffsets {
   topic: string
   partitions: PartitionOffset[]
