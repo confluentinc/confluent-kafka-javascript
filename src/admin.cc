@@ -116,6 +116,7 @@ void AdminClient::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "listGroups", NodeListGroups);
   Nan::SetPrototypeMethod(tpl, "describeGroups", NodeDescribeGroups);
   Nan::SetPrototypeMethod(tpl, "deleteGroups", NodeDeleteGroups);
+  Nan::SetPrototypeMethod(tpl, "fetchOffsets", NodeFetchOffsets);
 
   Nan::SetPrototypeMethod(tpl, "connect", NodeConnect);
   Nan::SetPrototypeMethod(tpl, "disconnect", NodeDisconnect);
@@ -676,7 +677,6 @@ Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
   }
 
   {
-    std::cout<<"Reached src/admin.cc Baton FetchOffsets"<<std::endl;
     scoped_shared_write_lock lock(m_connection_lock);
     if (!IsConnected()) {
       return Baton(RdKafka::ERR__STATE);
@@ -1061,58 +1061,52 @@ NAN_METHOD(AdminClient::NodeDeleteGroups) {
       callback, client, group_list, group_names_vector.size(), timeout_ms));
 }
 
-NAN_METHOD(AdminClient::FetchOffsets){
-  std::cout<<"Reached src/admin.cc NAN FetchOffsets"<<std::endl;
+NAN_METHOD(AdminClient::NodeFetchOffsets){
   Nan::HandleScope scope;
-
-  if(info.Length() < 5 || !info[4]->IsFunction()){
+  if(info.Length() < 2 || !info[1]->IsFunction()){
     return Nan::ThrowError("Need to specify a callback");
   }
-  
-  if(!info[0]->IsString()){
-    return Nan::ThrowError("Must provide 'group_id'");
+  if(!info[0]->IsObject()){
+    return Nan::ThrowError("Must provide an options object");
   }
 
-  if(!info[1]->IsArray()){
-    return Nan::ThrowError("Must provide 'topic[]'");
+  v8::Local<v8::Object> options = info[0].As<v8::Object>();
+
+  v8::Local<v8::Value> groupIdValue;
+  if (!Nan::Get(options, Nan::New("groupId").ToLocalChecked()).ToLocal(&groupIdValue)) {
+    return Nan::ThrowError("Must provide 'groupId'");
   }
 
-  if(!info[2]->IsNumber()){
-    return Nan::ThrowError("Must provide 'timeout'");
+  Nan::MaybeLocal<v8::String> groupIdMaybe = Nan::To<v8::String>(groupIdValue);
+  if (groupIdMaybe.IsEmpty()) {
+    return Nan::ThrowError("'groupId' must be a string");
   }
+  Nan::Utf8String groupIdUtf8(groupIdMaybe.ToLocalChecked());
+  std::string groupIdStr = *groupIdUtf8;
 
-  if(!info[3]->IsBoolean()){
-    return Nan::ThrowError("Must provide 'require_stable_offsets'");
-  }
-
-  v8::Local<v8::String> group_id = info[0].As<v8::String>();
-  Nan::Utf8String groupIdUtf8(group_id);
-  const char* groupIdCStr = *groupIdUtf8;
-  
-  v8::Local<v8::Array> topics = info[1].As<v8::Array>();
-
+  v8::Local<v8::Array> topics = GetParameter<v8::Local<v8::Array>>(options, "topics", Nan::New<v8::Array>());
   rd_kafka_topic_partition_list_t *partitions = v8ArrayToTopicPartitionList(topics);
-
+  if(partitions->cnt == 0){
+    partitions = NULL;
+  }
+  
   rd_kafka_ListConsumerGroupOffsets_t **request = static_cast<rd_kafka_ListConsumerGroupOffsets_t **>(
     malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) * 1));
-  request[0] = rd_kafka_ListConsumerGroupOffsets_new(groupIdCStr, partitions);
+  request[0] = rd_kafka_ListConsumerGroupOffsets_new(groupIdStr.c_str(), partitions);
 
-  v8::Local<v8::Object> config = info[2].As<v8::Object>();
+  // Get the timeout - default 5000 and require_stable_offsets parameter.
 
-  // Get the timeout - default 5000.
-  int timeout_ms = GetParameter<int64_t>(config, "timeout", 5000);
-
-  config = info[3].As<v8::Object>();
-  boolean_t require_stable_offsets = GetParameter<boolean_t>(config, "require_stable_offsets", false);
-
+  bool require_stable_offsets = GetParameter<bool>(options, "requireStableOffsets", false);
+  int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
+  
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[4].As<v8::Function>();
+  v8::Local<v8::Function> cb = info[1].As<v8::Function>();
   Nan::Callback *callback = new Nan::Callback(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
-  
+
   Nan::AsyncQueueWorker(new Workers::AdminClientFetchOffsets(
     callback, client, request, 1, require_stable_offsets, timeout_ms));
-    
-  }
+
+}
 
 }  // namespace NodeKafka

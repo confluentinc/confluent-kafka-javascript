@@ -86,7 +86,7 @@ class AdminClient : public Connection {
   static NAN_METHOD(NodeListGroups);
   static NAN_METHOD(NodeDescribeGroups);
   static NAN_METHOD(NodeDeleteGroups);
-  static NAN_METHOD(FetchOffsets);
+  static NAN_METHOD(NodeFetchOffsets);
 
   static NAN_METHOD(NodeConnect);
   static NAN_METHOD(NodeDisconnect);
