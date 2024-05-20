@@ -681,7 +681,6 @@ Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
   }
 
   {
-    std::cout<<"Reached src/admin.cc Baton FetchOffsets"<<std::endl;
     scoped_shared_write_lock lock(m_connection_lock);
     if (!IsConnected()) {
       return Baton(RdKafka::ERR__STATE);
