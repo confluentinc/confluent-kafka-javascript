@@ -666,6 +666,81 @@ Baton AdminClient::DeleteGroups(rd_kafka_DeleteGroup_t **group_list,
   }
 }
 
+Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req, 
+                                size_t req_cnt,
+                                bool require_stable_offsets, 
+                                int timeout_ms, 
+                                rd_kafka_event_t** event_response ) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  {
+    std::cout<<"Reached src/admin.cc Baton FetchOffsets"<<std::endl;
+    scoped_shared_write_lock lock(m_connection_lock);
+    if (!IsConnected()) {
+      return Baton(RdKafka::ERR__STATE);
+    }
+
+    // Make admin options to establish that we are fetching offsets
+    rd_kafka_AdminOptions_t *options = rd_kafka_AdminOptions_new(
+        m_client->c_ptr(), RD_KAFKA_ADMIN_OP_LISTCONSUMERGROUPOFFSETS);
+
+    char errstr[512];
+    rd_kafka_resp_err_t err = rd_kafka_AdminOptions_set_request_timeout(
+        options, timeout_ms, errstr, sizeof(errstr));
+    if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+      return Baton(static_cast<RdKafka::ErrorCode>(err), errstr);
+    }
+
+    if (require_stable_offsets) {
+      rd_kafka_error_t *error =
+          rd_kafka_AdminOptions_set_require_stable_offsets(options,
+                                                           require_stable_offsets);
+      if (error) {
+        return Baton::BatonFromErrorAndDestroy(error);
+      }
+    }
+
+    // Create queue just for this operation.
+    rd_kafka_queue_t *rkqu = rd_kafka_queue_new(m_client->c_ptr());
+
+    rd_kafka_ListConsumerGroupOffsets(m_client->c_ptr(), req, req_cnt,
+                                      options, rkqu);
+
+    // Poll for an event by type in that queue
+    // DON'T destroy the event. It is the out parameter, and ownership is
+    // the caller's.
+    *event_response = PollForEvent(
+        rkqu, RD_KAFKA_EVENT_LISTCONSUMERGROUPOFFSETS_RESULT, timeout_ms);
+
+    // Destroy the queue since we are done with it.
+    rd_kafka_queue_destroy(rkqu);
+
+    // Destroy the options we just made because we polled already
+    rd_kafka_AdminOptions_destroy(options);
+
+    // If we got no response from that operation, this is a failure
+    // likely due to time out
+    if (*event_response == NULL) {
+      return Baton(RdKafka::ERR__TIMED_OUT);
+    }
+
+    // Now we can get the error code from the event
+    if (rd_kafka_event_error(*event_response)) {
+      // If we had a special error code, get out of here with it
+      const rd_kafka_resp_err_t errcode = rd_kafka_event_error(*event_response);
+      return Baton(static_cast<RdKafka::ErrorCode>(errcode));
+    }
+
+    // At this point, event_response contains the result, which needs
+    // to be parsed/converted by the caller.
+    return Baton(RdKafka::ERR_NO_ERROR);
+
+}
+
+}
+
 void AdminClient::ActivateDispatchers() {
   // Listen to global config
   m_gconfig->listen();
@@ -985,5 +1060,59 @@ NAN_METHOD(AdminClient::NodeDeleteGroups) {
   Nan::AsyncQueueWorker(new Workers::AdminClientDeleteGroups(
       callback, client, group_list, group_names_vector.size(), timeout_ms));
 }
+
+NAN_METHOD(AdminClient::FetchOffsets){
+  std::cout<<"Reached src/admin.cc NAN FetchOffsets"<<std::endl;
+  Nan::HandleScope scope;
+
+  if(info.Length() < 5 || !info[4]->IsFunction()){
+    return Nan::ThrowError("Need to specify a callback");
+  }
+  
+  if(!info[0]->IsString()){
+    return Nan::ThrowError("Must provide 'group_id'");
+  }
+
+  if(!info[1]->IsArray()){
+    return Nan::ThrowError("Must provide 'topic[]'");
+  }
+
+  if(!info[2]->IsNumber()){
+    return Nan::ThrowError("Must provide 'timeout'");
+  }
+
+  if(!info[3]->IsBoolean()){
+    return Nan::ThrowError("Must provide 'require_stable_offsets'");
+  }
+
+  v8::Local<v8::String> group_id = info[0].As<v8::String>();
+  Nan::Utf8String groupIdUtf8(group_id);
+  const char* groupIdCStr = *groupIdUtf8;
+  
+  v8::Local<v8::Array> topics = info[1].As<v8::Array>();
+
+  rd_kafka_topic_partition_list_t *partitions = v8ArrayToTopicPartitionList(topics);
+
+  rd_kafka_ListConsumerGroupOffsets_t **request = static_cast<rd_kafka_ListConsumerGroupOffsets_t **>(
+    malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) * 1));
+  request[0] = rd_kafka_ListConsumerGroupOffsets_new(groupIdCStr, partitions);
+
+  v8::Local<v8::Object> config = info[2].As<v8::Object>();
+
+  // Get the timeout - default 5000.
+  int timeout_ms = GetParameter<int64_t>(config, "timeout", 5000);
+
+  config = info[3].As<v8::Object>();
+  boolean_t require_stable_offsets = GetParameter<boolean_t>(config, "require_stable_offsets", false);
+
+  // Create the final callback object
+  v8::Local<v8::Function> cb = info[4].As<v8::Function>();
+  Nan::Callback *callback = new Nan::Callback(cb);
+  AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
+  
+  Nan::AsyncQueueWorker(new Workers::AdminClientFetchOffsets(
+    callback, client, request, 1, require_stable_offsets, timeout_ms));
+    
+  }
 
 }  // namespace NodeKafka

@@ -257,6 +257,10 @@ export interface PartitionOffset {
   offset: string
 }
 
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null }
+
+export type TopicInput = string | { topic: string; partitions: number[] }
+
 export interface TopicOffsets {
   topic: string
   partitions: PartitionOffset[]
@@ -364,4 +368,10 @@ export type Admin = {
     groups: string[],
     options?: { timeout?: number, includeAuthorizedOperations?: boolean }): Promise<GroupDescriptions>
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
+  fetchOffsets(options: { groupId: string,
+                          topics?: TopicInput[],  
+                          resolveOffsets?: boolean,
+                          timeout?: number,
+                          requireStableOffsets?: boolean }): 
+                          Promise<Array<{topic: string; partitions:FetchOffsetsPartition}>>
 }
