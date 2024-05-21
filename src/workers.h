@@ -573,6 +573,26 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
   rd_kafka_event_t *m_event_response;
 };
 
+class AdminClientFetchOffsets : public ErrorAwareWorker {
+ public:
+  AdminClientFetchOffsets(Nan::Callback *, NodeKafka::AdminClient *,
+                          rd_kafka_ListConsumerGroupOffsets_t **, size_t, bool,
+                          const int &);
+  ~AdminClientFetchOffsets();
+
+  void Execute();
+  void HandleOKCallback();
+  void HandleErrorCallback();
+
+ private:
+  NodeKafka::AdminClient *m_client;
+  rd_kafka_ListConsumerGroupOffsets_t **m_req;
+  size_t m_req_cnt;
+  const bool m_require_stable_offsets;
+  const int m_timeout_ms;
+  rd_kafka_event_t *m_event_response;
+};
+
 }  // namespace Workers
 
 }  // namespace NodeKafka

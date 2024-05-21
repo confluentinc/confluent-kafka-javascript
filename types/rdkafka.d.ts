@@ -11,7 +11,7 @@ import {
 
 export * from './config';
 export * from './errors';
-import { Kafka } from './kafkajs';
+import { FetchOffsetsPartition, Kafka, TopicInput } from './kafkajs';
 import * as errors from './errors';
 
 export interface LibrdKafkaError {
@@ -438,6 +438,12 @@ export interface IAdminClient {
     deleteGroups(groupIds: string[],
         options?: { timeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteGroupsResult[]) => any): void;
+    fetchOffsets(options: { groupId: string,
+                 topics?: TopicInput[],
+                 timeout?: number,
+                 requireStableOffsets?: boolean },
+                 cb?: 
+                 (err: LibrdKafkaError, result: Array<{ topic: string; partitions: FetchOffsetsPartition }>) => any): void;
 
     disconnect(): void;
 }
