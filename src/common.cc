@@ -123,18 +123,21 @@ std::vector<std::string> GetParameter<std::vector<std::string> >(
 }
 
 rd_kafka_topic_partition_list_t *v8ArrayToTopicPartitionList(
-  v8::Local<v8::Array> parameter) {
+    v8::Local<v8::Array> parameter)
+{
 
   rd_kafka_topic_partition_list_t *newList = rd_kafka_topic_partition_list_new(parameter->Length());
 
-  for (unsigned int i = 0; i < parameter->Length(); i++) {
+  for (unsigned int i = 0; i < parameter->Length(); i++)
+  {
     v8::Local<v8::Value> v;
-    if (!Nan::Get(parameter, i).ToLocal(&v)) {
+    if (!Nan::Get(parameter, i).ToLocal(&v))
+    {
       continue;
     }
     v8::Local<v8::Object> item = v8::Local<v8::Object>::Cast(v);
-    
-    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+
+    v8::Isolate *isolate = v8::Isolate::GetCurrent();
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
     v8::Local<v8::Value> topicVal = Nan::Get(item, Nan::New("topic").ToLocalChecked()).ToLocalChecked();
@@ -145,13 +148,15 @@ rd_kafka_topic_partition_list_t *v8ArrayToTopicPartitionList(
     v8::Local<v8::Value> partitionsVal = Nan::Get(item, Nan::New("partitions").ToLocalChecked()).ToLocalChecked();
     v8::Local<v8::Array> partitions = v8::Local<v8::Array>::Cast(partitionsVal);
 
-    for (unsigned int j = 0; j < partitions->Length(); j++) {
-        v8::Local<v8::Value> partitionVal;
-        if (!Nan::Get(partitions, j).ToLocal(&partitionVal)) {
-            continue;
-        }
-        int partition = partitionVal->Int32Value(context).FromJust();
-        rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
+    for (unsigned int j = 0; j < partitions->Length(); j++)
+    {
+      v8::Local<v8::Value> partitionVal;
+      if (!Nan::Get(partitions, j).ToLocal(&partitionVal))
+      {
+        continue;
+      }
+      int partition = partitionVal->Int32Value(context).FromJust();
+      rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
     }
   }
   return newList;
@@ -801,7 +806,8 @@ std::vector<rd_kafka_consumer_group_state_t> FromV8GroupStateArray(
  * @brief Converts a rd_kafka_ListConsumerGroups_result_t* into a v8 object.
  */
 v8::Local<v8::Object> FromListConsumerGroupsResult(
-    const rd_kafka_ListConsumerGroups_result_t* result) {
+    const rd_kafka_ListConsumerGroups_result_t *result)
+{
   /* Return object type:
     {
       groups: {
@@ -816,18 +822,19 @@ v8::Local<v8::Object> FromListConsumerGroupsResult(
   v8::Local<v8::Object> returnObject = Nan::New<v8::Object>();
 
   size_t error_cnt;
-  const rd_kafka_error_t** error_list =
+  const rd_kafka_error_t **error_list =
       rd_kafka_ListConsumerGroups_result_errors(result, &error_cnt);
   Nan::Set(returnObject, Nan::New("errors").ToLocalChecked(),
            Conversion::Util::ToV8Array(error_list, error_cnt));
 
   v8::Local<v8::Array> groups = Nan::New<v8::Array>();
   size_t groups_cnt;
-  const rd_kafka_ConsumerGroupListing_t** groups_list =
+  const rd_kafka_ConsumerGroupListing_t **groups_list =
       rd_kafka_ListConsumerGroups_result_valid(result, &groups_cnt);
 
-  for (size_t i = 0; i < groups_cnt; i++) {
-    const rd_kafka_ConsumerGroupListing_t* group = groups_list[i];
+  for (size_t i = 0; i < groups_cnt; i++)
+  {
+    const rd_kafka_ConsumerGroupListing_t *group = groups_list[i];
     v8::Local<v8::Object> groupObject = Nan::New<v8::Object>();
 
     Nan::Set(groupObject, Nan::New("groupId").ToLocalChecked(),

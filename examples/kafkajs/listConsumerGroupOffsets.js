@@ -1,126 +1,100 @@
 // require('kafkajs') is replaced with require('@confluentinc/kafka-javascript').KafkaJS.
 const { Kafka } = require("@confluentinc/kafka-javascript").KafkaJS;
 
+let producer, consumer, admin;
+let Id = "newGroup";
+let topicName = "newTopic";
+
 const kafka = new Kafka({
   kafkaJS: {
     brokers: ["localhost:9092"],
   },
 });
 
-async function producerStart() {
-  const producer = kafka.producer();
-
-  await producer.connect();
-
-  console.log("Producer Connected successfully");
-
-  const res = [];
-  for (let i = 0; i < 5; i++) {
-    res.push(
-      producer.send({
-        topic: "test-topic",
-        messages: [{ value: "v222", partition: 0 }],
-      })
-    );
-  }
-  await Promise.all(res);
-
-  await producer.disconnect();
-
-  console.log("Producer Disconnected successfully");
+async function waitFor(check, resolveValue, { delay = 50 } = {}) {
+  return new Promise((resolve) => {
+    const interval = setInterval(() => {
+      if (check()) {
+        clearInterval(interval);
+        resolve(resolveValue());
+      }
+    }, delay);
+  });
 }
 
-async function consumerStart() {
-  const consumer = kafka.consumer({
+async function waitForMessages(messagesConsumed, { number = 1, delay } = {}) {
+  return waitFor(
+    () => messagesConsumed.length >= number,
+    () => messagesConsumed,
+    { delay }
+  );
+}
+
+async function adminStart() {
+  admin = kafka.admin();
+  await admin.connect();
+
+  producer = kafka.producer();
+  consumer = kafka.consumer({
     kafkaJS: {
-      groupId: "test-group",
-      autoCommit: true,
-      rebalanceListener: {
-        onPartitionsAssigned: async (assignment) => {
-          console.log(`Assigned partitions ${JSON.stringify(assignment)}`);
-        },
-        onPartitionsRevoked: async (assignment) => {
-          console.log(`Revoked partitions ${JSON.stringify(assignment)}`);
-        },
-      },
+      groupId: Id,
+      fromBeginning: true,
     },
   });
 
+  await admin.createTopics({
+    topics: [{ topic: topicName, numPartitions: 1 }],
+  });
+  console.log("Topic created successfully");
+
+  await producer.connect();
   await consumer.connect();
+
   console.log("Consumer Connected successfully");
 
   await consumer.subscribe({
-    topics: ["test-topic"],
+    topics: [topicName],
   });
+  console.log("Consumer subscribed to topic");
 
-  let counter = 0;
-  consumer.run({
-    eachMessage: async ({ topic, partition, message }) => {
-      if (counter < 3) {
-        console.log({
-          topic,
-          partition,
-          offset: message.offset,
-          key: message.key?.toString(),
-          value: message.value.toString(),
-        });
-        counter++;
-      } else {
+  const messages = Array.from({ length: 5 }, (_, i) => ({
+    value: `message${i}`,
+  }));
+
+  await producer.send({ topic: topicName, messages });
+  console.log("Messages sent till offset 4");
+
+  let messagesConsumed = []; // Define messagesConsumed
+
+  await consumer.run({
+    eachMessage: async (message) => {
+      messagesConsumed.push(message); // Populate messagesConsumed
+      if (messagesConsumed.length === 5) {
         await consumer.stop();
       }
     },
   });
 
-  consumer.disconnect().then(() => {
-    console.log("Consumer Disconnected successfully");
-  }
-    );
-}
+  await waitForMessages(messagesConsumed, { number: 5 });
+  console.log("Messages consumed successfully");
 
-async function adminStart() {
-  const admin = kafka.admin();
-  await admin.connect();
+  // Fetch offsets after all messages have been consumed
+  const offsets = await admin.fetchOffsets({
+    groupId: Id,
+    topics: [topicName],
+  });
 
-  await admin
-    .createTopics({
-      topics: [
-        {
-          topic: "test-topic",
-          numPartitions: 1,
-          replicationFactor: 1,
-        },
-      ],
-    })
-    .then(() => {
-      console.log("Topic created successfully");
-    })
-    .catch((err) => {
-      console.log("Topic creation failed", err);
-    });
+  console.log("Consumer group offsets: ", offsets);
 
-  await producerStart();
+  await admin.deleteGroups([Id]);
+  await admin.deleteTopics({
+    topics: [topicName],
+  });
 
-  await admin
-    .fetchOffsets({ groupId: "test-group", topics: [{topic: 'test-topic', partitions: [0]}] })
-    .then((res) => {
-      console.log("Consumer group offsets: ", res);
-    })
-    .catch((err) => {
-      console.log("Failed to fetch consumer group offsets", err);
-    });
+  await producer.disconnect();
+  await consumer.disconnect();
 
-  await consumerStart();
-
-  await admin
-    .fetchOffsets({ groupId: "test-group", topics: [{topic: 'test-topic', partitions: [0]}] })
-    .then((res) => {
-      console.log("Consumer group offsets: ", res);
-    })
-    .catch((err) => {
-      console.log("Failed to fetch consumer group offsets", err);
-    });
-
-    await admin.disconnect();
+  await admin.disconnect();
 }
 
 adminStart();

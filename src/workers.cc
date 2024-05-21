@@ -1426,16 +1426,16 @@ void AdminClientDeleteGroups::HandleErrorCallback() {
 
 /**
  * @brief Fetch Offsets in an asynchronous worker
- * 
+ *
  * This callback will list all the consumer group offsets for the specified topic offsets.
- * 
-*/
+ *
+ */
 AdminClientFetchOffsets::AdminClientFetchOffsets(
-    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    Nan::Callback *callback, NodeKafka::AdminClient *client,
     rd_kafka_ListConsumerGroupOffsets_t **req,
     size_t req_cnt,
     const bool require_stable_offsets,
-    const int& timeout_ms)
+    const int &timeout_ms)
     : ErrorAwareWorker(callback),
       m_client(client),
       m_req(req),
@@ -1443,25 +1443,31 @@ AdminClientFetchOffsets::AdminClientFetchOffsets(
       m_require_stable_offsets(require_stable_offsets),
       m_timeout_ms(timeout_ms) {}
 
-AdminClientFetchOffsets::~AdminClientFetchOffsets() {
-  if (m_req) {
+AdminClientFetchOffsets::~AdminClientFetchOffsets()
+{
+  if (m_req)
+  {
     rd_kafka_ListConsumerGroupOffsets_destroy_array(m_req, m_req_cnt);
     free(m_req);
   }
 
-  if (this->m_event_response) {
+  if (this->m_event_response)
+  {
     rd_kafka_event_destroy(this->m_event_response);
   }
 }
 
-void AdminClientFetchOffsets::Execute() {
+void AdminClientFetchOffsets::Execute()
+{
   Baton b = m_client->FetchOffsets(m_req, m_req_cnt, m_require_stable_offsets, m_timeout_ms, &m_event_response);
-  if (b.err() != RdKafka::ERR_NO_ERROR) {
+  if (b.err() != RdKafka::ERR_NO_ERROR)
+  {
     SetErrorBaton(b);
   }
 }
 
-void AdminClientFetchOffsets::HandleOKCallback() {
+void AdminClientFetchOffsets::HandleOKCallback()
+{
   Nan::HandleScope scope;
 
   const unsigned int argc = 2;
@@ -1473,7 +1479,8 @@ void AdminClientFetchOffsets::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void AdminClientFetchOffsets::HandleErrorCallback() {
+void AdminClientFetchOffsets::HandleErrorCallback()
+{
   Nan::HandleScope scope;
 
   const unsigned int argc = 1;
@@ -1482,7 +1489,5 @@ void AdminClientFetchOffsets::HandleErrorCallback() {
   callback->Call(argc, argv);
 }
 
-
-
-}  // namespace Workers
-}  // namespace NodeKafka
+  } // namespace Workers
+} // namespace NodeKafka
