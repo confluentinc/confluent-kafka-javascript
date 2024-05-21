@@ -1489,5 +1489,5 @@ void AdminClientFetchOffsets::HandleErrorCallback()
   callback->Call(argc, argv);
 }
 
-  } // namespace Workers
+} // namespace Workers
 } // namespace NodeKafka

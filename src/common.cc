@@ -806,8 +806,7 @@ std::vector<rd_kafka_consumer_group_state_t> FromV8GroupStateArray(
  * @brief Converts a rd_kafka_ListConsumerGroups_result_t* into a v8 object.
  */
 v8::Local<v8::Object> FromListConsumerGroupsResult(
-    const rd_kafka_ListConsumerGroups_result_t *result)
-{
+    const rd_kafka_ListConsumerGroups_result_t *result){
   /* Return object type:
     {
       groups: {
@@ -822,18 +821,17 @@ v8::Local<v8::Object> FromListConsumerGroupsResult(
   v8::Local<v8::Object> returnObject = Nan::New<v8::Object>();
 
   size_t error_cnt;
-  const rd_kafka_error_t **error_list =
+  const rd_kafka_error_t** error_list =
       rd_kafka_ListConsumerGroups_result_errors(result, &error_cnt);
   Nan::Set(returnObject, Nan::New("errors").ToLocalChecked(),
            Conversion::Util::ToV8Array(error_list, error_cnt));
 
   v8::Local<v8::Array> groups = Nan::New<v8::Array>();
   size_t groups_cnt;
-  const rd_kafka_ConsumerGroupListing_t **groups_list =
+  const rd_kafka_ConsumerGroupListing_t** groups_list =
       rd_kafka_ListConsumerGroups_result_valid(result, &groups_cnt);
 
-  for (size_t i = 0; i < groups_cnt; i++)
-  {
+  for (size_t i = 0; i < groups_cnt; i++){
     const rd_kafka_ConsumerGroupListing_t *group = groups_list[i];
     v8::Local<v8::Object> groupObject = Nan::New<v8::Object>();
 
