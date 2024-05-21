@@ -732,6 +732,20 @@ Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
       return Baton(static_cast<RdKafka::ErrorCode>(errcode));
     }
 
+    const rd_kafka_ListConsumerGroupOffsets_result_t *result =
+        rd_kafka_event_ListConsumerGroupOffsets_result(*event_response);
+
+    size_t result_cnt;
+    const rd_kafka_group_result_t **results =
+        rd_kafka_ListConsumerGroupOffsets_result_groups(result, &result_cnt);
+
+    // Change the type of the 'error' pointer to 'const rd_kafka_error_t *'
+    const rd_kafka_error_t *error = rd_kafka_group_result_error(results[0]);
+    if (error) {
+      // Use the 'rd_kafka_error_code' function to get the error code
+      return Baton(static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error)));
+    }
+
     // At this point, event_response contains the result, which needs
     // to be parsed/converted by the caller.
     return Baton(RdKafka::ERR_NO_ERROR);
