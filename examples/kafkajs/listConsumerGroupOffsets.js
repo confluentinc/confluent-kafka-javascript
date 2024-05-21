@@ -77,7 +77,8 @@ async function adminStart() {
 
   await waitForMessages(messagesConsumed, { number: 5 });
   console.log("Messages consumed successfully");
-
+  await producer.disconnect();
+  await consumer.disconnect();
   // Fetch offsets after all messages have been consumed
   const offsets = await admin.fetchOffsets({
     groupId: Id,
@@ -87,12 +88,10 @@ async function adminStart() {
   console.log("Consumer group offsets: ", offsets);
 
   await admin.deleteGroups([Id]);
+  console.log("Consumer group deleted successfully");
   await admin.deleteTopics({
     topics: [topicName],
   });
-
-  await producer.disconnect();
-  await consumer.disconnect();
 
   await admin.disconnect();
 }

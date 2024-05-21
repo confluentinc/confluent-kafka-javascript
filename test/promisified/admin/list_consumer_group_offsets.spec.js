@@ -78,7 +78,7 @@ describe("fetchOffset function", () => {
     });
 
     const result = offsets;
-    console.log(result);
+    expect(messagesConsumed.length).toEqual(5);
     expect(result).toEqual([
       { topic: topicName, partitions: { partition: 0, offset: 4 } },
     ]);
@@ -119,7 +119,7 @@ describe("fetchOffset function", () => {
     });
 
     const result = offsets;
-    console.log(result);
+    expect(messagesConsumed.length).toEqual(5);
     expect(result).toEqual([
       { topic: topicName, partitions: { partition: 0, offset: 4 } },
     ]);
