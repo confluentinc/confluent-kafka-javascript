@@ -61,10 +61,9 @@ class AdminClient : public Connection {
                        rd_kafka_event_t** event_response);
   Baton DeleteGroups(rd_kafka_DeleteGroup_t** group_list, size_t group_cnt,
                      int timeout_ms, rd_kafka_event_t** event_response);
-  Baton FetchOffsets( rd_kafka_ListConsumerGroupOffsets_t **req, 
-                      size_t req_cnt,
-                      bool require_stable_offsets, int timeout_ms, 
-                      rd_kafka_event_t** event_response );
+  Baton FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t** req, size_t req_cnt,
+                     bool require_stable_offsets, int timeout_ms,
+                     rd_kafka_event_t** event_response);
 
  protected:
   static Nan::Persistent<v8::Function> constructor;

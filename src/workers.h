@@ -576,8 +576,8 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
 class AdminClientFetchOffsets : public ErrorAwareWorker {
  public:
   AdminClientFetchOffsets(Nan::Callback *, NodeKafka::AdminClient *,
-                          rd_kafka_ListConsumerGroupOffsets_t **, size_t,
-                          bool, const int &);
+                          rd_kafka_ListConsumerGroupOffsets_t **, size_t, bool,
+                          const int &);
   ~AdminClientFetchOffsets();
 
   void Execute();

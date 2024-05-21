@@ -122,37 +122,36 @@ std::vector<std::string> GetParameter<std::vector<std::string> >(
   return def;
 }
 
-rd_kafka_topic_partition_list_t *v8ArrayToTopicPartitionList(
-    v8::Local<v8::Array> parameter)
-{
+rd_kafka_topic_partition_list_t* v8ArrayToTopicPartitionList(
+    v8::Local<v8::Array> parameter) {
+  rd_kafka_topic_partition_list_t* newList =
+      rd_kafka_topic_partition_list_new(parameter->Length());
 
-  rd_kafka_topic_partition_list_t *newList = rd_kafka_topic_partition_list_new(parameter->Length());
-
-  for (unsigned int i = 0; i < parameter->Length(); i++)
-  {
+  for (unsigned int i = 0; i < parameter->Length(); i++) {
     v8::Local<v8::Value> v;
-    if (!Nan::Get(parameter, i).ToLocal(&v))
-    {
+    if (!Nan::Get(parameter, i).ToLocal(&v)) {
       continue;
     }
     v8::Local<v8::Object> item = v8::Local<v8::Object>::Cast(v);
 
-    v8::Isolate *isolate = v8::Isolate::GetCurrent();
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
-    v8::Local<v8::Value> topicVal = Nan::Get(item, Nan::New("topic").ToLocalChecked()).ToLocalChecked();
-    v8::Local<v8::String> topicStr = topicVal->ToString(context).ToLocalChecked();
+    v8::Local<v8::Value> topicVal =
+        Nan::Get(item, Nan::New("topic").ToLocalChecked()).ToLocalChecked();
+    v8::Local<v8::String> topicStr =
+        topicVal->ToString(context).ToLocalChecked();
     Nan::Utf8String topicUtf8(topicStr);
     std::string topic(*topicUtf8);
 
-    v8::Local<v8::Value> partitionsVal = Nan::Get(item, Nan::New("partitions").ToLocalChecked()).ToLocalChecked();
+    v8::Local<v8::Value> partitionsVal =
+        Nan::Get(item, Nan::New("partitions").ToLocalChecked())
+            .ToLocalChecked();
     v8::Local<v8::Array> partitions = v8::Local<v8::Array>::Cast(partitionsVal);
 
-    for (unsigned int j = 0; j < partitions->Length(); j++)
-    {
+    for (unsigned int j = 0; j < partitions->Length(); j++) {
       v8::Local<v8::Value> partitionVal;
-      if (!Nan::Get(partitions, j).ToLocal(&partitionVal))
-      {
+      if (!Nan::Get(partitions, j).ToLocal(&partitionVal)) {
         continue;
       }
       int partition = partitionVal->Int32Value(context).FromJust();
@@ -806,7 +805,7 @@ std::vector<rd_kafka_consumer_group_state_t> FromV8GroupStateArray(
  * @brief Converts a rd_kafka_ListConsumerGroups_result_t* into a v8 object.
  */
 v8::Local<v8::Object> FromListConsumerGroupsResult(
-    const rd_kafka_ListConsumerGroups_result_t *result){
+    const rd_kafka_ListConsumerGroups_result_t* result) {
   /* Return object type:
     {
       groups: {
@@ -831,8 +830,8 @@ v8::Local<v8::Object> FromListConsumerGroupsResult(
   const rd_kafka_ConsumerGroupListing_t** groups_list =
       rd_kafka_ListConsumerGroups_result_valid(result, &groups_cnt);
 
-  for (size_t i = 0; i < groups_cnt; i++){
-    const rd_kafka_ConsumerGroupListing_t *group = groups_list[i];
+  for (size_t i = 0; i < groups_cnt; i++) {
+    const rd_kafka_ConsumerGroupListing_t* group = groups_list[i];
     v8::Local<v8::Object> groupObject = Nan::New<v8::Object>();
 
     Nan::Set(groupObject, Nan::New("groupId").ToLocalChecked(),
@@ -1091,14 +1090,14 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
   return returnArray;
 }
 
-v8::Local<v8::Array> FromFetchOffsetsResult(const rd_kafka_ListConsumerGroupOffsets_result_t *result)
-{
+v8::Local<v8::Array> FromFetchOffsetsResult(
+    const rd_kafka_ListConsumerGroupOffsets_result_t* result) {
   /* Return Object type:
     [{
       topic : string,
       partitions : FetchOffsetsPartition
     }]
-    
+
     FetchOffsetsPartition:
     {
       partition : number,
@@ -1108,27 +1107,33 @@ v8::Local<v8::Array> FromFetchOffsetsResult(const rd_kafka_ListConsumerGroupOffs
   */
   v8::Local<v8::Array> returnArray = Nan::New<v8::Array>();
   size_t result_cnt;
-  const rd_kafka_group_result_t **res = rd_kafka_ListConsumerGroupOffsets_result_groups(result, &result_cnt);
-  for(size_t i = 0; i < result_cnt; i++)
-  {
-    const rd_kafka_group_result_t *group_result = res[i];
+  const rd_kafka_group_result_t** res =
+      rd_kafka_ListConsumerGroupOffsets_result_groups(result, &result_cnt);
+  for (size_t i = 0; i < result_cnt; i++) {
+    const rd_kafka_group_result_t* group_result = res[i];
     v8::Local<v8::Array> partitions = Nan::New<v8::Array>();
-    const rd_kafka_topic_partition_list_t *partitionList = rd_kafka_group_result_partitions(group_result);
+    const rd_kafka_topic_partition_list_t* partitionList =
+        rd_kafka_group_result_partitions(group_result);
 
-    for(int j = 0; j < partitionList->cnt; j++)
-    {
+    for (int j = 0; j < partitionList->cnt; j++) {
       rd_kafka_topic_partition_t partition = partitionList->elems[j];
 
       v8::Local<v8::Object> partition_object = Nan::New<v8::Object>();
-      Nan::Set(partition_object, Nan::New("partition").ToLocalChecked(), Nan::New<v8::Number>(partition.partition));
-      Nan::Set(partition_object, Nan::New("offset").ToLocalChecked(), Nan::New<v8::Number>(partition.offset));
+      Nan::Set(partition_object, Nan::New("partition").ToLocalChecked(),
+               Nan::New<v8::Number>(partition.partition));
+      Nan::Set(partition_object, Nan::New("offset").ToLocalChecked(),
+               Nan::New<v8::Number>(partition.offset));
       if (partition.metadata != nullptr) {
-          Nan::Set(partition_object, Nan::New("metadata").ToLocalChecked(), Nan::New<v8::String>(static_cast<char*>(partition.metadata)).ToLocalChecked());
+        Nan::Set(partition_object, Nan::New("metadata").ToLocalChecked(),
+                 Nan::New<v8::String>(static_cast<char*>(partition.metadata))
+                     .ToLocalChecked());
       }
 
       v8::Local<v8::Object> group_object = Nan::New<v8::Object>();
-      Nan::Set(group_object, Nan::New("topic").ToLocalChecked(), Nan::New<v8::String>(partition.topic).ToLocalChecked());
-      Nan::Set(group_object, Nan::New("partitions").ToLocalChecked(), partition_object);
+      Nan::Set(group_object, Nan::New("topic").ToLocalChecked(),
+               Nan::New<v8::String>(partition.topic).ToLocalChecked());
+      Nan::Set(group_object, Nan::New("partitions").ToLocalChecked(),
+               partition_object);
       Nan::Set(returnArray, j, group_object);
     }
   }

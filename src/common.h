@@ -39,7 +39,7 @@ template<> v8::Local<v8::Array> GetParameter<v8::Local<v8::Array> >(
   v8::Local<v8::Object>, std::string, v8::Local<v8::Array>);
 // template int GetParameter<int>(v8::Local<v8::Object, std::string, int);
 rd_kafka_topic_partition_list_t *v8ArrayToTopicPartitionList(
-  v8::Local<v8::Array> parameter);
+    v8::Local<v8::Array> parameter);
 std::vector<std::string> v8ArrayToStringVector(v8::Local<v8::Array>);
 std::list<std::string> v8ArrayToStringList(v8::Local<v8::Array>);
 
@@ -133,7 +133,7 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
     const rd_kafka_DeleteGroups_result_t *);
 
 v8::Local<v8::Array> FromFetchOffsetsResult(
-  const rd_kafka_ListConsumerGroupOffsets_result_t *result);
+    const rd_kafka_ListConsumerGroupOffsets_result_t *result);
 }// namespace Admin
 
 namespace TopicPartition {
