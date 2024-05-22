@@ -220,6 +220,7 @@ interface MessageSetEntry {
   offset: string
   size: number
   headers?: never
+  leaderEpoch?: number
 }
 
 interface RecordBatchEntry {
@@ -230,6 +231,7 @@ interface RecordBatchEntry {
   offset: string
   headers: IHeaders
   size?: never
+  leaderEpoch?: number
 }
 
 export type Batch = {
@@ -298,6 +300,7 @@ export type TopicPartitions = { topic: string; partitions: number[] }
 export type TopicPartition = {
   topic: string
   partition: number
+  leaderEpoch?: number
 }
 export type TopicPartitionOffset = TopicPartition & {
   offset: string
@@ -315,8 +318,9 @@ export type Consumer = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
   stop(): Promise<void>
   run(config?: ConsumerRunConfig): Promise<void>
-  storeOffsets(topicPartitions: Array<TopicPartitionOffset>): void
-  commitOffsets(topicPartitions?: Array<TopicPartitionOffset>): Promise<void>
+  storeOffsets(topicPartitions: Array<TopicPartitionOffsetAndMetadata>): void
+  commitOffsets(topicPartitions?: Array<TopicPartitionOffsetAndMetadata>): Promise<void>
+  committed(topicPartitions?: Array<TopicPartition>, timeout?: number): Promise<TopicPartitionOffsetAndMetadata[]>
   seek(topicPartitionOffset: TopicPartitionOffset): Promise<void>
   pause(topics: Array<{ topic: string; partitions?: number[] }>): void
   paused(): TopicPartitions[]
