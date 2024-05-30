@@ -11,7 +11,7 @@ import {
 
 export * from './config';
 export * from './errors';
-import { FetchOffsetsPartition, Kafka, TopicInput } from './kafkajs';
+import { PartitionOffset } from './kafkajs';
 import * as errors from './errors';
 
 export interface LibrdKafkaError {
@@ -85,6 +85,10 @@ export interface TopicPartitionOffsetAndMetadata extends TopicPartitionOffset {
 }
 
 export type TopicPartitionTime = TopicPartitionOffset;
+
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null };  
+
+export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
 export type EofEvent = TopicPartitionOffset;
 
@@ -439,11 +443,11 @@ export interface IAdminClient {
         options?: { timeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteGroupsResult[]) => any): void;
     fetchOffsets(options: { groupId: string,
-                 topics?: TopicInput[],
+                 topics?: TopicInput,
                  timeout?: number,
                  requireStableOffsets?: boolean },
                  cb?: 
-                 (err: LibrdKafkaError, result: Array<{ topic: string; partitions: FetchOffsetsPartition }>) => any): void;
+                 (err: LibrdKafkaError, result: Array<{ topic: string; partitions: FetchOffsetsPartition[] }>) => any): void;
 
     disconnect(): void;
 }

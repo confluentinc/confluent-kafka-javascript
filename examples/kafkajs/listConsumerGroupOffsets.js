@@ -82,10 +82,15 @@ async function adminStart() {
   // Fetch offsets after all messages have been consumed
   const offsets = await admin.fetchOffsets({
     groupId: Id,
-    topics: [topicName],
+    topics: [
+      {
+        topic: topicName,
+        partitions: [0], // replace with actual partition numbers
+      },
+    ],
   });
 
-  console.log("Consumer group offsets: ", offsets);
+  console.log("Consumer group offsets: ", JSON.stringify(offsets, null, 2));
 
   await admin.deleteGroups([Id]);
   console.log("Consumer group deleted successfully");

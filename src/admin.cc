@@ -1098,10 +1098,11 @@ NAN_METHOD(AdminClient::NodeFetchOffsets) {
 
   v8::Local<v8::Array> topics = GetParameter<v8::Local<v8::Array>>(
       options, "topics", Nan::New<v8::Array>());
-  rd_kafka_topic_partition_list_t *partitions =
-      v8ArrayToTopicPartitionList(topics);
-  if (partitions->cnt == 0) {
-    partitions = NULL;
+
+  rd_kafka_topic_partition_list_t *partitions = NULL;
+
+  if (!topics->IsNull()) {
+    partitions = Conversion::TopicPartition::GroupedTopicPartitionv8ArrayToTopicPartitionList(topics);
   }
 
   rd_kafka_ListConsumerGroupOffsets_t **request =
@@ -1109,6 +1110,10 @@ NAN_METHOD(AdminClient::NodeFetchOffsets) {
           malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) * 1));
   request[0] =
       rd_kafka_ListConsumerGroupOffsets_new(groupIdStr.c_str(), partitions);
+  
+  if(partitions != NULL) {
+    rd_kafka_topic_partition_list_destroy(partitions);
+  }
 
   // Get the timeout - default 5000 and require_stable_offsets parameter.
 

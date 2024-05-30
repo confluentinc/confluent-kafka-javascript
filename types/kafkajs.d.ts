@@ -4,7 +4,9 @@ import {
   GroupOverview,
   LibrdKafkaError,
   GroupDescriptions,
-  DeleteGroupsResult
+  DeleteGroupsResult,
+  TopicInput,
+  FetchOffsetsPartition
 } from './rdkafka'
 
 // Admin API related interfaces, types etc; and Error types are common, so
@@ -259,10 +261,6 @@ export interface PartitionOffset {
   offset: string
 }
 
-export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null }
-
-export type TopicInput = string | { topic: string; partitions: number[] }
-
 export interface TopicOffsets {
   topic: string
   partitions: PartitionOffset[]
@@ -374,9 +372,9 @@ export type Admin = {
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
   fetchOffsets(options: { 
     groupId: string,
-    topics?: TopicInput[],  
+    topics?: TopicInput,  
     resolveOffsets?: boolean,
     timeout?: number,
     requireStableOffsets?: boolean }): 
-    Promise<Array<{topic: string; partitions:FetchOffsetsPartition}>>
+    Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
 }

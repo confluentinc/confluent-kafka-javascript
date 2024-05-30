@@ -38,8 +38,6 @@ template<> std::vector<std::string> GetParameter<std::vector<std::string> >(
 template<> v8::Local<v8::Array> GetParameter<v8::Local<v8::Array> >(
   v8::Local<v8::Object>, std::string, v8::Local<v8::Array>);
 // template int GetParameter<int>(v8::Local<v8::Object, std::string, int);
-rd_kafka_topic_partition_list_t *v8ArrayToTopicPartitionList(
-    v8::Local<v8::Array> parameter);
 std::vector<std::string> v8ArrayToStringVector(v8::Local<v8::Array>);
 std::list<std::string> v8ArrayToStringList(v8::Local<v8::Array>);
 
@@ -143,6 +141,8 @@ v8::Local<v8::Array> ToTopicPartitionV8Array(
     const rd_kafka_topic_partition_list_t *, bool include_offset);
 RdKafka::TopicPartition *FromV8Object(v8::Local<v8::Object>);
 std::vector<RdKafka::TopicPartition *> FromV8Array(const v8::Local<v8::Array> &);  // NOLINT
+rd_kafka_topic_partition_list_t *GroupedTopicPartitionv8ArrayToTopicPartitionList(
+    v8::Local<v8::Array>);
 
 }  // namespace TopicPartition
 
