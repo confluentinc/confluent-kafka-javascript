@@ -39,6 +39,7 @@ async function adminStart() {
     kafkaJS: {
       groupId: Id,
       fromBeginning: true,
+      autoCommit: false,
     },
   });
 
@@ -67,10 +68,25 @@ async function adminStart() {
   let messagesConsumed = []; // Define messagesConsumed
 
   await consumer.run({
-    eachMessage: async (message) => {
-      messagesConsumed.push(message); // Populate messagesConsumed
-      if (messagesConsumed.length === 5) {
-        await consumer.stop();
+    eachMessage: async ({ topic, partition, message }) => {
+      try {
+        messagesConsumed.push(message); // Populate messagesConsumed
+        if (messagesConsumed.length === 5) {
+          await consumer.commitOffsets([
+            {
+              topic,
+              partition,
+              offset: (parseInt(message.offset, 10) + 1).toString(),
+            },
+          ]);
+          await consumer.stop();
+        }
+      } catch (error) {
+        if (error.message.includes("Offset out of range")) {
+          await consumer.stop();
+        } else {
+          throw error; // Re-throw the error if it's not an "Offset out of range" error
+        }
       }
     },
   });

@@ -1101,7 +1101,7 @@ NAN_METHOD(AdminClient::NodeFetchOffsets) {
 
   rd_kafka_topic_partition_list_t *partitions = NULL;
 
-  if (!topics->IsNull()) {
+  if (!topics->IsNull() && !topics->IsUndefined() && topics->Length() > 0) {
     partitions = Conversion::TopicPartition::GroupedTopicPartitionv8ArrayToTopicPartitionList(topics);
   }
 
