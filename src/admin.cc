@@ -116,6 +116,7 @@ void AdminClient::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "listGroups", NodeListGroups);
   Nan::SetPrototypeMethod(tpl, "describeGroups", NodeDescribeGroups);
   Nan::SetPrototypeMethod(tpl, "deleteGroups", NodeDeleteGroups);
+  Nan::SetPrototypeMethod(tpl, "fetchOffsets", NodeFetchOffsets);
 
   Nan::SetPrototypeMethod(tpl, "connect", NodeConnect);
   Nan::SetPrototypeMethod(tpl, "disconnect", NodeDisconnect);
@@ -666,6 +667,91 @@ Baton AdminClient::DeleteGroups(rd_kafka_DeleteGroup_t **group_list,
   }
 }
 
+Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req,
+                                size_t req_cnt, bool require_stable_offsets,
+                                int timeout_ms,
+                                rd_kafka_event_t **event_response) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  {
+    scoped_shared_write_lock lock(m_connection_lock);
+    if (!IsConnected()) {
+      return Baton(RdKafka::ERR__STATE);
+    }
+
+    // Make admin options to establish that we are fetching offsets
+    rd_kafka_AdminOptions_t *options = rd_kafka_AdminOptions_new(
+        m_client->c_ptr(), RD_KAFKA_ADMIN_OP_LISTCONSUMERGROUPOFFSETS);
+
+    char errstr[512];
+    rd_kafka_resp_err_t err = rd_kafka_AdminOptions_set_request_timeout(
+        options, timeout_ms, errstr, sizeof(errstr));
+    if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+      return Baton(static_cast<RdKafka::ErrorCode>(err), errstr);
+    }
+
+    if (require_stable_offsets) {
+      rd_kafka_error_t *error =
+          rd_kafka_AdminOptions_set_require_stable_offsets(
+              options, require_stable_offsets);
+      if (error) {
+        return Baton::BatonFromErrorAndDestroy(error);
+      }
+    }
+
+    // Create queue just for this operation.
+    rd_kafka_queue_t *rkqu = rd_kafka_queue_new(m_client->c_ptr());
+
+    rd_kafka_ListConsumerGroupOffsets(m_client->c_ptr(), req, req_cnt, options,
+                                      rkqu);
+
+    // Poll for an event by type in that queue
+    // DON'T destroy the event. It is the out parameter, and ownership is
+    // the caller's.
+    *event_response = PollForEvent(
+        rkqu, RD_KAFKA_EVENT_LISTCONSUMERGROUPOFFSETS_RESULT, timeout_ms);
+
+    // Destroy the queue since we are done with it.
+    rd_kafka_queue_destroy(rkqu);
+
+    // Destroy the options we just made because we polled already
+    rd_kafka_AdminOptions_destroy(options);
+
+    // If we got no response from that operation, this is a failure
+    // likely due to time out
+    if (*event_response == NULL) {
+      return Baton(RdKafka::ERR__TIMED_OUT);
+    }
+
+    // Now we can get the error code from the event
+    if (rd_kafka_event_error(*event_response)) {
+      // If we had a special error code, get out of here with it
+      const rd_kafka_resp_err_t errcode = rd_kafka_event_error(*event_response);
+      return Baton(static_cast<RdKafka::ErrorCode>(errcode));
+    }
+
+    const rd_kafka_ListConsumerGroupOffsets_result_t *result =
+        rd_kafka_event_ListConsumerGroupOffsets_result(*event_response);
+
+    size_t result_cnt;
+    const rd_kafka_group_result_t **results =
+        rd_kafka_ListConsumerGroupOffsets_result_groups(result, &result_cnt);
+
+    // Change the type of the 'error' pointer to 'const rd_kafka_error_t *'
+    const rd_kafka_error_t *error = rd_kafka_group_result_error(results[0]);
+    if (error) {
+      // Use the 'rd_kafka_error_code' function to get the error code
+      return Baton(static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error)));
+    }
+
+    // At this point, event_response contains the result, which needs
+    // to be parsed/converted by the caller.
+    return Baton(RdKafka::ERR_NO_ERROR);
+  }
+}
+
 void AdminClient::ActivateDispatchers() {
   // Listen to global config
   m_gconfig->listen();
@@ -984,6 +1070,65 @@ NAN_METHOD(AdminClient::NodeDeleteGroups) {
   // Queue the work.
   Nan::AsyncQueueWorker(new Workers::AdminClientDeleteGroups(
       callback, client, group_list, group_names_vector.size(), timeout_ms));
+}
+
+NAN_METHOD(AdminClient::NodeFetchOffsets) {
+  Nan::HandleScope scope;
+  if (info.Length() < 2 || !info[1]->IsFunction()) {
+    return Nan::ThrowError("Need to specify a callback");
+  }
+  if (!info[0]->IsObject()) {
+    return Nan::ThrowError("Must provide an options object");
+  }
+
+  v8::Local<v8::Object> options = info[0].As<v8::Object>();
+
+  v8::Local<v8::Value> groupIdValue;
+  if (!Nan::Get(options, Nan::New("groupId").ToLocalChecked())
+           .ToLocal(&groupIdValue)) {
+    return Nan::ThrowError("Must provide 'groupId'");
+  }
+
+  Nan::MaybeLocal<v8::String> groupIdMaybe = Nan::To<v8::String>(groupIdValue);
+  if (groupIdMaybe.IsEmpty()) {
+    return Nan::ThrowError("'groupId' must be a string");
+  }
+  Nan::Utf8String groupIdUtf8(groupIdMaybe.ToLocalChecked());
+  std::string groupIdStr = *groupIdUtf8;
+
+  v8::Local<v8::Array> topics = GetParameter<v8::Local<v8::Array>>(
+      options, "topics", Nan::New<v8::Array>());
+
+  rd_kafka_topic_partition_list_t *partitions = NULL;
+
+  if (!topics->IsNull() && !topics->IsUndefined() && topics->Length() > 0) {
+    partitions = Conversion::TopicPartition::
+        GroupedTopicPartitionv8ArrayToTopicPartitionList(topics);
+  }
+
+  rd_kafka_ListConsumerGroupOffsets_t **request =
+      static_cast<rd_kafka_ListConsumerGroupOffsets_t **>(
+          malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) * 1));
+  request[0] =
+      rd_kafka_ListConsumerGroupOffsets_new(groupIdStr.c_str(), partitions);
+
+  if (partitions != NULL) {
+    rd_kafka_topic_partition_list_destroy(partitions);
+  }
+
+  // Get the timeout - default 5000 and require_stable_offsets parameter.
+
+  bool require_stable_offsets =
+      GetParameter<bool>(options, "requireStableOffsets", false);
+  int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
+
+  // Create the final callback object
+  v8::Local<v8::Function> cb = info[1].As<v8::Function>();
+  Nan::Callback *callback = new Nan::Callback(cb);
+  AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
+
+  Nan::AsyncQueueWorker(new Workers::AdminClientFetchOffsets(
+      callback, client, request, 1, require_stable_offsets, timeout_ms));
 }
 
 }  // namespace NodeKafka
