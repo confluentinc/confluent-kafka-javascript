@@ -1102,7 +1102,8 @@ NAN_METHOD(AdminClient::NodeFetchOffsets) {
   rd_kafka_topic_partition_list_t *partitions = NULL;
 
   if (!topics->IsNull() && !topics->IsUndefined() && topics->Length() > 0) {
-    partitions = Conversion::TopicPartition::GroupedTopicPartitionv8ArrayToTopicPartitionList(topics);
+    partitions = Conversion::TopicPartition::
+        GroupedTopicPartitionv8ArrayToTopicPartitionList(topics);
   }
 
   rd_kafka_ListConsumerGroupOffsets_t **request =
@@ -1110,8 +1111,8 @@ NAN_METHOD(AdminClient::NodeFetchOffsets) {
           malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) * 1));
   request[0] =
       rd_kafka_ListConsumerGroupOffsets_new(groupIdStr.c_str(), partitions);
-  
-  if(partitions != NULL) {
+
+  if (partitions != NULL) {
     rd_kafka_topic_partition_list_destroy(partitions);
   }
 

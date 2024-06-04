@@ -435,7 +435,8 @@ std::vector<RdKafka::TopicPartition*> FromV8Array(
   return array;
 }
 
-rd_kafka_topic_partition_list_t* GroupedTopicPartitionv8ArrayToTopicPartitionList(
+rd_kafka_topic_partition_list_t*
+GroupedTopicPartitionv8ArrayToTopicPartitionList(
     v8::Local<v8::Array> parameter) {
   rd_kafka_topic_partition_list_t* newList =
       rd_kafka_topic_partition_list_new(parameter->Length());
@@ -1126,9 +1127,10 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
   return returnArray;
 }
 
-std::unordered_map<std::string, std::vector<rd_kafka_topic_partition_t>> groupByTopic(
-    const rd_kafka_topic_partition_list_t* partitionList) {
-  std::unordered_map<std::string, std::vector<rd_kafka_topic_partition_t>> groupedPartitions;
+std::unordered_map<std::string, std::vector<rd_kafka_topic_partition_t>>
+groupByTopic(const rd_kafka_topic_partition_list_t* partitionList) {
+  std::unordered_map<std::string, std::vector<rd_kafka_topic_partition_t>>
+      groupedPartitions;
 
   for (int i = 0; i < partitionList->cnt; i++) {
     rd_kafka_topic_partition_t partition = partitionList->elems[i];
