@@ -515,9 +515,13 @@ NAN_METHOD(Producer::NodeProduce) {
     message_buffer_data = node::Buffer::Data(message_buffer_object);
     if (message_buffer_data == NULL) {
       // empty string message buffer should not end up as null message
-      v8::Local<v8::Object> message_buffer_object_emptystring = Nan::NewBuffer(new char[0], 0).ToLocalChecked();
+      // Allocate a buffer with 1 byte to ensure message_buffer_data is not NULL
+      v8::Local<v8::Object> message_buffer_object_emptystring = Nan::NewBuffer(1).ToLocalChecked();
       message_buffer_length = node::Buffer::Length(message_buffer_object_emptystring);
       message_buffer_data = node::Buffer::Data(message_buffer_object_emptystring);
+
+      // Manually interpret the length as 0 for this buffer
+      message_buffer_length = 0;
     }
   }
 
@@ -545,9 +549,13 @@ NAN_METHOD(Producer::NodeProduce) {
     key_buffer_data = node::Buffer::Data(key_buffer_object);
     if (key_buffer_data == NULL) {
       // empty string key buffer should not end up as null key
-        v8::Local<v8::Object> key_buffer_object_emptystring = Nan::NewBuffer(new char[0], 0).ToLocalChecked();
-        key_buffer_length = node::Buffer::Length(key_buffer_object_emptystring);
-        key_buffer_data = node::Buffer::Data(key_buffer_object_emptystring);
+      // Allocate a buffer with 1 byte to ensure key_buffer_data is not NULL
+      v8::Local<v8::Object> key_buffer_object_emptystring = Nan::NewBuffer(1).ToLocalChecked();
+      key_buffer_length = node::Buffer::Length(key_buffer_object_emptystring);
+      key_buffer_data = node::Buffer::Data(key_buffer_object_emptystring);
+
+      // Manually interpret the length as 0 for this buffer
+      key_buffer_length = 0;
     }
   } else {
     // If it was a string just use the utf8 value.
