@@ -512,7 +512,7 @@ NAN_METHOD(Producer::NodeProduce) {
     // buffer sooner
 
     message_buffer_length = node::Buffer::Length(message_buffer_object);
-    message_buffer_data = node::Buffer::Data(message_buffer_object); 
+    message_buffer_data = node::Buffer::Data(message_buffer_object);
     if (message_buffer_data == NULL) {
       // empty string message buffer should not end up as null message
       // Allocate a buffer with 1 byte to ensure message_buffer_data is not NULL
