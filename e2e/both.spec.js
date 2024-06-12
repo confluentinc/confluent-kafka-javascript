@@ -19,16 +19,9 @@ var topic;
 describe('Consumer/Producer', function() {
   var producer;
   var consumer;
-  var admin;
+  var grp;
 
   let createdTopics = [];
-
-  function sleep(milliseconds) {
-    const start = Date.now();
-    while (Date.now() - start < milliseconds) {
-      // Busy-wait loop
-    }
-  }
 
   beforeEach(function(done) {
     var finished = 0;
@@ -50,7 +43,7 @@ describe('Consumer/Producer', function() {
       }
     }
 
-    var grp = 'kafka-mocha-grp-' + crypto.randomBytes(20).toString('hex');
+    grp = 'kafka-mocha-grp-' + crypto.randomBytes(20).toString('hex');
     topic = 'test' + crypto.randomBytes(20).toString('hex');
 
     createTopics(
@@ -63,8 +56,6 @@ describe('Consumer/Producer', function() {
     );
 
     createdTopics.push(topic);
-
-    sleep(5000);
 
     consumer = new Kafka.KafkaConsumer({
       'metadata.broker.list': kafkaBrokerList,
@@ -122,7 +113,7 @@ describe('Consumer/Producer', function() {
         return done(err);
       }
 
-      if (finished === 2) {
+      if (finished === 3) {
         done();
       }
     }
@@ -132,6 +123,11 @@ describe('Consumer/Producer', function() {
     });
 
     deleteTopics(createdTopics, kafkaBrokerList, function(err) {
+      createdTopics.length = 0;
+      maybeDone(err);
+    });
+
+    consumer.disconnect(function(err) {
       maybeDone(err);
     });
   });
@@ -177,7 +173,7 @@ describe('Consumer/Producer', function() {
           t.equal(position.length, 1);
           t.deepStrictEqual(position[0].partition, 0);
           t.ok(position[0].offset >= 0);
-          consumer.disconnect();
+          consumer.unsubscribe();
           done();
         });
       };
@@ -204,7 +200,7 @@ describe('Consumer/Producer', function() {
         consumer.consume(100000, function(err, messages) {
           t.ifError(err);
           t.equal(messages.length, 1);
-          consumer.disconnect();
+          consumer.unsubscribe();
           done();
         });
       };
@@ -259,6 +255,7 @@ describe('Consumer/Producer', function() {
         t.ifError(err);
         t.equal(messages.length, 1);
         t.deepStrictEqual(events, ["data", "partition.eof"]);
+        consumer.unsubscribe();
         done();
       });
     });
@@ -292,6 +289,7 @@ describe('Consumer/Producer', function() {
         t.ifError(err);
         t.equal(messages.length, 1);
         t.deepStrictEqual(events, ["partition.eof", "data", "partition.eof"]);
+        consumer.unsubscribe();
         done();
       });
     });
@@ -316,6 +314,7 @@ describe('Consumer/Producer', function() {
         t.equal(key, message.key, 'invalid message key');
         t.equal(topic, message.topic, 'invalid message topic');
         t.ok(message.offset >= 0, 'invalid message offset');
+        consumer.unsubscribe();
         done();
       });
 
@@ -374,6 +373,7 @@ describe('Consumer/Producer', function() {
             startOffset + 1,
             startOffset + 1,
             startOffset + 2 ]);
+        consumer.unsubscribe();
         done();
       }, 8000);
     });
@@ -491,7 +491,8 @@ describe('Consumer/Producer', function() {
       t.notEqual(message.value, null, 'message should not be null');
       t.equal(value.toString(), message.value.toString(), 'invalid message value');
       t.equal(emptyString, message.key, 'invalid message key');
-      done();
+      consumer.unsubscribe();
+          done();
     });
 
     consumer.subscribe([topic]);
@@ -512,6 +513,7 @@ describe('Consumer/Producer', function() {
       t.notEqual(message.value, null, 'message should not be null');
       t.equal(value.toString(), message.value.toString(), 'invalid message value');
       t.equal(key, message.key, 'invalid message key');
+      consumer.unsubscribe();
       done();
     });
 
@@ -532,6 +534,7 @@ describe('Consumer/Producer', function() {
     consumer.once('data', function(message) {
       t.equal(value, message.value, 'invalid message value');
       t.equal(key, message.key, 'invalid message key');
+      consumer.unsubscribe();
       done();
     });
 
@@ -702,6 +705,7 @@ describe('Consumer/Producer', function() {
         t.equal(topic, message.topic, 'invalid message topic');
         t.ok(message.offset >= 0, 'invalid message offset');
         assert_headers_match(headers, message.headers);
+        consumer.unsubscribe();
         done();
       });
 
