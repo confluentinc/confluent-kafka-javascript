@@ -13,7 +13,8 @@ import { Mutex } from 'async-mutex';
  * of the MIT license.  See the LICENSE.txt file for details.
  */
 
-enum Compatibility {
+export enum Compatibility {
+  // TODO change to UPPER CASE
   None = "NONE",
   Backward = "BACKWARD",
   Forward = "FORWARD",
@@ -23,49 +24,66 @@ enum Compatibility {
   FullTransitive = "FULL_TRANSITIVE"
 }
 
-interface CompatibilityLevel {
+export interface CompatibilityLevel {
   compatibility?: Compatibility;
   compatibilityLevel?: Compatibility;
 }
 
-interface Rule {
-  name: string;
-  subject: string;
-  version: number;
+export interface Rule {
+  name: string
+  doc?: string
+  kind?: string
+  mode?: RuleMode
+  type: string
+  tags?: Set<string>
+  params?: { [key: string]: string }
+  expr?: string
+  onSuccess?: string
+  onFailure?: string
+  disabled?: boolean
 }
 
-interface SchemaInfo {
-  schema?: string;
+export enum RuleMode {
+  UPGRADE = 'UPGRADE',
+  DOWNGRADE = 'DOWNGRADE',
+  UPDOWN = 'UPDOWN',
+  WRITE = 'WRITE',
+  READ = 'READ',
+  WRITEREAD = 'WRITEREAD',
+}
+
+export interface SchemaInfo {
+  schema: string;
   schemaType?: string;
   references?: Reference[];
   metadata?: Metadata;
   ruleSet?: RuleSet;
 }
 
-interface SchemaMetadata extends SchemaInfo {
+export interface SchemaMetadata extends SchemaInfo {
   id: number;
   subject?: string;
   version?: number;
 }
 
-interface Reference {
-  Name: string;
-  Subject: string;
-  Version: number;
+export interface Reference {
+  name: string;
+  subject: string;
+  version: number;
 }
 
-interface Metadata {
-  tags?: { [key: string]: string[] };
+export interface Metadata {
+  tags?: { [key: string]: Set<string> };
   properties?: { [key: string]: string };
-  sensitive?: string[];
+  sensitive?: Set<string>;
 }
 
-interface RuleSet {
-  migrationRules: Rule[];
-  compatibilityRules: Rule[];
+export interface RuleSet {
+  migrationRules?: Rule[];
+  domainRules?: Rule[];
 }
 
-interface ServerConfig {
+export interface ServerConfig {
   alias?: string;
   normalize?: boolean;
   compatibility?: Compatibility;
@@ -77,11 +95,12 @@ interface ServerConfig {
   overrideRuleSet?: RuleSet;
 }
 
-interface isCompatibleResponse {
+export interface isCompatibleResponse {
   is_compatible: boolean;
 }
 
-interface Client {
+export interface Client {
+  config(): ClientConfig;
   register(subject: string, schema: SchemaInfo, normalize: boolean): Promise<number>;
   registerFullResponse(subject: string, schema: SchemaInfo, normalize: boolean): Promise<SchemaMetadata>;
   getBySubjectAndId(subject: string, id: number): Promise<SchemaInfo>;
@@ -107,7 +126,8 @@ interface Client {
   close(): void;
 }
 
-class SchemaRegistryClient implements Client {
+export class SchemaRegistryClient implements Client {
+  private clientConfig: ClientConfig;
   private restService: RestService;
 
   private schemaToIdCache: LRUCache<string, number>;
@@ -127,12 +147,13 @@ class SchemaRegistryClient implements Client {
   private metadataToSchemaMutex: Mutex;
 
   constructor(config: ClientConfig) {
+    this.clientConfig = config
     const cacheOptions = {
       max: config.cacheCapacity,
       ...(config.cacheLatestTtlSecs !== undefined && { maxAge: config.cacheLatestTtlSecs * 1000 })
     };
 
-    this.restService = new RestService(config.createAxiosDefaults, config.baseURLs, config.isForward);  
+    this.restService = new RestService(config.createAxiosDefaults, config.baseURLs, config.isForward);
 
     this.schemaToIdCache = new LRUCache(cacheOptions);
     this.idToSchemaInfoCache = new LRUCache(cacheOptions);
@@ -148,6 +169,10 @@ class SchemaRegistryClient implements Client {
     this.schemaToVersionMutex = new Mutex();
     this.versionToSchemaMutex = new Mutex();
     this.metadataToSchemaMutex = new Mutex();
+  }
+
+  public config(): ClientConfig {
+    return this.clientConfig
   }
 
   public async register(subject: string, schema: SchemaInfo, normalize: boolean = false): Promise<number> {
@@ -563,10 +588,4 @@ class SchemaRegistryClient implements Client {
       return this.idToSchemaInfoCache.size;
     });
   }
-
 }
-
-export {
-  Client, SchemaRegistryClient, SchemaInfo, Metadata, Compatibility,
-  CompatibilityLevel, ServerConfig, RuleSet, Rule, Reference, SchemaMetadata
-};

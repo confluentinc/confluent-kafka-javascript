@@ -46,9 +46,11 @@ interface Dek {
 }
 
 interface Client {
-  registerKek(name: string, kmsType: string, kmsKeyId: string, kmsProps: { [key: string]: string }, doc: string, shared: boolean): Promise<Kek>;
+  registerKek(name: string, kmsType: string, kmsKeyId: string, kmsProps: { [key: string]: string } | null,
+              doc: string | null, shared: boolean): Promise<Kek>;
   getKek(name: string, deleted: boolean): Promise<Kek>;
-  registerDek(kekName: string, subject: string, algorithm: string, encryptedKeyMaterial: string, version: number): Promise<Dek>;
+  registerDek(kekName: string, subject: string, algorithm: string,
+              encryptedKeyMaterial: string | null, version: number): Promise<Dek>;
   getDek(kekName: string, subject: string, algorithm: string, version: number, deleted: boolean): Promise<Dek>;
   close(): Promise<void>;
 }
@@ -122,7 +124,7 @@ class DekRegistryClient implements Client {
   }
 
   public async registerKek(name: string, kmsType: string, kmsKeyId: string,
-    kmsProps: { [key: string]: string }, doc: string, shared: boolean): Promise<Kek> {
+    kmsProps: { [key: string]: string } | null, doc: string | null, shared: boolean): Promise<Kek> {
     const cacheKey = stringify({ name, deleted: false });
 
     return await this.kekMutex.runExclusive(async () => {
@@ -135,8 +137,8 @@ class DekRegistryClient implements Client {
         name,
         kmsType,
         kmsKeyId,
-        kmsProps,
-        doc,
+        ...kmsProps && { kmsProps },
+        ...doc && { doc },
         shared,
       };
 
@@ -168,7 +170,7 @@ class DekRegistryClient implements Client {
   }
 
   public async registerDek(kekName: string, subject: string,
-    algorithm: string, encryptedKeyMaterial: string, version: number = 1): Promise<Dek> {
+    algorithm: string, encryptedKeyMaterial: string | null, version: number = 1): Promise<Dek> {
     const cacheKey = stringify({ kekName, subject, version, algorithm, deleted: false });
 
     return await this.dekMutex.runExclusive(async () => {
@@ -181,7 +183,7 @@ class DekRegistryClient implements Client {
         subject,
         version,
         algorithm,
-        encryptedKeyMaterial,
+        ...encryptedKeyMaterial && { encryptedKeyMaterial },
       };
       kekName = encodeURIComponent(kekName);
 

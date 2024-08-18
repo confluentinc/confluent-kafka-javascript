@@ -1,6 +1,6 @@
+import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
 import { MockClient } from '../../schemaregistry/mock-schemaregistry-client';
 import { Compatibility, Metadata, SchemaInfo, SchemaMetadata } from '../../schemaregistry/schemaregistry-client';
-import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
 
 const schemaString: string = JSON.stringify({
   type: 'record',

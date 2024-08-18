@@ -1,6 +1,7 @@
 
 import { Client, Compatibility, SchemaInfo, SchemaMetadata, ServerConfig } from './schemaregistry-client';
 import stringify from "json-stringify-deterministic";
+import {ClientConfig} from "./rest-service";
 
 interface VersionCacheEntry {
   version: number;
@@ -45,6 +46,10 @@ class MockClient implements Client {
     this.schemaToVersionCache = new Map();
     this.configCache = new Map();
     this.counter = new Counter();
+  }
+
+  public config(): ClientConfig {
+    throw new Error("Method not implemented.");
   }
 
   public async register(subject: string, schema: SchemaInfo, normalize: boolean = false): Promise<number> {
@@ -325,7 +330,7 @@ class MockClient implements Client {
       const parsedKey = JSON.parse(key);
       if (parsedKey.subject === subject && value.version === version) {
         await this.deleteVersion(key, version, permanent);
-        
+
         const cacheKeySchema = stringify({ subject, schema: parsedKey.schema });
         const cacheEntry = this.infoToSchemaCache.get(cacheKeySchema);
         if (cacheEntry) {

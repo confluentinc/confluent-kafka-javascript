@@ -12,7 +12,7 @@ class MockDekRegistryClient implements Client {
   }
 
   public async registerKek(name: string, kmsType: string, kmsKeyId: string,
-    kmsProps: { [key: string]: string }, doc: string, shared: boolean): Promise<Kek> {
+    kmsProps: { [key: string]: string } | null, doc: string | null, shared: boolean): Promise<Kek> {
     const cacheKey = stringify({ name, deleted: false });
     const cachedKek = this.kekCache.get(cacheKey);
     if (cachedKek) {
@@ -23,8 +23,8 @@ class MockDekRegistryClient implements Client {
       name,
       kmsType,
       kmsKeyId,
-      kmsProps,
-      doc,
+      ...kmsProps && { kmsProps },
+      ...doc && { doc },
       shared
     };
 
@@ -43,7 +43,7 @@ class MockDekRegistryClient implements Client {
   }
 
   public async registerDek(kekName: string, subject: string,
-    algorithm: string, encryptedKeyMaterial: string, version: number): Promise<Dek> {
+    algorithm: string, encryptedKeyMaterial: string | null, version: number): Promise<Dek> {
     const cacheKey = stringify({ kekName, subject, version, algorithm, deleted: false });
     const cachedDek = this.dekCache.get(cacheKey);
     if (cachedDek) {
@@ -54,7 +54,7 @@ class MockDekRegistryClient implements Client {
       kekName,
       subject,
       algorithm,
-      encryptedKeyMaterial,
+      ...encryptedKeyMaterial && { encryptedKeyMaterial },
       version,
       ts: MOCK_TS
     };
@@ -69,7 +69,7 @@ class MockDekRegistryClient implements Client {
       let latestVersion = 0;
       for (let key of this.dekCache.keys()) {
         const parsedKey = JSON.parse(key);
-        if (parsedKey.kekName === kekName && parsedKey.subject === subject 
+        if (parsedKey.kekName === kekName && parsedKey.subject === subject
           && parsedKey.algorithm === algorithm && parsedKey.deleted === deleted) {
           latestVersion = Math.max(latestVersion, parsedKey.version);
         }
