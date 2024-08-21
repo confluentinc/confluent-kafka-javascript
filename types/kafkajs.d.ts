@@ -121,7 +121,7 @@ export interface ProducerConstructorConfig extends ProducerGlobalConfig {
 }
 
 export interface IHeaders {
-  [key: string]: Buffer | string | (Buffer | string)[] | undefined
+  [key: string]: Buffer | string | number | null | (Buffer | string | number)[] | undefined
 }
 
 export interface Message {
