@@ -313,6 +313,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       }
       return fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
     }
+    // TODO check google protos already in registry
     const fileRegistry = createFileRegistry(fileDesc, resolve)
     this.registry = createFileRegistry(this.registry, fileRegistry)
     return this.registry.getFile(fileDesc.name)

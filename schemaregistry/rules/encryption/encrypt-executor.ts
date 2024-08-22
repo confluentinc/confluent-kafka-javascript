@@ -13,9 +13,8 @@ import {registerRuleExecutor} from "../../serde/rule-registry";
 import {ClientConfig} from "../../rest-service";
 import {RestError} from "../../rest-error";
 import * as Random from './tink/random';
-import {
-  getKmsClient as getKmsClientFromRegistry, getKmsDriver, registerKmsClient, KmsClient
-} from "./kms-registry";
+import * as Registry from './kms-registry'
+import {KmsClient} from "./kms-registry";
 
 // EncryptKekName represents a kek name
 const ENCRYPT_KEK_NAME = 'encrypt.kek.name'
@@ -37,10 +36,6 @@ enum DekFormat {
   AES256_SIV = 'AES256_SIV',
 }
 
-export function register() {
-  registerRuleExecutor(new FieldEncryptionExecutor())
-}
-
 interface KekId {
   name: string
   deleted: boolean
@@ -56,6 +51,10 @@ interface DekId {
 
 export class FieldEncryptionExecutor extends FieldRuleExecutor {
   client: Client | null = null
+
+  static register() {
+    registerRuleExecutor(new FieldEncryptionExecutor())
+  }
 
   override configure(clientConfig: ClientConfig, config: Map<string, string>) {
     // TODO use mock
@@ -467,13 +466,13 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
   }
 }
 
-export function getKmsClient(config: Map<string, string>, kek: Kek): KmsClient {
+function getKmsClient(config: Map<string, string>, kek: Kek): KmsClient {
   let keyUrl = kek.kmsType + '://' + kek.kmsKeyId
-  let kmsClient = getKmsClientFromRegistry(keyUrl)
+  let kmsClient = Registry.getKmsClient(keyUrl)
   if (kmsClient == null) {
-    let kmsDriver = getKmsDriver(keyUrl)
+    let kmsDriver = Registry.getKmsDriver(keyUrl)
     kmsClient = kmsDriver.newKmsClient(config, keyUrl)
-    registerKmsClient(kmsClient)
+    Registry.registerKmsClient(kmsClient)
   }
   return kmsClient
 }
