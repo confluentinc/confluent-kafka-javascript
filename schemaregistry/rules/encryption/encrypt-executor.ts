@@ -6,12 +6,16 @@ import {
   MAGIC_BYTE,
   RuleContext,
   RuleError
-} from "../serde/serde";
-import {RuleMode,} from "../schemaregistry-client";
-import {Client, Dek, DekRegistryClient, Kek} from "../dekregistry/dekregistry-client";
-import {registerRuleExecutor} from "../serde/rule-registry";
-import {ClientConfig} from "../rest-service";
-import {RestError} from "../rest-error";
+} from "../../serde/serde";
+import {RuleMode,} from "../../schemaregistry-client";
+import {Client, Dek, DekRegistryClient, Kek} from "../../dekregistry/dekregistry-client";
+import {registerRuleExecutor} from "../../serde/rule-registry";
+import {ClientConfig} from "../../rest-service";
+import {RestError} from "../../rest-error";
+import * as Random from './tink/random';
+import {
+  getKmsClient as getKmsClientFromRegistry, getKmsDriver, registerKmsClient, KmsClient
+} from "./kms-registry";
 
 // EncryptKekName represents a kek name
 const ENCRYPT_KEK_NAME = 'encrypt.kek.name'
@@ -143,24 +147,32 @@ export class Cryptor {
   }
 
   generateKey(): Buffer {
-    // TODO use proto instances
-    return randomBytes(this.keySize())
+    // generate random key of given size
+    return Buffer.from(Random.randBytes(this.keySize()))
   }
 
   // TODO
-  encrypt(dek: Buffer, plaintext: Buffer, associatedData?: Buffer): Promise<Buffer> {
+  async encrypt(dek: Buffer, plaintext: Buffer, associatedData?: Buffer): Promise<Buffer> {
+    /*
     if (this.isDeterministic) {
       return this.encryptDeterministically(dek, plaintext)
     }
     return this.encrypt(dek, plaintext)
+
+     */
+    return Buffer.from([])
   }
 
   // TODO
-  decrypt(dek: Buffer, ciphertext: Buffer, associatedData?: Buffer): Promise<Buffer> {
+  async decrypt(dek: Buffer, ciphertext: Buffer, associatedData?: Buffer): Promise<Buffer> {
+    /*
     if (this.isDeterministic) {
       return this.decryptDeterministically(dek, ciphertext)
     }
     return this.decrypt(dek, ciphertext)
+
+     */
+    return Buffer.from([])
   }
 }
 
@@ -272,14 +284,14 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
     }
     let dek = await this.retrieveDekFromRegistry(dekId)
     const isExpired = this.isExpired(ctx, dek)
-    let kmsClient: KmsClient
+    let kmsClient: KmsClient | null = null
     if (dek == null || isExpired) {
       if (isRead) {
         throw new RuleError(`no dek found for ${this.kekName} during consume`)
       }
       let encryptedDek: Buffer | null = null
       if (!kek.shared) {
-        kmsClient = getKmsClient(this.executor.config, kek)
+        kmsClient = getKmsClient(this.executor.config!, kek)
         // Generate new dek
         const rawDek = this.cryptor.generateKey()
         encryptedDek = await kmsClient.encrypt(rawDek)
@@ -305,9 +317,9 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
 
     if (DekRegistryClient.getKeyMaterialBytes(dek) == null) {
       if (kmsClient == null) {
-        kmsClient = getKmsClient(this.executor.config, kek)
+        kmsClient = getKmsClient(this.executor.config!, kek)
       }
-      const rawDek = await kmsClient.decrypt(DekRegistryClient.getEncryptedKeyMaterialBytes(dek))
+      const rawDek = await kmsClient.decrypt(DekRegistryClient.getEncryptedKeyMaterialBytes(dek)!)
       DekRegistryClient.setKeyMaterial(dek, rawDek)
     }
 
@@ -453,4 +465,15 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
         return null
     }
   }
+}
+
+export function getKmsClient(config: Map<string, string>, kek: Kek): KmsClient {
+  let keyUrl = kek.kmsType + '://' + kek.kmsKeyId
+  let kmsClient = getKmsClientFromRegistry(keyUrl)
+  if (kmsClient == null) {
+    let kmsDriver = getKmsDriver(keyUrl)
+    kmsClient = kmsDriver.newKmsClient(config, keyUrl)
+    registerKmsClient(kmsClient)
+  }
+  return kmsClient
 }
