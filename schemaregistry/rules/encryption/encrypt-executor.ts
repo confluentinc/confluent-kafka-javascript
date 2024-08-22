@@ -15,6 +15,11 @@ import {RestError} from "../../rest-error";
 import * as Random from './tink/random';
 import * as Registry from './kms-registry'
 import {KmsClient} from "./kms-registry";
+import {AesGcmKey, AesGcmKeySchema} from "./tink/proto/aes_gcm_pb";
+import {AesSivKey, AesSivKeySchema} from "./tink/proto/aes_siv_pb";
+import {create, fromBinary, toBinary} from "@bufbuild/protobuf";
+import {fromRawKey as aesGcmFromRawKey} from "./tink/aes_gcm";
+import {fromRawKey as aesSivFromRawKey} from "./tink/aes_siv";
 
 // EncryptKekName represents a kek name
 const ENCRYPT_KEK_NAME = 'encrypt.kek.name'
@@ -146,32 +151,78 @@ export class Cryptor {
   }
 
   generateKey(): Buffer {
-    // generate random key of given size
-    return Buffer.from(Random.randBytes(this.keySize()))
+    let rawKey = Random.randBytes(this.keySize())
+    switch (this.dekFormat) {
+      case DekFormat.AES256_SIV:
+        const aesSivKey: AesSivKey = create(AesSivKeySchema, {
+          version: 0,
+          keyValue: rawKey
+        });
+        return Buffer.from(toBinary(AesSivKeySchema, aesSivKey))
+      case DekFormat.AES128_GCM:
+      case DekFormat.AES256_GCM:
+        const aesGcmKey: AesGcmKey = create(AesGcmKeySchema, {
+          version: 0,
+          keyValue: rawKey
+        });
+        return Buffer.from(toBinary(AesGcmKeySchema, aesGcmKey))
+      default:
+        throw new RuleError('unsupported dek format')
+    }
   }
 
-  // TODO
-  async encrypt(dek: Buffer, plaintext: Buffer, associatedData?: Buffer): Promise<Buffer> {
-    /*
-    if (this.isDeterministic) {
-      return this.encryptDeterministically(dek, plaintext)
+  async encrypt(dek: Buffer, plaintext: Buffer): Promise<Buffer> {
+    let rawKey
+    switch (this.dekFormat) {
+      case DekFormat.AES256_SIV:
+        const aesSivKey = fromBinary(AesSivKeySchema, dek)
+        rawKey = aesSivKey.keyValue
+        return Buffer.from(await this.encryptWithAesSiv(rawKey, plaintext))
+      case DekFormat.AES128_GCM:
+      case DekFormat.AES256_GCM:
+        const aesGcmKey = fromBinary(AesGcmKeySchema, dek)
+        rawKey = aesGcmKey.keyValue
+        return Buffer.from(await this.encryptWithAesGcm(rawKey, plaintext))
+      default:
+        throw new RuleError('unsupported dek format')
     }
-    return this.encrypt(dek, plaintext)
-
-     */
-    return Buffer.from([])
   }
 
-  // TODO
-  async decrypt(dek: Buffer, ciphertext: Buffer, associatedData?: Buffer): Promise<Buffer> {
-    /*
-    if (this.isDeterministic) {
-      return this.decryptDeterministically(dek, ciphertext)
+  async decrypt(dek: Buffer, ciphertext: Buffer): Promise<Buffer> {
+    let rawKey
+    switch (this.dekFormat) {
+      case DekFormat.AES256_SIV:
+        const aesSivKey = fromBinary(AesSivKeySchema, dek)
+        rawKey = aesSivKey.keyValue
+        return Buffer.from(await this.decryptWithAesSiv(rawKey, ciphertext))
+      case DekFormat.AES128_GCM:
+      case DekFormat.AES256_GCM:
+        const aesGcmKey = fromBinary(AesGcmKeySchema, dek)
+        rawKey = aesGcmKey.keyValue
+        return Buffer.from(await this.decryptWithAesGcm(rawKey, ciphertext))
+      default:
+        throw new RuleError('unsupported dek format')
     }
-    return this.decrypt(dek, ciphertext)
+  }
 
-     */
-    return Buffer.from([])
+  async encryptWithAesSiv(key: Uint8Array, plaintext: Uint8Array): Promise<Uint8Array> {
+    const aead = await aesSivFromRawKey(key)
+    return aead.encrypt(plaintext, Cryptor.EMPTY_AAD)
+  }
+
+  async decryptWithAesSiv(key: Uint8Array, ciphertext: Uint8Array): Promise<Uint8Array> {
+    const aead = await aesSivFromRawKey(key)
+    return aead.decrypt(ciphertext, Cryptor.EMPTY_AAD)
+  }
+
+  async encryptWithAesGcm(key: Uint8Array, plaintext: Uint8Array): Promise<Uint8Array> {
+    const aead = await aesGcmFromRawKey(key)
+    return aead.encrypt(plaintext, Cryptor.EMPTY_AAD)
+  }
+
+  async decryptWithAesGcm(key: Uint8Array, ciphertext: Uint8Array): Promise<Uint8Array> {
+    const aead = await aesGcmFromRawKey(key)
+    return aead.decrypt(ciphertext, Cryptor.EMPTY_AAD)
   }
 }
 
@@ -387,7 +438,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
         }
         let dek = await this.getOrCreateDek(ctx, version)
         let keyMaterialBytes = DekRegistryClient.getKeyMaterialBytes(dek)!
-        let ciphertext = await this.cryptor.encrypt(keyMaterialBytes, plaintext, Cryptor.EMPTY_AAD)
+        let ciphertext = await this.cryptor.encrypt(keyMaterialBytes, plaintext)
         if (this.isDekRotated()) {
           ciphertext = this.prefixVersion(dek.version!, ciphertext)
         }
@@ -417,7 +468,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
         }
         let dek = await this.getOrCreateDek(ctx, version)
         let keyMaterialBytes = DekRegistryClient.getKeyMaterialBytes(dek)!
-        let plaintext = await this.cryptor.decrypt(keyMaterialBytes, ciphertext, Cryptor.EMPTY_AAD)
+        let plaintext = await this.cryptor.decrypt(keyMaterialBytes, ciphertext)
         return this.toObject(fieldCtx.type, plaintext)
       }
       default:

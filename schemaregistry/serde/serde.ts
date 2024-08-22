@@ -47,7 +47,6 @@ export abstract class Serde {
   conf: SerdeConfig
   fieldTransformer: FieldTransformer | null = null
 
-  // TODO add SR client
   protected constructor(client: Client, serdeType: SerdeType, conf: SerdeConfig) {
     this.client = client
     this.serdeType = serdeType
@@ -203,7 +202,6 @@ export abstract class Serde {
     } else if (actionName === 'NONE') {
       return new NoneAction()
     }
-    // TODO rule registry
     return getRuleAction(actionName)
   }
 }
@@ -422,7 +420,7 @@ export abstract class Deserializer extends Serde {
 
   async executeMigrations(migrations: Migration[], subject: string, topic: string, msg: any): Promise<any> {
     for (let migration of migrations) {
-      // TODO fix source, target
+      // TODO fix source, target?
       msg = this.executeRules(subject, topic, migration.ruleMode, migration.source, migration.target, msg, null)
     }
     return msg
