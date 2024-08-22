@@ -112,7 +112,7 @@ export class FieldEncryptionExecutor extends FieldRuleExecutor {
     if (expiryDaysStr == null) {
       return 0
     }
-    const expiryDays = parseInt(expiryDaysStr)
+    const expiryDays = Number(expiryDaysStr)
     if (isNaN(expiryDays)) {
       throw new RuleError('invalid expiry days')
     }
@@ -124,7 +124,7 @@ export class FieldEncryptionExecutor extends FieldRuleExecutor {
 }
 
 export class Cryptor {
-  public static readonly EMPTY_AAD = Buffer.from([])
+  static readonly EMPTY_AAD = Buffer.from([])
 
   dekFormat: DekFormat
   isDeterministic: boolean

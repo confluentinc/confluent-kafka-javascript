@@ -120,7 +120,8 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
 
   async resolveDependencies(fileDesc: DescFile, deps: Map<string, string>, subject: string,
                             autoRegister: boolean, normalize: boolean): Promise<SchemaMetadata> {
-    const refs = new Array<Reference>(fileDesc.dependencies.length)
+    const refs: Reference[] = []
+    refs.length = fileDesc.dependencies.length
     for (let i = 0; i < fileDesc.dependencies.length; i++) {
       const dep = fileDesc.dependencies[i]
       if (this.ignoreFile(dep.name)) {
@@ -161,7 +162,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 
   toMessageIndexBytes(messageDesc: DescMessage): Buffer {
-    const msgIndexes = this.toMessageIndexes(messageDesc, 0)
+    const msgIndexes: number[] = this.toMessageIndexes(messageDesc, 0)
     const buffer = Buffer.alloc((1 + msgIndexes.length) * MAX_VARINT_LEN_64)
     const bw = new BufferWrapper(buffer)
     bw.writeVarInt(msgIndexes.length)
@@ -178,7 +179,8 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       // parent is FileDescriptor, we reached the top of the stack, so we are
       // done. Allocate an array large enough to hold count+1 entries and
       // populate first value with index
-      const msgIndexes = new Array(count + 1)
+      const msgIndexes: number[] = []
+      msgIndexes.length = count + 1
       msgIndexes[0] = index
       return msgIndexes
     } else {
@@ -320,7 +322,8 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   readMessageIndexes(payload: Buffer): [number, number[]] {
     const bw = new BufferWrapper(payload)
     const count = bw.readVarInt()
-    const msgIndexes = new Array(count)
+    const msgIndexes = []
+    msgIndexes.length = count
     for (let i = 0; i < count; i++) {
       msgIndexes[i] = bw.readVarInt()
     }

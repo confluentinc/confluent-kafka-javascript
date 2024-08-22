@@ -11,9 +11,9 @@ export interface KmsClient {
   decrypt(ciphertext: Buffer): Promise<Buffer>
 }
 
-const kmsDrivers = new Array<KmsDriver>()
+const kmsDrivers: KmsDriver[] = []
 
-const kmsClients = new Array<KmsClient>
+const kmsClients: KmsClient[] = []
 
 
 export function registerKmsDriver(kmsDriver: KmsDriver): void {
