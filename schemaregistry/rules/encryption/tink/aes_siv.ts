@@ -6,7 +6,7 @@
 
 import {Aead} from './aead';
 
-// @ts-ignore
+// @ts-expect-error miscreant does not have types
 import {AEAD} from "@hackbg/miscreant-esm";
 
 /**

@@ -265,8 +265,7 @@ export abstract class Serializer extends Serde {
   }
 }
 
-export interface DeserializerConfig extends SerdeConfig {
-}
+export type DeserializerConfig = SerdeConfig
 
 // Migration represents a migration
 export interface Migration {

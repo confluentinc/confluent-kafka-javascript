@@ -30,13 +30,11 @@ import { LRUCache } from "lru-cache";
 import {field_meta, Meta} from "../confluent/meta_pb";
 import {getRuleExecutors} from "./rule-registry";
 
-export type ProtobufSerdeConfig = {}
-
 export interface ProtobufSerde {
   schemaToDescCache: LRUCache<string, DescFile>
 }
 
-export type ProtobufSerializerConfig = SerializerConfig & ProtobufSerdeConfig & {
+export type ProtobufSerializerConfig = SerializerConfig & {
   registry: Registry
   descToSchemaCache: LRUCache<string, SchemaInfo>
 }
@@ -228,7 +226,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 }
 
-export type ProtobufDeserializerConfig = DeserializerConfig & ProtobufSerdeConfig
+export type ProtobufDeserializerConfig = DeserializerConfig
 
 export class ProtobufDeserializer extends Deserializer implements ProtobufSerde {
   registry: FileRegistry

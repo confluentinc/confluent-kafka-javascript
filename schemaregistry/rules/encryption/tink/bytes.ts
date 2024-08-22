@@ -29,12 +29,15 @@ export function isEqual(ba1: Uint8Array, ba2: Uint8Array): boolean {
 export function concat(...var_args: Uint8Array[]): Uint8Array {
   let length = 0;
   for (let i = 0; i < arguments.length; i++) {
+    // eslint-disable-next-line prefer-rest-params
     length += arguments[i].length;
   }
   const result = new Uint8Array(length);
   let curOffset = 0;
   for (let i = 0; i < arguments.length; i++) {
+    // eslint-disable-next-line prefer-rest-params
     result.set(arguments[i], curOffset);
+    // eslint-disable-next-line prefer-rest-params
     curOffset += arguments[i].length;
   }
   return result;
