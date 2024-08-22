@@ -260,7 +260,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
     const isRead = ctx.ruleMode === RuleMode.READ
     const kmsType = ctx.getParameter(ENCRYPT_KMS_TYPE)
     const kmsKeyId = ctx.getParameter(ENCRYPT_KMS_KEY_ID)
-    const kekId = {
+    const kekId: KekId = {
       name: this.kekName,
       deleted: false,
     }
@@ -325,7 +325,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
     if (version == null || version === 0) {
       version = 1
     }
-    const dekId = {
+    const dekId: DekId = {
       kekName: this.kekName,
       subject: ctx.subject,
       version,
@@ -347,7 +347,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
         encryptedDek = await kmsClient.encrypt(rawDek)
       }
       const newVersion = isExpired ? dek!.version! + 1 : null
-      const newDekId = {
+      const newDekId: DekId = {
         kekName: this.kekName,
         subject: ctx.subject,
         version: newVersion,
