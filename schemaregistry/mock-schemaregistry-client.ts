@@ -34,13 +34,15 @@ class Counter {
 const noSubject = "";
 
 class MockClient implements Client {
+  private clientConfig?: ClientConfig;
   private infoToSchemaCache: Map<string, MetadataCacheEntry>;
   private idToSchemaCache: Map<string, InfoCacheEntry>;
   private schemaToVersionCache: Map<string, VersionCacheEntry>;
   private configCache: Map<string, ServerConfig>;
   private counter: Counter;
 
-  constructor() {
+  constructor(config?: ClientConfig) {
+    this.clientConfig = config
     this.infoToSchemaCache = new Map();
     this.idToSchemaCache = new Map();
     this.schemaToVersionCache = new Map();
@@ -49,7 +51,7 @@ class MockClient implements Client {
   }
 
   public config(): ClientConfig {
-    throw new Error("Method not implemented.");
+    return this.clientConfig!
   }
 
   public async register(subject: string, schema: SchemaInfo, normalize: boolean = false): Promise<number> {

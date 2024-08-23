@@ -10,7 +10,7 @@ import {
   Client, RuleMode,
   SchemaInfo
 } from "../schemaregistry-client";
-import Ajv, { ErrorObject } from "ajv";
+import Ajv, {ErrorObject} from "ajv";
 import Ajv2019 from "ajv/dist/2019";
 import Ajv2020 from "ajv/dist/2020";
 import * as draft6MetaSchema from 'ajv/dist/refs/json-schema-draft-06.json'
@@ -54,13 +54,13 @@ export class JsonSerializer extends Serializer implements JsonSerde {
 
   constructor(client: Client, serdeType: SerdeType, conf: JsonSerializerConfig) {
     super(client, serdeType, conf)
-    this.schemaToTypeCache = new LRUCache<string, DereferencedJSONSchema>({ max: this.config().cacheCapacity })
-    this.schemaToValidateCache = new LRUCache<string, ValidateFunction>({ max: this.config().cacheCapacity })
+    this.schemaToTypeCache = new LRUCache<string, DereferencedJSONSchema>({ max: this.config().cacheCapacity ?? 1000 })
+    this.schemaToValidateCache = new LRUCache<string, ValidateFunction>({ max: this.config().cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig)
+      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
     }
   }
 
@@ -78,7 +78,7 @@ export class JsonSerializer extends Serializer implements JsonSerde {
       schema: JSON.stringify(jsonSchema),
     }
     const [id, info] = await this.getId(topic, msg, schema)
-    const subject = this.conf.subjectNameStrategy(topic, this.serdeType, info)
+    const subject = this.subjectName(topic, info)
     msg = this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
     const msgBytes = Buffer.from(JSON.stringify(msg))
     if ((this.conf as JsonSerdeConfig).validate) {
@@ -124,13 +124,13 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
 
   constructor(client: Client, serdeType: SerdeType, conf: JsonDeserializerConfig) {
     super(client, serdeType, conf)
-    this.schemaToTypeCache = new LRUCache<string, DereferencedJSONSchema>({ max: this.config().cacheCapacity })
-    this.schemaToValidateCache = new LRUCache<string, ValidateFunction>({ max: this.config().cacheCapacity })
+    this.schemaToTypeCache = new LRUCache<string, DereferencedJSONSchema>({ max: this.config().cacheCapacity ?? 1000 })
+    this.schemaToValidateCache = new LRUCache<string, ValidateFunction>({ max: this.config().cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig)
+      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
     }
   }
 
@@ -150,7 +150,7 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
       }
 
     }
-    const subject = this.conf.subjectNameStrategy(topic, this.serdeType, info)
+    const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject)
     let migrations: Migration[] | null = null
     if (readerMeta != null) {

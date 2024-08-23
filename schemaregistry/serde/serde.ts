@@ -5,10 +5,11 @@ import {
   RuleMode,
   RuleSet,
   SchemaInfo,
-  SchemaMetadata
+  SchemaMetadata, SchemaRegistryClient
 } from "../schemaregistry-client";
 import {getRuleAction, getRuleExecutor} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
+import {MockClient} from "../mock-schemaregistry-client";
 
 export enum SerdeType {
   KEY = 'KEY',
@@ -26,17 +27,17 @@ export class SerializationError extends Error {
 
 export interface SerdeConfig {
   // useLatestVersion specifies whether to use the latest schema version
-  useLatestVersion: boolean
+  useLatestVersion?: boolean
   // useLatestWithMetadata specifies whether to use the latest schema with metadata
-  useLatestWithMetadata: Map<string, string>
+  useLatestWithMetadata?: Map<string, string>
   // cacheCapacity specifies the cache capacity
-  cacheCapacity: number,
+  cacheCapacity?: number,
   // cacheLatestTtlSecs specifies the cache latest TTL in seconds
-  cacheLatestTtlSecs: number
+  cacheLatestTtlSecs?: number
   // ruleConfig specifies configuration options to the rules
-  ruleConfig: Map<string, string>
+  ruleConfig?: Map<string, string>
   // subjectNameStrategy specifies a function to generate a subject name
-  subjectNameStrategy: SubjectNameStrategyFunc
+  subjectNameStrategy?: SubjectNameStrategyFunc
 }
 
 export type RefResolver = (client: Client, info: SchemaInfo) => Promise<Map<string, string>>
@@ -57,6 +58,11 @@ export abstract class Serde {
 
   close(): void {
     return
+  }
+
+  subjectName(topic: string, info: SchemaInfo | null): string {
+    const strategy = this.conf.subjectNameStrategy ?? TopicNameStrategy
+    return strategy(topic, this.serdeType, info)
   }
 
   async resolveReferences(client: Client, schema: SchemaInfo, deps: Map<string, string>): Promise<void> {
@@ -208,11 +214,11 @@ export abstract class Serde {
 
 export interface SerializerConfig extends SerdeConfig {
   // autoRegisterSchemas determines whether to automatically register schemas
-  autoRegisterSchemas: boolean
+  autoRegisterSchemas?: boolean
   // useSchemaID specifies a schema ID to use
-  useSchemaId: number
+  useSchemaId?: number
   // normalizeSchemas determines whether to normalize schemas
-  normalizeSchemas: boolean
+  normalizeSchemas?: boolean
 }
 
 export abstract class Serializer extends Serde {
@@ -236,16 +242,16 @@ export abstract class Serializer extends Serde {
     let normalizeSchema = this.config().normalizeSchemas
 
     let id = -1
-    let subject = this.config().subjectNameStrategy(topic, this.serdeType, info)
+    let subject = this.subjectName(topic, info)
     if (autoRegister) {
-      id = await this.client.register(subject, info, normalizeSchema)
-    } else if (useSchemaId >= 0) {
+      id = await this.client.register(subject, info, Boolean(normalizeSchema))
+    } else if (useSchemaId != null && useSchemaId >= 0) {
       info = await this.client.getBySubjectAndId(subject, useSchemaId)
       id = await this.client.getId(subject, info, false)
       if (id !== useSchemaId) {
         throw new SerializationError(`failed to match schema ID (${id} != ${useSchemaId})`)
       }
-    } else if (useLatestWithMetadata.size !== 0) {
+    } else if (useLatestWithMetadata != null && useLatestWithMetadata.size !== 0) {
       info = await this.client.getLatestWithMetadata(
         subject, Object.fromEntries(useLatestWithMetadata), true)
       id = await this.client.getId(subject, info, false)
@@ -253,7 +259,7 @@ export abstract class Serializer extends Serde {
       info = await this.client.getLatestSchemaMetadata(subject)
       id = await this.client.getId(subject, info, false)
     } else {
-      id = await this.client.getId(subject, info, normalizeSchema)
+      id = await this.client.getId(subject, info, Boolean(normalizeSchema))
     }
     return [id, info]
   }
@@ -293,14 +299,14 @@ export abstract class Deserializer extends Serde {
       )
     }
     const id = payload.subarray(1, 5).readInt32BE(0)
-    let subject = this.config().subjectNameStrategy(topic, this.serdeType, null)
+    let subject = this.subjectName(topic, null)
     return await this.client.getBySubjectAndId(subject, id)
   }
 
   async getReaderSchema(subject: string): Promise<SchemaMetadata | null> {
     let useLatestWithMetadata = this.config().useLatestWithMetadata
     let useLatest = this.config().useLatestVersion
-    if (useLatestWithMetadata.size !== 0) {
+    if (useLatestWithMetadata != null && useLatestWithMetadata.size !== 0) {
       return await this.client.getLatestWithMetadata(
         subject, Object.fromEntries(useLatestWithMetadata), true)
     }
@@ -729,4 +735,12 @@ export class RuleConditionError extends RuleError {
     }
     return errMsg
   }
+}
+
+export function newClient(config: ClientConfig): Client {
+  let url = config.baseURLs[0]
+  if (url.startsWith("mock://")) {
+    return new MockClient(config)
+  }
+  return new SchemaRegistryClient(config)
 }

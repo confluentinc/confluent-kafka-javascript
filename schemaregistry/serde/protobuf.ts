@@ -47,13 +47,13 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   constructor(client: Client, serdeType: SerdeType, conf: ProtobufSerializerConfig) {
     super(client, serdeType, conf)
     this.registry = conf.registry
-    this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity } )
-    this.descToSchemaCache = new LRUCache<string, SchemaInfo>({ max: this.config().cacheCapacity } )
+    this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
+    this.descToSchemaCache = new LRUCache<string, SchemaInfo>({ max: this.config().cacheCapacity ?? 1000 } )
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig)
+      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
     }
   }
 
@@ -76,7 +76,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const fileDesc = messageDesc.file
     const schema = await this.getSchemaInfo(fileDesc)
     const [id, info] = await this.getId(topic, msg, schema)
-    const subject = this.conf.subjectNameStrategy(topic, this.serdeType, info)
+    const subject = this.subjectName(topic, info)
     msg = this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
     const msgIndexBytes = this.toMessageIndexBytes(messageDesc)
     const msgBytes = Buffer.from(toBinary(messageDesc, msg))
@@ -91,7 +91,8 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const deps = this.toProtobufSchema(fileDesc)
     const autoRegister = this.config().autoRegisterSchemas
     const normalize = this.config().normalizeSchemas
-    const metadata = await this.resolveDependencies(fileDesc, deps, "", autoRegister, normalize)
+    const metadata = await this.resolveDependencies(
+      fileDesc, deps, "", Boolean(autoRegister), Boolean(normalize))
     const info = {
       schema: metadata.schema,
       schemaType: metadata.schemaType,
@@ -237,12 +238,12 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   constructor(client: Client, serdeType: SerdeType, conf: ProtobufDeserializerConfig) {
     super(client, serdeType, conf)
     this.registry = createFileRegistry()
-    this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity } )
+    this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig)
+      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
     }
   }
 
@@ -259,7 +260,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(5))
     const messageDesc = this.toMessageDesc(fd, msgIndexes)
 
-    const subject = this.conf.subjectNameStrategy(topic, this.serdeType, info)
+    const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject)
 
     const msgBytes = payload.subarray(5 + bytesRead)

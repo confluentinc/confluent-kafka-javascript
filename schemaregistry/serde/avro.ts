@@ -35,12 +35,12 @@ export class AvroSerializer extends Serializer implements AvroSerde {
 
   constructor(client: Client, serdeType: SerdeType, conf: AvroSerializerConfig) {
     super(client, serdeType, conf)
-    this.schemaToTypeCache = new LRUCache<string, Type>({ max: this.config().cacheCapacity })
+    this.schemaToTypeCache = new LRUCache<string, Type>({ max: this.conf.cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig)
+      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
     }
   }
 
@@ -59,7 +59,7 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     }
     const [id, info] = await this.getId(topic, msg, schema)
     avroSchema = await this.toType(info)
-    const subject = this.conf.subjectNameStrategy(topic, this.serdeType, info)
+    const subject = this.subjectName(topic, info)
     msg = this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(avroSchema))
     const msgBytes = avroSchema.toBuffer(msg)
     return this.writeBytes(id, msgBytes)
@@ -86,12 +86,12 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
 
   constructor(client: Client, serdeType: SerdeType, conf: AvroDeserializerConfig) {
     super(client, serdeType, conf)
-    this.schemaToTypeCache = new LRUCache<string, Type>({ max: this.config().cacheCapacity })
+    this.schemaToTypeCache = new LRUCache<string, Type>({ max: this.conf.cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig)
+      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
     }
   }
 
@@ -104,7 +104,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     }
 
     const info = await this.getSchema(topic, payload)
-    const subject = this.conf.subjectNameStrategy(topic, this.serdeType, info)
+    const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject)
     let migrations: Migration[] | null = null
     if (readerMeta != null) {
