@@ -310,7 +310,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
 
   async storeKekToRegistry(key: KekId, kmsType: string, kmsKeyId: string, shared: boolean): Promise<Kek | null> {
     try {
-      return await this.executor.client!.registerKek(key.name, kmsType, kmsKeyId, null, null, shared)
+      return await this.executor.client!.registerKek(key.name, kmsType, kmsKeyId, shared)
     } catch (err) {
       if (err instanceof RestError && err.status === 409) {
         return null
@@ -396,7 +396,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
     async storeDekToRegistry(key: DekId, encryptedDek: Buffer | null): Promise<Dek | null> {
       try {
         let dek: Dek
-        let encryptedDekStr: string | null = null
+        let encryptedDekStr: string | undefined = undefined
         if (encryptedDek != null) {
           encryptedDekStr = encryptedDek.toString('base64')
         }
@@ -404,7 +404,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
         if (version == null || version === 0) {
           version = 1
         }
-        dek = await this.executor.client!.registerDek(key.kekName, key.subject, key.algorithm, encryptedDekStr, version)
+        dek = await this.executor.client!.registerDek(key.kekName, key.subject, key.algorithm, version, encryptedDekStr)
         return dek
       } catch (err) {
         if (err instanceof RestError && err.status === 409) {

@@ -60,7 +60,7 @@ export abstract class Serde {
     return
   }
 
-  subjectName(topic: string, info: SchemaInfo | null): string {
+  subjectName(topic: string, info?: SchemaInfo): string {
     const strategy = this.conf.subjectNameStrategy ?? TopicNameStrategy
     return strategy(topic, this.serdeType, info)
   }
@@ -299,7 +299,7 @@ export abstract class Deserializer extends Serde {
       )
     }
     const id = payload.subarray(1, 5).readInt32BE(0)
-    let subject = this.subjectName(topic, null)
+    let subject = this.subjectName(topic)
     return await this.client.getBySubjectAndId(subject, id)
   }
 
@@ -435,7 +435,7 @@ export abstract class Deserializer extends Serde {
 export type SubjectNameStrategyFunc = (
   topic: string,
   serdeType: SerdeType,
-  schema: SchemaInfo | null,
+  schema?: SchemaInfo,
 ) => string
 
 // TopicNameStrategy creates a subject name by appending -[key|value] to the topic name.

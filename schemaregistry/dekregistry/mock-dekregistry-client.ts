@@ -11,8 +11,8 @@ class MockDekRegistryClient implements Client {
     this.dekCache = new Map<string, Dek>();
   }
 
-  async registerKek(name: string, kmsType: string, kmsKeyId: string,
-    kmsProps: { [key: string]: string } | null, doc: string | null, shared: boolean): Promise<Kek> {
+  async registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
+    kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek> {
     const cacheKey = stringify({ name, deleted: false });
     const cachedKek = this.kekCache.get(cacheKey);
     if (cachedKek) {
@@ -42,8 +42,8 @@ class MockDekRegistryClient implements Client {
     throw new Error(`Kek not found: ${name}`);
   }
 
-  async registerDek(kekName: string, subject: string,
-    algorithm: string, encryptedKeyMaterial: string | null, version: number): Promise<Dek> {
+  async registerDek(kekName: string, subject: string, algorithm: string,
+    version: number = 1, encryptedKeyMaterial?: string): Promise<Dek> {
     const cacheKey = stringify({ kekName, subject, version, algorithm, deleted: false });
     const cachedDek = this.dekCache.get(cacheKey);
     if (cachedDek) {

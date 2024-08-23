@@ -107,7 +107,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     const info = await this.getSchema(topic, payload)
     const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject)
-    let migrations: Migration[] | null = null
+    let migrations: Migration[] = []
     if (readerMeta != null) {
       migrations = await this.getMigrations(subject, info, readerMeta)
     }
@@ -115,7 +115,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
 
     let msg: any
     const msgBytes = payload.subarray(5)
-    if (migrations != null && migrations.length > 0) {
+    if (migrations.length > 0) {
       msg = writer.fromBuffer(msgBytes)
       msg = await this.executeMigrations(migrations, subject, topic, msg)
     } else {

@@ -153,13 +153,13 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     }
     const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject)
-    let migrations: Migration[] | null = null
+    let migrations: Migration[] = []
     if (readerMeta != null) {
       migrations = await this.getMigrations(subject, info, readerMeta)
     }
     const msgBytes = payload.subarray(5)
     let msg = JSON.parse(msgBytes.toString())
-    if (migrations != null && migrations.length > 0) {
+    if (migrations.length > 0) {
       msg = await this.executeMigrations(migrations, subject, topic, msg)
     }
     let target: SchemaInfo

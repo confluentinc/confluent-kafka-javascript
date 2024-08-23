@@ -46,11 +46,11 @@ interface Dek {
 }
 
 interface Client {
-  registerKek(name: string, kmsType: string, kmsKeyId: string, kmsProps: { [key: string]: string } | null,
-              doc: string | null, shared: boolean): Promise<Kek>;
+  registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
+              kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek>;
   getKek(name: string, deleted: boolean): Promise<Kek>;
-  registerDek(kekName: string, subject: string, algorithm: string,
-              encryptedKeyMaterial: string | null, version: number): Promise<Dek>;
+  registerDek(kekName: string, subject: string, algorithm: string, version: number,
+              encryptedKeyMaterial?: string): Promise<Dek>;
   getDek(kekName: string, subject: string, algorithm: string, version: number, deleted: boolean): Promise<Dek>;
   close(): Promise<void>;
 }
@@ -123,8 +123,8 @@ class DekRegistryClient implements Client {
     }
   }
 
-  async registerKek(name: string, kmsType: string, kmsKeyId: string,
-    kmsProps: { [key: string]: string } | null, doc: string | null, shared: boolean): Promise<Kek> {
+  async registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
+    kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek> {
     const cacheKey = stringify({ name, deleted: false });
 
     return await this.kekMutex.runExclusive(async () => {
@@ -169,8 +169,8 @@ class DekRegistryClient implements Client {
     });
   }
 
-  async registerDek(kekName: string, subject: string,
-    algorithm: string, encryptedKeyMaterial: string | null, version: number = 1): Promise<Dek> {
+  async registerDek(kekName: string, subject: string, algorithm: string,
+    version: number = 1, encryptedKeyMaterial?: string): Promise<Dek> {
     const cacheKey = stringify({ kekName, subject, version, algorithm, deleted: false });
 
     return await this.dekMutex.runExclusive(async () => {
