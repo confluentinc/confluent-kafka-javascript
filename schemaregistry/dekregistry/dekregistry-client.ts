@@ -69,14 +69,14 @@ class DekRegistryClient implements Client {
     };
 
 
-    this.restService = new RestService(config.createAxiosDefaults, config.baseURLs, config.isForward);
+    this.restService = new RestService(config.baseURLs, config.isForward, config.createAxiosDefaults);
     this.kekCache = new LRUCache<string, Kek>(cacheOptions);
     this.dekCache = new LRUCache<string, Dek>(cacheOptions);
     this.kekMutex = new Mutex();
     this.dekMutex = new Mutex();
   }
 
-  public static getEncryptedKeyMaterialBytes(dek: Dek): Buffer | null {
+  static getEncryptedKeyMaterialBytes(dek: Dek): Buffer | null {
     if (!dek.encryptedKeyMaterial) {
       return null;
     }
@@ -96,7 +96,7 @@ class DekRegistryClient implements Client {
     return dek.encryptedKeyMaterialBytes;
   }
 
-  public static getKeyMaterialBytes(dek: Dek): Buffer | null {
+  static getKeyMaterialBytes(dek: Dek): Buffer | null {
     if (!dek.keyMaterial) {
       return null;
     }
@@ -116,14 +116,14 @@ class DekRegistryClient implements Client {
     return dek.keyMaterialBytes;
   }
 
-  public static setKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): void {
+  static setKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): void {
     if (keyMaterialBytes) {
       const str = keyMaterialBytes.toString('base64');
       dek.keyMaterial = str;
     }
   }
 
-  public async registerKek(name: string, kmsType: string, kmsKeyId: string,
+  async registerKek(name: string, kmsType: string, kmsKeyId: string,
     kmsProps: { [key: string]: string } | null, doc: string | null, shared: boolean): Promise<Kek> {
     const cacheKey = stringify({ name, deleted: false });
 
@@ -151,7 +151,7 @@ class DekRegistryClient implements Client {
     });
   }
 
-  public async getKek(name: string, deleted: boolean = false): Promise<Kek> {
+  async getKek(name: string, deleted: boolean = false): Promise<Kek> {
     const cacheKey = stringify({ name, deleted });
 
     return await this.kekMutex.runExclusive(async () => {
@@ -169,7 +169,7 @@ class DekRegistryClient implements Client {
     });
   }
 
-  public async registerDek(kekName: string, subject: string,
+  async registerDek(kekName: string, subject: string,
     algorithm: string, encryptedKeyMaterial: string | null, version: number = 1): Promise<Dek> {
     const cacheKey = stringify({ kekName, subject, version, algorithm, deleted: false });
 
@@ -200,7 +200,7 @@ class DekRegistryClient implements Client {
     });
   }
 
-  public async getDek(kekName: string, subject: string,
+  async getDek(kekName: string, subject: string,
     algorithm: string, version: number = 1, deleted: boolean = false): Promise<Dek> {
     const cacheKey = stringify({ kekName, subject, version, algorithm, deleted });
 
@@ -220,12 +220,12 @@ class DekRegistryClient implements Client {
     });
   }
 
-  public async close(): Promise<void> {
+  async close(): Promise<void> {
     return;
   }
 
   //Cache methods for testing
-  public async checkLatestDekInCache(kekName: string, subject: string, algorithm: string): Promise<boolean> {
+  async checkLatestDekInCache(kekName: string, subject: string, algorithm: string): Promise<boolean> {
     const cacheKey = stringify({ kekName, subject, version: -1, algorithm, deleted: false });
     const cachedDek = this.dekCache.get(cacheKey);
     return cachedDek !== undefined;
