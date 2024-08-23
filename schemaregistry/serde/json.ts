@@ -29,6 +29,7 @@ import { validateJSON } from '@criteria/json-schema-validation'
 import { LRUCache } from "lru-cache";
 import { generateSchema } from "./json_util";
 import {getRuleExecutors} from "./rule-registry";
+import stringify from "json-stringify-deterministic";
 
 export interface ValidateFunction {
   (this: any, data: any): boolean
@@ -79,7 +80,7 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     }
     const [id, info] = await this.getId(topic, msg, schema)
     const subject = this.subjectName(topic, info)
-    msg = this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
+    msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
     const msgBytes = Buffer.from(JSON.stringify(msg))
     if ((this.conf as JsonSerdeConfig).validate) {
       const validate = await this.toValidateFunction(info)
@@ -159,7 +160,7 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     const msgBytes = payload.subarray(5)
     let msg = JSON.parse(msgBytes.toString())
     if (migrations != null && migrations.length > 0) {
-      msg = this.executeMigrations(migrations, subject, topic, msg)
+      msg = await this.executeMigrations(migrations, subject, topic, msg)
     }
     let target: SchemaInfo
     if (readerMeta != null) {
@@ -201,7 +202,7 @@ async function toValidateFunction(
     info: SchemaInfo,
     refResolver: RefResolver,
 ): Promise<ValidateFunction | undefined> {
-  let fn = serde.schemaToValidateCache.get(info.schema)
+  let fn = serde.schemaToValidateCache.get(stringify(info.schema))
   if (fn != null) {
     return fn
   }
@@ -225,7 +226,7 @@ async function toValidateFunction(
     })
     fn = ajv.compile(json)
   }
-  serde.schemaToValidateCache.set(info.schema, fn)
+  serde.schemaToValidateCache.set(stringify(info.schema), fn)
   return fn
 }
 
@@ -236,7 +237,7 @@ async function toType(
   info: SchemaInfo,
   refResolver: RefResolver,
 ): Promise<DereferencedJSONSchema> {
-  let type = serde.schemaToTypeCache.get(info.schema)
+  let type = serde.schemaToTypeCache.get(stringify(info.schema))
   if (type != null) {
     return type
   }
@@ -259,7 +260,7 @@ async function toType(
   } else {
     schema = await dereferenceJSONSchemaDraft07(json, { retrieve })
   }
-  serde.schemaToTypeCache.set(info.schema, schema)
+  serde.schemaToTypeCache.set(stringify(info.schema), schema)
   return schema
 }
 

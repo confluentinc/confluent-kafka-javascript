@@ -29,6 +29,7 @@ import { BufferWrapper, MAX_VARINT_LEN_64 } from "./buffer-wrapper";
 import { LRUCache } from "lru-cache";
 import {field_meta, Meta} from "../confluent/meta_pb";
 import {getRuleExecutors} from "./rule-registry";
+import stringify from "json-stringify-deterministic";
 
 export interface ProtobufSerde {
   schemaToDescCache: LRUCache<string, DescFile>
@@ -77,7 +78,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const schema = await this.getSchemaInfo(fileDesc)
     const [id, info] = await this.getId(topic, msg, schema)
     const subject = this.subjectName(topic, info)
-    msg = this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
+    msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
     const msgIndexBytes = this.toMessageIndexBytes(messageDesc)
     const msgBytes = Buffer.from(toBinary(messageDesc, msg))
     return this.writeBytes(id, Buffer.concat([msgIndexBytes, msgBytes]))
@@ -291,7 +292,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   }
 
   async toFileDesc(client: Client, info: SchemaInfo): Promise<DescFile> {
-    const value = this.schemaToDescCache.get(info.schema)
+    const value = this.schemaToDescCache.get(stringify(info.schema))
     if (value != null) {
       return value
     }
@@ -299,14 +300,14 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     if (fileDesc == null) {
       throw new SerializationError('file descriptor not found')
     }
-    this.schemaToDescCache.set(info.schema, fileDesc)
+    this.schemaToDescCache.set(stringify(info.schema), fileDesc)
     return fileDesc
   }
 
   async parseFileDesc(client: Client, info: SchemaInfo): Promise<DescFile | undefined> {
     const deps = new Map<string, string>()
     await this.resolveReferences(client, info, deps)
-    const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(deps.get(info.schema)!, 'base64'))
+    const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(info.schema, 'base64'))
     const resolve = (depName: string) => {
       const dep = deps.get(depName)
       if (dep == null) {

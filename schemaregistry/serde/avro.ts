@@ -19,6 +19,7 @@ import RecordType = types.RecordType
 import Field = types.Field
 import { LRUCache } from 'lru-cache'
 import {getRuleExecutors} from "./rule-registry";
+import stringify from "json-stringify-deterministic";
 
 type TypeHook = (schema: avro.Schema, opts: ForSchemaOptions) => Type | undefined
 
@@ -60,7 +61,7 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     const [id, info] = await this.getId(topic, msg, schema)
     avroSchema = await this.toType(info)
     const subject = this.subjectName(topic, info)
-    msg = this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(avroSchema))
+    msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(avroSchema))
     const msgBytes = avroSchema.toBuffer(msg)
     return this.writeBytes(id, msgBytes)
   }
@@ -116,7 +117,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     const msgBytes = payload.subarray(5)
     if (migrations != null && migrations.length > 0) {
       msg = writer.fromBuffer(msgBytes)
-      msg = this.executeMigrations(migrations, subject, topic, msg)
+      msg = await this.executeMigrations(migrations, subject, topic, msg)
     } else {
       if (readerMeta != null) {
         const reader = await this.toType(readerMeta)
@@ -135,7 +136,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     } else {
       target = info
     }
-    msg = this.executeRules(subject, topic, RuleMode.READ, null, target, msg, getInlineTags(writer))
+    msg = await this.executeRules(subject, topic, RuleMode.READ, null, target, msg, getInlineTags(writer))
     return msg
   }
 
@@ -160,7 +161,7 @@ async function toType(
   info: SchemaInfo,
   refResolver: RefResolver,
 ): Promise<Type> {
-  let type = serde.schemaToTypeCache.get(info.schema)
+  let type = serde.schemaToTypeCache.get(stringify(info.schema))
   if (type != null) {
     return type
   }
@@ -181,11 +182,11 @@ async function toType(
   }
 
   const avroOpts = conf
-  type = avro.Type.forSchema(info.schema, {
+  type = avro.Type.forSchema(JSON.parse(info.schema), {
     ...avroOpts,
     typeHook: addReferencedSchemas(avroOpts?.typeHook),
   })
-  serde.schemaToTypeCache.set(info.schema, type)
+  serde.schemaToTypeCache.set(stringify(info.schema), type)
   return type
 }
 

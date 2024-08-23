@@ -426,7 +426,7 @@ export abstract class Deserializer extends Serde {
   async executeMigrations(migrations: Migration[], subject: string, topic: string, msg: any): Promise<any> {
     for (let migration of migrations) {
       // TODO fix source, target?
-      msg = this.executeRules(subject, topic, migration.ruleMode, migration.source, migration.target, msg, null)
+      msg = await this.executeRules(subject, topic, migration.ruleMode, migration.source, migration.target, msg, null)
     }
     return msg
   }
