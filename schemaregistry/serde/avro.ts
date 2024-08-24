@@ -26,22 +26,22 @@ type TypeHook = (schema: avro.Schema, opts: ForSchemaOptions) => Type | undefine
 export type AvroSerdeConfig = Partial<ForSchemaOptions>
 
 export interface AvroSerde {
-  schemaToTypeCache: LRUCache<string, avro.Type>
+  schemaToTypeCache: LRUCache<string, [avro.Type, Map<string, string>]>
 }
 
 export type AvroSerializerConfig = SerializerConfig & AvroSerdeConfig
 
 export class AvroSerializer extends Serializer implements AvroSerde {
-  schemaToTypeCache: LRUCache<string, avro.Type>
+  schemaToTypeCache: LRUCache<string, [avro.Type, Map<string, string>]>
 
   constructor(client: Client, serdeType: SerdeType, conf: AvroSerializerConfig) {
     super(client, serdeType, conf)
-    this.schemaToTypeCache = new LRUCache<string, Type>({ max: this.conf.cacheCapacity ?? 1000 })
+    this.schemaToTypeCache = new LRUCache<string, [Type, Map<string, string>]>({ max: this.conf.cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
+      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
 
@@ -59,19 +59,21 @@ export class AvroSerializer extends Serializer implements AvroSerde {
       schema: JSON.stringify(avroSchema),
     }
     const [id, info] = await this.getId(topic, msg, schema)
-    avroSchema = await this.toType(info)
+    let deps: Map<string, string>
+    [avroSchema, deps] = await this.toType(info)
     const subject = this.subjectName(topic, info)
-    msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(avroSchema))
+    msg = await this.executeRules(
+      subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(info, deps))
     const msgBytes = avroSchema.toBuffer(msg)
     return this.writeBytes(id, msgBytes)
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
-    const schema = await this.toType(ctx.target)
+    const [schema, ] = await this.toType(ctx.target)
     return await transform(ctx, schema, msg, fieldTransform)
   }
 
-  async toType(info: SchemaInfo): Promise<Type> {
+  async toType(info: SchemaInfo): Promise<[Type, Map<string, string>]> {
     return toType(this.client, this.conf as AvroDeserializerConfig, this, info, async (client, info) => {
       const deps = new Map<string, string>()
       await this.resolveReferences(client, info, deps)
@@ -83,16 +85,16 @@ export class AvroSerializer extends Serializer implements AvroSerde {
 export type AvroDeserializerConfig = DeserializerConfig & AvroSerdeConfig
 
 export class AvroDeserializer extends Deserializer implements AvroSerde {
-  schemaToTypeCache: LRUCache<string, avro.Type>
+  schemaToTypeCache: LRUCache<string, [avro.Type, Map<string, string>]>
 
   constructor(client: Client, serdeType: SerdeType, conf: AvroDeserializerConfig) {
     super(client, serdeType, conf)
-    this.schemaToTypeCache = new LRUCache<string, Type>({ max: this.conf.cacheCapacity ?? 1000 })
+    this.schemaToTypeCache = new LRUCache<string, [Type, Map<string, string>]>({ max: this.conf.cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
+      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
 
@@ -111,7 +113,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     if (readerMeta != null) {
       migrations = await this.getMigrations(subject, info, readerMeta)
     }
-    const writer = await this.toType(info)
+    const [writer, deps] = await this.toType(info)
 
     let msg: any
     const msgBytes = payload.subarray(5)
@@ -120,7 +122,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
       msg = await this.executeMigrations(migrations, subject, topic, msg)
     } else {
       if (readerMeta != null) {
-        const reader = await this.toType(readerMeta)
+        const [reader, ] = await this.toType(readerMeta)
         if (reader.equals(writer)) {
           msg = reader.fromBuffer(msgBytes)
         } else {
@@ -136,16 +138,17 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     } else {
       target = info
     }
-    msg = await this.executeRules(subject, topic, RuleMode.READ, null, target, msg, getInlineTags(writer))
+    msg = await this.executeRules(
+      subject, topic, RuleMode.READ, null, target, msg, getInlineTags(info, deps))
     return msg
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
-    const schema = await this.toType(ctx.target)
+    const [schema, ] = await this.toType(ctx.target)
     return await transform(ctx, schema, msg, fieldTransform)
   }
 
-  async toType(info: SchemaInfo): Promise<Type> {
+  async toType(info: SchemaInfo): Promise<[Type, Map<string, string>]> {
     return toType(this.client, this.conf as AvroDeserializerConfig, this, info, async (client, info) => {
       const deps = new Map<string, string>()
       await this.resolveReferences(client, info, deps)
@@ -160,10 +163,10 @@ async function toType(
   serde: AvroSerde,
   info: SchemaInfo,
   refResolver: RefResolver,
-): Promise<Type> {
-  let type = serde.schemaToTypeCache.get(stringify(info.schema))
-  if (type != null) {
-    return type
+): Promise<[Type, Map<string, string>]> {
+  let tuple = serde.schemaToTypeCache.get(stringify(info.schema))
+  if (tuple != null) {
+    return tuple
   }
 
   const deps = await refResolver(client, info)
@@ -182,12 +185,12 @@ async function toType(
   }
 
   const avroOpts = conf
-  type = avro.Type.forSchema(JSON.parse(info.schema), {
+  let type = avro.Type.forSchema(JSON.parse(info.schema), {
     ...avroOpts,
     typeHook: addReferencedSchemas(avroOpts?.typeHook),
   })
-  serde.schemaToTypeCache.set(stringify(info.schema), type)
-  return type
+  serde.schemaToTypeCache.set(stringify(info.schema), [type, deps])
+  return [type, deps]
 }
 
 async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransform: FieldTransform): Promise<any> {
@@ -226,8 +229,8 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       return record
     default:
       if (fieldCtx != null) {
-        const ruleTags = ctx.rule.tags
-        if (ruleTags == null || ruleTags.size === 0 || !disjoint(ruleTags, fieldCtx.tags)) {
+        const ruleTags = ctx.rule.tags ?? []
+        if (ruleTags == null || ruleTags.length === 0 || !disjoint(new Set<string>(ruleTags), fieldCtx.tags)) {
           return await fieldTransform.transform(ctx, fieldCtx, msg)
         }
       }
@@ -246,7 +249,7 @@ async function transformField(
   const fullName = recordSchema.name + '.' + field.name
   try {
     ctx.enterField(
-      val.Interface(),
+      val,
       fullName,
       field.name,
       getType(field.type),
@@ -330,9 +333,12 @@ function resolveUnion(schema: Type, msg: any): Type | null {
   return null
 }
 
-function getInlineTags(schema: object): Map<string, Set<string>> {
+function getInlineTags(info: SchemaInfo, deps: Map<string, string>): Map<string, Set<string>> {
   const inlineTags = new Map<string, Set<string>>()
-  getInlineTagsRecursively('', '', schema, inlineTags)
+  getInlineTagsRecursively('', '', JSON.parse(info.schema), inlineTags)
+  for (const depSchema of Object.values(deps)) {
+    getInlineTagsRecursively('', '', JSON.parse(depSchema), inlineTags)
+  }
   return inlineTags
 }
 
