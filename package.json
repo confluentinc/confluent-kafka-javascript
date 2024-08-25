@@ -32,6 +32,8 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@bufbuild/buf": "^1.37.0",
+    "@bufbuild/protoc-gen-es": "^2.0.0",
     "@eslint/js": "^9.9.0",
     "@types/eslint__js": "^8.42.3",
     "@types/node": "^20.16.1",
@@ -46,15 +48,12 @@
     "typescript-eslint": "^8.2.0"
   },
   "dependencies": {
-    "@bufbuild/buf": "^1.37.0",
     "@bufbuild/protobuf": "^2.0.0",
-    "@bufbuild/protoc-gen-es": "^2.0.0",
     "@criteria/json-schema": "^0.10.0",
     "@criteria/json-schema-validation": "^0.10.0",
     "@hackbg/miscreant-esm": "^0.3.2-patch.3",
     "@mapbox/node-pre-gyp": "^1.0.11",
     "@types/validator": "^13.12.0",
-    "@types/webcrypto": "^0.0.30",
     "ajv": "^8.17.1",
     "async-mutex": "^0.5.0",
     "avsc": "^5.7.7",
