@@ -19,7 +19,7 @@ export class HcVaultClient implements KmsClient {
     this.keyId = keyUri.substring(HcVaultDriver.PREFIX.length)
     let url = new URL(this.keyId)
     let parts = url.pathname.split('/')
-    if (parts.length < 1) {
+    if (parts.length === 0) {
       throw new Error('key uri must contain a key name')
     }
     this.keyName = parts.pop()!
