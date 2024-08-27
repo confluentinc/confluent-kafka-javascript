@@ -54,7 +54,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
+      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
 
@@ -244,7 +244,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
+      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
 
@@ -372,8 +372,8 @@ async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fi
   }
   const fieldCtx = ctx.currentField()
   if (fieldCtx != null) {
-    const ruleTags = ctx.rule.tags
-    if (ruleTags == null || ruleTags.size === 0 || !disjoint(ruleTags, fieldCtx.tags)) {
+    const ruleTags = ctx.rule.tags ?? []
+    if (ruleTags == null || ruleTags.length === 0 || !disjoint(new Set<string>(ruleTags), fieldCtx.tags)) {
       return await fieldTransform.transform(ctx, fieldCtx, msg)
     }
   }

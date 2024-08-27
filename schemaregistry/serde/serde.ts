@@ -5,11 +5,10 @@ import {
   RuleMode,
   RuleSet,
   SchemaInfo,
-  SchemaMetadata, SchemaRegistryClient
+  SchemaMetadata
 } from "../schemaregistry-client";
 import {getRuleAction, getRuleExecutor} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
-import {MockClient} from "../mock-schemaregistry-client";
 
 export enum SerdeType {
   KEY = 'KEY',
@@ -29,13 +28,13 @@ export interface SerdeConfig {
   // useLatestVersion specifies whether to use the latest schema version
   useLatestVersion?: boolean
   // useLatestWithMetadata specifies whether to use the latest schema with metadata
-  useLatestWithMetadata?: Map<string, string>
+  useLatestWithMetadata?: { [key: string]: string };
   // cacheCapacity specifies the cache capacity
   cacheCapacity?: number,
   // cacheLatestTtlSecs specifies the cache latest TTL in seconds
   cacheLatestTtlSecs?: number
   // ruleConfig specifies configuration options to the rules
-  ruleConfig?: Map<string, string>
+  ruleConfig?: { [key: string]: string };
   // subjectNameStrategy specifies a function to generate a subject name
   subjectNameStrategy?: SubjectNameStrategyFunc
 }
@@ -251,9 +250,8 @@ export abstract class Serializer extends Serde {
       if (id !== useSchemaId) {
         throw new SerializationError(`failed to match schema ID (${id} != ${useSchemaId})`)
       }
-    } else if (useLatestWithMetadata != null && useLatestWithMetadata.size !== 0) {
-      info = await this.client.getLatestWithMetadata(
-        subject, Object.fromEntries(useLatestWithMetadata), true)
+    } else if (useLatestWithMetadata != null && Object.keys(useLatestWithMetadata).length !== 0) {
+      info = await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true)
       id = await this.client.getId(subject, info, false)
     } else if (useLatest) {
       info = await this.client.getLatestSchemaMetadata(subject)
@@ -306,9 +304,8 @@ export abstract class Deserializer extends Serde {
   async getReaderSchema(subject: string): Promise<SchemaMetadata | null> {
     let useLatestWithMetadata = this.config().useLatestWithMetadata
     let useLatest = this.config().useLatestVersion
-    if (useLatestWithMetadata != null && useLatestWithMetadata.size !== 0) {
-      return await this.client.getLatestWithMetadata(
-        subject, Object.fromEntries(useLatestWithMetadata), true)
+    if (useLatestWithMetadata != null && Object.keys(useLatestWithMetadata).length !== 0) {
+      return await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true)
     }
     if (useLatest) {
       return await this.client.getLatestSchemaMetadata(subject)
@@ -615,7 +612,7 @@ export abstract class FieldRuleExecutor implements RuleExecutor {
 }
 
 function areTransformsWithSameTag(rule1: Rule, rule2: Rule): boolean {
-  return rule1.tags != null && rule1.tags.size > 0
+  return rule1.tags != null && rule1.tags.length > 0
     && rule1.kind === 'TRANSFORM'
     && rule1.kind === rule2.kind
     && rule1.mode === rule2.mode
@@ -735,12 +732,4 @@ export class RuleConditionError extends RuleError {
     }
     return errMsg
   }
-}
-
-export function newClient(config: ClientConfig): Client {
-  let url = config.baseURLs[0]
-  if (url.startsWith("mock://")) {
-    return new MockClient(config)
-  }
-  return new SchemaRegistryClient(config)
 }
