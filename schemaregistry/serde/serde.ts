@@ -233,7 +233,7 @@ export abstract class Serializer extends Serde {
   abstract serialize(topic: string, msg: any): Promise<Buffer>
 
   // GetID returns a schema ID for the given schema
-  async getId(topic: string, msg: any, info: SchemaInfo): Promise<[number, SchemaInfo]> {
+  async getId(topic: string, msg: any, info: SchemaInfo, format?: string): Promise<[number, SchemaInfo]> {
     let autoRegister = this.config().autoRegisterSchemas
     let useSchemaId = this.config().useSchemaId
     let useLatestWithMetadata = this.conf.useLatestWithMetadata
@@ -245,7 +245,7 @@ export abstract class Serializer extends Serde {
     if (autoRegister) {
       id = await this.client.register(subject, info, Boolean(normalizeSchema))
     } else if (useSchemaId != null && useSchemaId >= 0) {
-      info = await this.client.getBySubjectAndId(subject, useSchemaId)
+      info = await this.client.getBySubjectAndId(subject, useSchemaId, format)
       id = await this.client.getId(subject, info, false)
       if (id !== useSchemaId) {
         throw new SerializationError(`failed to match schema ID (${id} != ${useSchemaId})`)
@@ -287,7 +287,7 @@ export abstract class Deserializer extends Serde {
     return this.conf as DeserializerConfig
   }
 
-  async getSchema(topic: string, payload: Buffer): Promise<SchemaInfo> {
+  async getSchema(topic: string, payload: Buffer, format?: string): Promise<SchemaInfo> {
     const magicByte = payload.subarray(0, 1)
     if (!magicByte.equals(MAGIC_BYTE)) {
       throw new SerializationError(
@@ -298,7 +298,7 @@ export abstract class Deserializer extends Serde {
     }
     const id = payload.subarray(1, 5).readInt32BE(0)
     let subject = this.subjectName(topic)
-    return await this.client.getBySubjectAndId(subject, id)
+    return await this.client.getBySubjectAndId(subject, id, format)
   }
 
   async getReaderSchema(subject: string): Promise<SchemaMetadata | null> {

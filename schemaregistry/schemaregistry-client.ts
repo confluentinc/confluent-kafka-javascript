@@ -114,7 +114,7 @@ export interface Client {
   config(): ClientConfig;
   register(subject: string, schema: SchemaInfo, normalize: boolean): Promise<number>;
   registerFullResponse(subject: string, schema: SchemaInfo, normalize: boolean): Promise<SchemaMetadata>;
-  getBySubjectAndId(subject: string, id: number): Promise<SchemaInfo>;
+  getBySubjectAndId(subject: string, id: number, format?: string): Promise<SchemaInfo>;
   getId(subject: string, schema: SchemaInfo, normalize: boolean): Promise<number>;
   getLatestSchemaMetadata(subject: string): Promise<SchemaMetadata>;
   getSchemaMetadata(subject: string, version: number, deleted: boolean): Promise<SchemaMetadata>;
@@ -221,7 +221,7 @@ export class SchemaRegistryClient implements Client {
     });
   }
 
-  async getBySubjectAndId(subject: string, id: number): Promise<SchemaInfo> {
+  async getBySubjectAndId(subject: string, id: number, format?: string): Promise<SchemaInfo> {
     const cacheKey = stringify({ subject, id });
     return await this.idToSchemaInfoMutex.runExclusive(async () => {
       const cachedSchema: SchemaInfo | undefined = this.idToSchemaInfoCache.get(cacheKey);
@@ -231,8 +231,10 @@ export class SchemaRegistryClient implements Client {
 
       subject = encodeURIComponent(subject);
 
+      let formatStr = format != null ? `&format=${format}` : '';
+
       const response: AxiosResponse<SchemaInfo> = await this.restService.handleRequest(
-        `/schemas/ids/${id}?subject=${subject}`,
+        `/schemas/ids/${id}?subject=${subject}${formatStr}`,
         'GET'
       );
       this.idToSchemaInfoCache.set(cacheKey, response.data);
