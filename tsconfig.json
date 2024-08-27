@@ -1,18 +1,31 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "lib": ["es6"],
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "strictNullChecks": true,
     "baseUrl": ".",
-    "types": ["node_modules/@types/node"],
+    "lib": [
+      "es2021", "dom"
+    ],
+    "module": "commonjs",
+    "target": "es2021",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node16",
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "useUnknownInCatchVariables": true,
+    "types": ["node_modules/@types/node", "jest"],
     "typeRoots": ["."],
     "noEmit": true,
-    "forceConsistentCasingInFileNames": true,
-    "strictFunctionTypes": true
+    "resolveJsonModule": true
   },
-  "files": [
-    "index.d.ts"
+  "include": [
+    "index.d.ts",
+    "schemaregistry/**/*",
+    "test/**/*"
   ]
 }
