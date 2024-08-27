@@ -27,7 +27,7 @@ import {
 } from '@criteria/json-schema/draft-07'
 import { validateJSON } from '@criteria/json-schema-validation'
 import { LRUCache } from "lru-cache";
-import { generateSchema } from "./json_util";
+import { generateSchema } from "./json-util";
 import {getRuleExecutors} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 
@@ -61,7 +61,7 @@ export class JsonSerializer extends Serializer implements JsonSerde {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
+      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
 
@@ -131,7 +131,7 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
     for (const rule of getRuleExecutors()) {
-      rule.configure(client.config(), conf.ruleConfig ?? new Map<string, string>)
+      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
 
@@ -317,7 +317,7 @@ async function transform(ctx: RuleContext, schema: DereferencedJSONSchema, path:
     case FieldType.BOOLEAN:
       if (fieldCtx != null) {
         const ruleTags = ctx.rule.tags
-        if (ruleTags == null || ruleTags.size === 0 || !disjoint(ruleTags, fieldCtx.tags)) {
+        if (ruleTags == null || ruleTags.length === 0 || !disjoint(new Set<string>(ruleTags), fieldCtx.tags)) {
           return await fieldTransform.transform(ctx, fieldCtx, msg)
         }
       }
