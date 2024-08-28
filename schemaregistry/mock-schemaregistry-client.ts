@@ -143,7 +143,7 @@ class MockClient implements Client {
     return cacheEntry.metadata.id;
   }
 
-  async getLatestSchemaMetadata(subject: string): Promise<SchemaMetadata> {
+  async getLatestSchemaMetadata(subject: string, format?: string): Promise<SchemaMetadata> {
     const version = await this.latestVersion(subject);
     if (version === -1) {
       throw new RestError("No versions found for subject", 404, 40400);
@@ -152,7 +152,7 @@ class MockClient implements Client {
     return this.getSchemaMetadata(subject, version);
   }
 
-  async getSchemaMetadata(subject: string, version: number, deleted: boolean = false): Promise<SchemaMetadata> {
+  async getSchemaMetadata(subject: string, version: number, deleted: boolean = false, format?: string): Promise<SchemaMetadata> {
     let json;
     for (const [key, value] of this.schemaToVersionCache.entries()) {
       const parsedKey = JSON.parse(key);
@@ -185,7 +185,8 @@ class MockClient implements Client {
     };
   }
 
-  async getLatestWithMetadata(subject: string, metadata: { [key: string]: string }, deleted: boolean = false): Promise<SchemaMetadata> {
+  async getLatestWithMetadata(subject: string, metadata: { [key: string]: string },
+                              deleted: boolean = false, format?: string): Promise<SchemaMetadata> {
     let metadataStr = '';
 
     for (const key in metadata) {
