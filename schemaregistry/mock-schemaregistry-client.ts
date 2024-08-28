@@ -124,7 +124,7 @@ class MockClient implements Client {
     this.schemaToVersionCache.set(cacheKey, { version: newVersion, softDeleted: false });
   }
 
-  async getBySubjectAndId(subject: string, id: number, format?: string): Promise<SchemaInfo> {
+  async getBySubjectAndId(subject: string, id: number, format: string): Promise<SchemaInfo> {
     const cacheKey = stringify({ subject, id });
     const cacheEntry = this.idToSchemaCache.get(cacheKey);
 
@@ -156,7 +156,7 @@ class MockClient implements Client {
     let json;
     for (const [key, value] of this.schemaToVersionCache.entries()) {
       const parsedKey = JSON.parse(key);
-      if (parsedKey.subject === subject && value.version === version && value.softDeleted === deleted) {
+      if (parsedKey.subject === subject && value.version === version) {
         json = parsedKey;
       }
     }

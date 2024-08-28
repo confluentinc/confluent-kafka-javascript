@@ -177,14 +177,15 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const refs: Reference[] = []
     for (let i = 0; i < fileDesc.dependencies.length; i++) {
       const dep = fileDesc.dependencies[i]
-      if (isBuiltin(dep.name)) {
+      const depName = dep.name + '.proto'
+      if (isBuiltin(depName)) {
         continue
       }
-      const ref = await this.resolveDependencies(dep, deps, dep.name, autoRegister, normalize)
+      const ref = await this.resolveDependencies(dep, deps, depName, autoRegister, normalize)
       if (ref == null) {
         throw new SerializationError('dependency not found')
       }
-      refs.push({name: dep.name, subject: ref.subject!, version: ref.version!})
+      refs.push({name: depName, subject: ref.subject!, version: ref.version!})
     }
     const info: SchemaInfo = {
       schema: deps.get(fileDesc.name)!,
@@ -233,8 +234,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       // done. Allocate an array large enough to hold count+1 entries and
       // populate first value with index
       const msgIndexes: number[] = []
-      msgIndexes.length = count + 1
-      msgIndexes[0] = index
+      msgIndexes.push(index)
       return msgIndexes
     } else {
       const msgIndexes = this.toMessageIndexes(parent, count + 1)
@@ -368,7 +368,6 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
         return fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
       }
     }
-    // TODO check google protos already in registry
     const fileRegistry = createFileRegistry(fileDesc, resolve)
     this.registry = createFileRegistry(this.registry, fileRegistry)
     return this.registry.getFile(fileDesc.name)
@@ -378,9 +377,8 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const bw = new BufferWrapper(payload)
     const count = bw.readVarInt()
     const msgIndexes = []
-    msgIndexes.length = count
     for (let i = 0; i < count; i++) {
-      msgIndexes[i] = bw.readVarInt()
+      msgIndexes.push(bw.readVarInt())
     }
     return [bw.pos, msgIndexes]
   }

@@ -71,15 +71,8 @@ export abstract class Serde {
     }
     for (let ref of references) {
       let metadata = await client.getSchemaMetadata(ref.subject, ref.version, true)
-      let info = {
-        schema: schema.schema,
-        schemaType: schema.schemaType,
-        references: schema.references,
-        metadata: schema.metadata,
-        ruleSet: schema.ruleSet,
-      }
       deps.set(ref.name, metadata.schema)
-      await this.resolveReferences(client, info, deps)
+      await this.resolveReferences(client, metadata, deps)
     }
   }
 
