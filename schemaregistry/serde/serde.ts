@@ -64,13 +64,13 @@ export abstract class Serde {
     return strategy(topic, this.serdeType, info)
   }
 
-  async resolveReferences(client: Client, schema: SchemaInfo, deps: Map<string, string>): Promise<void> {
+  async resolveReferences(client: Client, schema: SchemaInfo, deps: Map<string, string>, format?: string): Promise<void> {
     let references = schema.references
     if (references == null) {
       return
     }
     for (let ref of references) {
-      let metadata = await client.getSchemaMetadata(ref.subject, ref.version, true)
+      let metadata = await client.getSchemaMetadata(ref.subject, ref.version, true, format)
       deps.set(ref.name, metadata.schema)
       await this.resolveReferences(client, metadata, deps)
     }
@@ -244,10 +244,10 @@ export abstract class Serializer extends Serde {
         throw new SerializationError(`failed to match schema ID (${id} != ${useSchemaId})`)
       }
     } else if (useLatestWithMetadata != null && Object.keys(useLatestWithMetadata).length !== 0) {
-      info = await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true)
+      info = await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true, format)
       id = await this.client.getId(subject, info, false)
     } else if (useLatest) {
-      info = await this.client.getLatestSchemaMetadata(subject)
+      info = await this.client.getLatestSchemaMetadata(subject, format)
       id = await this.client.getId(subject, info, false)
     } else {
       id = await this.client.getId(subject, info, Boolean(normalizeSchema))
@@ -294,14 +294,14 @@ export abstract class Deserializer extends Serde {
     return await this.client.getBySubjectAndId(subject, id, format)
   }
 
-  async getReaderSchema(subject: string): Promise<SchemaMetadata | null> {
+  async getReaderSchema(subject: string, format?: string): Promise<SchemaMetadata | null> {
     let useLatestWithMetadata = this.config().useLatestWithMetadata
     let useLatest = this.config().useLatestVersion
     if (useLatestWithMetadata != null && Object.keys(useLatestWithMetadata).length !== 0) {
-      return await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true)
+      return await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true, format)
     }
     if (useLatest) {
-      return await this.client.getLatestSchemaMetadata(subject)
+      return await this.client.getLatestSchemaMetadata(subject, format)
     }
     return null
   }
@@ -339,7 +339,7 @@ export abstract class Deserializer extends Serde {
   }
 
   async getMigrations(subject: string, sourceInfo: SchemaInfo,
-                target: SchemaMetadata): Promise<Migration[]> {
+                target: SchemaMetadata, format?: string): Promise<Migration[]> {
     let version = await this.client.getVersion(subject, sourceInfo, false)
     let source: SchemaMetadata = {
       id: 0,
@@ -365,7 +365,7 @@ export abstract class Deserializer extends Serde {
       return migrations
     }
     let previous: SchemaMetadata | null = null
-    let versions = await this.getSchemasBetween(subject, first, last)
+    let versions = await this.getSchemasBetween(subject, first, last, format)
     for (let i = 0; i < versions.length; i++) {
       let version = versions[i]
       if (i === 0) {
@@ -398,7 +398,7 @@ export abstract class Deserializer extends Serde {
   }
 
   async getSchemasBetween(subject: string, first: SchemaMetadata,
-                    last: SchemaMetadata): Promise<SchemaMetadata[]> {
+                    last: SchemaMetadata, format?: string): Promise<SchemaMetadata[]> {
     if (last.version!-first.version! <= 1) {
       return [first, last]
     }
@@ -406,7 +406,7 @@ export abstract class Deserializer extends Serde {
     let version2 = last.version!
     let result = [first]
     for (let i = version1 + 1; i < version2; i++) {
-      let meta = await this.client.getSchemaMetadata(subject, i, true)
+      let meta = await this.client.getSchemaMetadata(subject, i, true, format)
       result.push(meta)
     }
     result.push(last)

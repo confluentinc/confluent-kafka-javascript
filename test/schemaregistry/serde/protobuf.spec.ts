@@ -1,4 +1,4 @@
-import {describe, expect, it} from '@jest/globals';
+import {afterEach, describe, expect, it} from '@jest/globals';
 import {ClientConfig} from "../../../schemaregistry/rest-service";
 import {
   ProtobufDeserializer, ProtobufDeserializerConfig,
@@ -26,10 +26,25 @@ import {DependencyMessageSchema} from "./test/dep_pb";
 const fieldEncryptionExecutor = FieldEncryptionExecutor.register()
 LocalKmsDriver.register()
 
+//const baseURL = 'http://localhost:8081'
+const baseURL = 'mock://'
+
+const topic = 'topic1'
+const subject = topic + '-value'
+
 describe('ProtobufSerializer', () => {
+  afterEach(async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    await client.deleteSubject(subject, false)
+    await client.deleteSubject(subject, true)
+  })
   it('basic serialization', async () => {
     let conf: ClientConfig = {
-      baseURLs: ['mock://'],
+      baseURLs: [baseURL],
       cacheCapacity: 1000
     }
     let client = SchemaRegistryClient.newClient(conf)
@@ -41,15 +56,15 @@ describe('ProtobufSerializer', () => {
       picture: Buffer.from([1, 2]),
       works: ['The Castle', 'The Trial']
     })
-    let bytes = await ser.serialize("topic1", obj)
+    let bytes = await ser.serialize(topic, obj)
 
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
-    let obj2 = await deser.deserialize("topic1", bytes)
+    let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
   })
   it('serialize second messsage', async () => {
     let conf: ClientConfig = {
-      baseURLs: ['mock://'],
+      baseURLs: [baseURL],
       cacheCapacity: 1000
     }
     let client = SchemaRegistryClient.newClient(conf)
@@ -59,15 +74,15 @@ describe('ProtobufSerializer', () => {
       size: 'Extra extra large',
       toppings: ['anchovies', 'mushrooms']
     })
-    let bytes = await ser.serialize("topic1", obj)
+    let bytes = await ser.serialize(topic, obj)
 
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
-    let obj2 = await deser.deserialize("topic1", bytes)
+    let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
   })
   it('serialize nested messsage', async () => {
     let conf: ClientConfig = {
-      baseURLs: ['mock://'],
+      baseURLs: [baseURL],
       cacheCapacity: 1000
     }
     let client = SchemaRegistryClient.newClient(conf)
@@ -76,15 +91,15 @@ describe('ProtobufSerializer', () => {
     let obj = create(NestedMessage_InnerMessageSchema, {
       id: "inner"
     })
-    let bytes = await ser.serialize("topic1", obj)
+    let bytes = await ser.serialize(topic, obj)
 
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
-    let obj2 = await deser.deserialize("topic1", bytes)
+    let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
   })
   it('serialize reference', async () => {
     let conf: ClientConfig = {
-      baseURLs: ['mock://'],
+      baseURLs: [baseURL],
       cacheCapacity: 1000
     }
     let client = SchemaRegistryClient.newClient(conf)
@@ -112,10 +127,10 @@ describe('ProtobufSerializer', () => {
       isActive: true,
       testMesssage: msg
     })
-    let bytes = await ser.serialize("topic1", obj)
+    let bytes = await ser.serialize(topic, obj)
 
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
-    let obj2 = await deser.deserialize("topic1", bytes)
+    let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.testMesssage.testString).toEqual(msg.testString);
     expect(obj2.testMesssage.testBool).toEqual(msg.testBool);
     expect(obj2.testMesssage.testBytes).toEqual(msg.testBytes);
@@ -126,7 +141,7 @@ describe('ProtobufSerializer', () => {
   })
   it('basic encryption', async () => {
     let conf: ClientConfig = {
-      baseURLs: ['mock://'],
+      baseURLs: [baseURL],
       cacheCapacity: 1000
     }
     let client = SchemaRegistryClient.newClient(conf)
@@ -158,13 +173,12 @@ describe('ProtobufSerializer', () => {
     }
 
     let info: SchemaInfo = {
-      schemaType: 'AVRO',
+      schemaType: 'PROTOBUF',
       schema: Buffer.from(toBinary(FileDescriptorProtoSchema, file_test_schemaregistry_serde_example.proto)).toString('base64'),
       ruleSet
     }
 
-    let id = await client.register('topic1-value', info, false)
-    expect(id).toEqual(1)
+    await client.register(subject, info, false)
 
     let obj = create(AuthorSchema, {
       name: 'Kafka',
@@ -172,7 +186,7 @@ describe('ProtobufSerializer', () => {
       picture: Buffer.from([1, 2]),
       works: ['The Castle', 'The Trial']
     })
-    let bytes = await ser.serialize("topic1", obj)
+    let bytes = await ser.serialize(topic, obj)
 
     // reset encrypted field
     obj.name = 'Kafka'
@@ -185,7 +199,7 @@ describe('ProtobufSerializer', () => {
     }
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, deserConfig)
     fieldEncryptionExecutor.client = dekClient
-    let obj2 = await deser.deserialize("topic1", bytes)
+    let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
   })
 })

@@ -10,7 +10,7 @@ import {
   Client, RuleMode,
   SchemaInfo
 } from "../schemaregistry-client";
-import avro, { ForSchemaOptions, Type, types } from "avsc";
+import avro, {ForSchemaOptions, Type, types} from "avsc";
 import UnwrappedUnionType = types.UnwrappedUnionType
 import WrappedUnionType = types.WrappedUnionType
 import ArrayType = types.ArrayType
@@ -53,7 +53,31 @@ export class AvroSerializer extends Serializer implements AvroSerde {
       throw new Error('message is empty')
     }
 
-    let avroSchema = Type.forValue(msg)
+    let enumIndex = 1
+    let fixedIndex = 1
+    let recordIndex = 1
+
+    const namingHook: TypeHook = (
+      avroSchema: avro.Schema,
+      opts: ForSchemaOptions,
+    ) => {
+      let schema = avroSchema as any
+      switch (schema.type) {
+        case 'enum':
+          schema.name = `Enum${enumIndex++}`;
+          break;
+        case 'fixed':
+          schema.name = `Fixed${fixedIndex++}`;
+          break;
+        case 'record':
+          schema.name = `Record${recordIndex++}`;
+          break;
+        default:
+      }
+      return undefined
+    }
+
+    let avroSchema = Type.forValue(msg, { typeHook: namingHook })
     const schema: SchemaInfo = {
       schemaType: 'AVRO',
       schema: JSON.stringify(avroSchema),
@@ -384,3 +408,5 @@ function impliedNamespace(name: string): string | null {
   const match = /^(.*)\.[^.]+$/.exec(name)
   return match ? match[1] : null
 }
+
+

@@ -307,7 +307,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const messageDesc = this.toMessageDesc(fd, msgIndexes)
 
     const subject = this.subjectName(topic, info)
-    const readerMeta = await this.getReaderSchema(subject)
+    const readerMeta = await this.getReaderSchema(subject, 'serialized')
 
     const msgBytes = payload.subarray(5 + bytesRead)
     let msg = fromBinary(messageDesc, msgBytes)
@@ -351,7 +351,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
 
   async parseFileDesc(client: Client, info: SchemaInfo): Promise<DescFile | undefined> {
     const deps = new Map<string, string>()
-    await this.resolveReferences(client, info, deps)
+    await this.resolveReferences(client, info, deps, 'serialized')
     const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(info.schema, 'base64'))
     const resolve = (depName: string) => {
       if (isBuiltin(depName)) {

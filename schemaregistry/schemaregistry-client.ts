@@ -273,7 +273,7 @@ export class SchemaRegistryClient implements Client {
 
       subject = encodeURIComponent(subject);
 
-      let formatStr = format != null ? `&format=${format}` : '';
+      let formatStr = format != null ? `?format=${format}` : '';
 
       const response: AxiosResponse<SchemaMetadata> = await this.restService.handleRequest(
         `/subjects/${subject}/versions/latest${formatStr}`,
