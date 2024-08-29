@@ -21,7 +21,7 @@ import {
   FileRegistry,
   fromBinary, getExtension, hasExtension, MutableRegistry,
   ScalarType,
-  toBinary
+  toBinary,
 } from "@bufbuild/protobuf";
 import {
   file_google_protobuf_any,
@@ -365,7 +365,9 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
         if (dep == null) {
           throw new SerializationError(`dependency ${depName} not found`)
         }
-        return fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
+        const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
+        fileDesc.name = depName
+        return fileDesc
       }
     }
     const fileRegistry = createFileRegistry(fileDesc, resolve)
