@@ -115,6 +115,34 @@ describe('AvroSerializer', () => {
     expect(obj2.boolField).toEqual(obj.boolField);
     expect(obj2.bytesField).toEqual(obj.bytesField);
   })
+  it('serialize nested', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new AvroSerializer(client, SerdeType.VALUE, {autoRegisterSchemas: true})
+
+    let nested = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    let obj = {
+      otherField: nested
+    }
+    let bytes = await ser.serialize(topic, obj)
+
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.otherField.intField).toEqual(nested.intField);
+    expect(obj2.otherField.doubleField).toBeCloseTo(nested.doubleField, 0.001);
+    expect(obj2.otherField.stringField).toEqual(nested.stringField);
+    expect(obj2.otherField.boolField).toEqual(nested.boolField);
+    expect(obj2.otherField.bytesField).toEqual(nested.bytesField);
+  })
   it('serialize reference', async () => {
     let conf: ClientConfig = {
       baseURLs: [baseURL],
