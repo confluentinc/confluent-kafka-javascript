@@ -199,8 +199,10 @@ async function toType(
     schema: avro.Schema,
     opts: ForSchemaOptions,
   ) => {
-    deps.forEach((_name, schema) => {
-      avro.Type.forSchema(JSON.parse(schema), opts)
+    const avroOpts = opts as AvroSerdeConfig
+    deps.forEach((schema, _name) => {
+      avroOpts.typeHook = userHook
+      avro.Type.forSchema(JSON.parse(schema), avroOpts)
     })
     if (userHook) {
       return userHook(schema, opts)

@@ -46,6 +46,18 @@ const demoSchema = `
   ]
 }
 `
+const rootPointerSchema = `
+{
+  "name": "NestedTestPointerRecord",
+  "type": "record",
+  "fields": [
+  {
+    "name": "otherField",
+    "type": ["null", "DemoSchema"]
+  }
+]
+}
+`
 const f1Schema = `
 {
   "name": "F1Schema",
@@ -102,6 +114,51 @@ describe('AvroSerializer', () => {
     expect(obj2.stringField).toEqual(obj.stringField);
     expect(obj2.boolField).toEqual(obj.boolField);
     expect(obj2.bytesField).toEqual(obj.bytesField);
+  })
+  it('serialize reference', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new AvroSerializer(client, SerdeType.VALUE, {useLatestVersion: true})
+
+    let info: SchemaInfo = {
+      schemaType: 'AVRO',
+      schema: demoSchema,
+    }
+    await client.register('demo-value', info , false)
+
+    info = {
+      schemaType: 'AVRO',
+      schema: rootPointerSchema,
+      references: [{
+        name: 'DemoSchema',
+        subject: 'demo-value',
+        version: 1
+      }]
+    }
+    await client.register(subject, info , false)
+
+    let nested = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    let obj = {
+      otherField: nested
+    }
+    let bytes = await ser.serialize(topic, obj)
+
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.otherField.intField).toEqual(nested.intField);
+    expect(obj2.otherField.doubleField).toBeCloseTo(nested.doubleField, 0.001);
+    expect(obj2.otherField.stringField).toEqual(nested.stringField);
+    expect(obj2.otherField.boolField).toEqual(nested.boolField);
+    expect(obj2.otherField.bytesField).toEqual(nested.bytesField);
   })
   it('basic encryption', async () => {
     let conf: ClientConfig = {

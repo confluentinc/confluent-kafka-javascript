@@ -213,7 +213,7 @@ async function toValidateFunction(
   const spec = json.$schema
   if (spec === 'http://json-schema.org/draft/2020-12/schema') {
     const ajv2020 = new Ajv2020(conf as JsonSerdeConfig)
-    deps.forEach((name, schema) => {
+    deps.forEach((schema, name) => {
       ajv2020.addSchema(JSON.parse(schema), name)
     })
     fn = ajv2020.compile(json)
@@ -221,7 +221,7 @@ async function toValidateFunction(
     const ajv = new Ajv2019(conf as JsonSerdeConfig)
     ajv.addMetaSchema(draft6MetaSchema)
     ajv.addMetaSchema(draft7MetaSchema)
-    deps.forEach((name, schema) => {
+    deps.forEach((schema, name) => {
       ajv.addSchema(JSON.parse(schema), name)
     })
     fn = ajv.compile(json)
