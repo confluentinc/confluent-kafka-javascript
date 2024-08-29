@@ -25,6 +25,15 @@ const baseURL = 'mock://'
 const topic = 'topic1'
 const subject = topic + '-value'
 
+const rootSchema = `
+{
+  "type": "object",
+  "properties": {
+    "otherField": { "$ref": "DemoSchema" }
+  }
+}
+`
+
 const demoSchema = `
 {
   "type": "object",
@@ -62,6 +71,44 @@ describe('JsonSerializer', () => {
     }
     let client = SchemaRegistryClient.newClient(conf)
     let ser = new JsonSerializer(client, SerdeType.VALUE, {autoRegisterSchemas: true})
+    let obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    let bytes = await ser.serialize(topic, obj)
+
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+  it('serialize reference', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new JsonSerializer(client, SerdeType.VALUE, {useLatestVersion: true})
+
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema: demoSchema
+    }
+    await client.register('demo-value', info, false)
+
+    info = {
+      schemaType: 'JSON',
+      schema: rootSchema,
+      references: [{
+        name: 'DemoSchema',
+        subject: 'demo-value',
+        version: 1
+      }]
+    }
+    await client.register(subject, info, false)
+
     let obj = {
       intField: 123,
       doubleField: 45.67,
