@@ -81,7 +81,7 @@ export class FieldEncryptionExecutor extends FieldRuleExecutor {
     return transform
   }
 
-  async close() {
+  async close(): Promise<void> {
     if (this.client != null) {
       await this.client.close()
     }
