@@ -9,7 +9,7 @@ import {
 } from "../../serde/serde";
 import {RuleMode,} from "../../schemaregistry-client";
 import {Client, Dek, DekRegistryClient, Kek} from "../../dekregistry/dekregistry-client";
-import {registerRuleExecutor} from "../../serde/rule-registry";
+import {RuleRegistry} from "../../serde/rule-registry";
 import {ClientConfig} from "../../rest-service";
 import {RestError} from "../../rest-error";
 import * as Random from './tink/random';
@@ -59,7 +59,7 @@ export class FieldEncryptionExecutor extends FieldRuleExecutor {
 
   static register(): FieldEncryptionExecutor {
     const executor = new FieldEncryptionExecutor()
-    registerRuleExecutor(executor)
+    RuleRegistry.registerRuleExecutor(executor)
     return executor
   }
 
