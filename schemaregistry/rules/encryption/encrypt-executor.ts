@@ -8,7 +8,7 @@ import {
   RuleError,
 } from "../../serde/serde";
 import {RuleMode,} from "../../schemaregistry-client";
-import {Client, Dek, DekRegistryClient, Kek} from "../../dekregistry/dekregistry-client";
+import {Client, Dek, DekRegistryClient, Kek} from "./dekregistry/dekregistry-client";
 import {RuleRegistry} from "../../serde/rule-registry";
 import {ClientConfig} from "../../rest-service";
 import {RestError} from "../../rest-error";
