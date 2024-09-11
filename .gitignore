@@ -1,5 +1,4 @@
 build/
-dist/
 node_modules/
 deps/librdkafka
 npm-debug.log
