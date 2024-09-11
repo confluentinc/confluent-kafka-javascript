@@ -1,4 +1,4 @@
-import {registerRuleExecutor} from "../../serde/rule-registry";
+import {RuleRegistry} from "../../serde/rule-registry";
 import {RuleContext, RuleExecutor} from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
 import {LRUCache} from "lru-cache";
@@ -10,7 +10,7 @@ export class JsonataExecutor implements RuleExecutor {
 
   static register(): JsonataExecutor {
     const executor = new JsonataExecutor()
-    registerRuleExecutor(executor)
+    RuleRegistry.registerRuleExecutor(executor)
     return executor
   }
 
