@@ -22,7 +22,7 @@
     "typeRoots": ["."],
     "noEmit": true,
     "resolveJsonModule": true,
-    "skipLibcheck": true
+    "skipLibCheck": true
   },
   "include": [
     "index.d.ts",
