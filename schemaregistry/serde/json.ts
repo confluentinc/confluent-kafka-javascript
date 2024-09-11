@@ -28,7 +28,7 @@ import {
 import { validateJSON } from '@criteria/json-schema-validation'
 import { LRUCache } from "lru-cache";
 import { generateSchema } from "./json-util";
-import {getRuleExecutors} from "./rule-registry";
+import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 
 export interface ValidateFunction {
@@ -53,14 +53,14 @@ export class JsonSerializer extends Serializer implements JsonSerde {
   schemaToTypeCache: LRUCache<string, DereferencedJSONSchema>
   schemaToValidateCache: LRUCache<string, ValidateFunction>
 
-  constructor(client: Client, serdeType: SerdeType, conf: JsonSerializerConfig) {
-    super(client, serdeType, conf)
+  constructor(client: Client, serdeType: SerdeType, conf: JsonSerializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
     this.schemaToTypeCache = new LRUCache<string, DereferencedJSONSchema>({ max: this.config().cacheCapacity ?? 1000 })
     this.schemaToValidateCache = new LRUCache<string, ValidateFunction>({ max: this.config().cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
-    for (const rule of getRuleExecutors()) {
+    for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
@@ -123,14 +123,14 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
   schemaToTypeCache: LRUCache<string, DereferencedJSONSchema>
   schemaToValidateCache: LRUCache<string, ValidateFunction>
 
-  constructor(client: Client, serdeType: SerdeType, conf: JsonDeserializerConfig) {
-    super(client, serdeType, conf)
+  constructor(client: Client, serdeType: SerdeType, conf: JsonDeserializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
     this.schemaToTypeCache = new LRUCache<string, DereferencedJSONSchema>({ max: this.config().cacheCapacity ?? 1000 })
     this.schemaToValidateCache = new LRUCache<string, ValidateFunction>({ max: this.config().cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
-    for (const rule of getRuleExecutors()) {
+    for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }

@@ -1,6 +1,6 @@
 import { LRUCache } from 'lru-cache';
 import { Mutex } from 'async-mutex';
-import { ClientConfig, RestService } from '../rest-service';
+import { ClientConfig, RestService } from '../../../rest-service';
 import stringify from 'json-stringify-deterministic';
 import {MockDekRegistryClient} from "./mock-dekregistry-client";
 

@@ -18,7 +18,7 @@ import MapType = types.MapType
 import RecordType = types.RecordType
 import Field = types.Field
 import { LRUCache } from 'lru-cache'
-import {getRuleExecutors} from "./rule-registry";
+import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 
 type TypeHook = (schema: avro.Schema, opts: ForSchemaOptions) => Type | undefined
@@ -34,13 +34,13 @@ export type AvroSerializerConfig = SerializerConfig & AvroSerdeConfig
 export class AvroSerializer extends Serializer implements AvroSerde {
   schemaToTypeCache: LRUCache<string, [avro.Type, Map<string, string>]>
 
-  constructor(client: Client, serdeType: SerdeType, conf: AvroSerializerConfig) {
-    super(client, serdeType, conf)
+  constructor(client: Client, serdeType: SerdeType, conf: AvroSerializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
     this.schemaToTypeCache = new LRUCache<string, [Type, Map<string, string>]>({ max: this.conf.cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
-    for (const rule of getRuleExecutors()) {
+    for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
@@ -111,13 +111,13 @@ export type AvroDeserializerConfig = DeserializerConfig & AvroSerdeConfig
 export class AvroDeserializer extends Deserializer implements AvroSerde {
   schemaToTypeCache: LRUCache<string, [avro.Type, Map<string, string>]>
 
-  constructor(client: Client, serdeType: SerdeType, conf: AvroDeserializerConfig) {
-    super(client, serdeType, conf)
+  constructor(client: Client, serdeType: SerdeType, conf: AvroDeserializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
     this.schemaToTypeCache = new LRUCache<string, [Type, Map<string, string>]>({ max: this.conf.cacheCapacity ?? 1000 })
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
-    for (const rule of getRuleExecutors()) {
+    for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }

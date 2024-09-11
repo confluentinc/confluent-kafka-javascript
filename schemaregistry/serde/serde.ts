@@ -7,7 +7,7 @@ import {
   SchemaInfo,
   SchemaMetadata
 } from "../schemaregistry-client";
-import {getRuleAction, getRuleExecutor} from "./rule-registry";
+import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
 
 export enum SerdeType {
@@ -46,11 +46,13 @@ export abstract class Serde {
   serdeType: SerdeType
   conf: SerdeConfig
   fieldTransformer: FieldTransformer | null = null
+  ruleRegistry: RuleRegistry
 
-  protected constructor(client: Client, serdeType: SerdeType, conf: SerdeConfig) {
+  protected constructor(client: Client, serdeType: SerdeType, conf: SerdeConfig, ruleRegistry?: RuleRegistry) {
     this.client = client
     this.serdeType = serdeType
     this.conf = conf
+    this.ruleRegistry = ruleRegistry ?? RuleRegistry.getGlobalInstance()
   }
 
   abstract config(): SerdeConfig
@@ -126,7 +128,7 @@ export abstract class Serde {
       }
       let ctx = new RuleContext(source, target, subject, topic,
         this.serdeType === SerdeType.KEY, ruleMode, rule, i, rules, inlineTags, this.fieldTransformer!)
-      let ruleExecutor = getRuleExecutor(rule.type)
+      let ruleExecutor = this.ruleRegistry.getExecutor(rule.type)
       if (ruleExecutor == null) {
         await this.runAction(ctx, ruleMode, rule, rule.onFailure, msg,
           new Error(`could not find rule executor of type ${rule.type}`), 'ERROR')
@@ -200,7 +202,7 @@ export abstract class Serde {
     } else if (actionName === 'NONE') {
       return new NoneAction()
     }
-    return getRuleAction(actionName)
+    return this.ruleRegistry.getAction(actionName)
   }
 }
 
@@ -214,8 +216,8 @@ export interface SerializerConfig extends SerdeConfig {
 }
 
 export abstract class Serializer extends Serde {
-  protected constructor(client: Client, serdeType: SerdeType, conf: SerializerConfig) {
-    super(client, serdeType, conf)
+  protected constructor(client: Client, serdeType: SerdeType, conf: SerializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
   }
 
   override config(): SerializerConfig {
@@ -272,8 +274,8 @@ export interface Migration {
 }
 
 export abstract class Deserializer extends Serde {
-  protected constructor(client: Client, serdeType: SerdeType, conf: DeserializerConfig) {
-    super(client, serdeType, conf)
+  protected constructor(client: Client, serdeType: SerdeType, conf: DeserializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
   }
 
   override config(): DeserializerConfig {

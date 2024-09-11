@@ -38,7 +38,7 @@ import {
 import { BufferWrapper, MAX_VARINT_LEN_64 } from "./buffer-wrapper";
 import { LRUCache } from "lru-cache";
 import {field_meta, file_confluent_meta, Meta} from "../confluent/meta_pb";
-import {getRuleExecutors} from "./rule-registry";
+import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 import {file_confluent_types_decimal} from "../confluent/types/decimal_pb";
 import {file_google_type_calendar_period} from "../google/type/calendar_period_pb";
@@ -97,15 +97,15 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   schemaToDescCache: LRUCache<string, DescFile>
   descToSchemaCache: LRUCache<string, SchemaInfo>
 
-  constructor(client: Client, serdeType: SerdeType, conf: ProtobufSerializerConfig) {
-    super(client, serdeType, conf)
+  constructor(client: Client, serdeType: SerdeType, conf: ProtobufSerializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
     this.registry = conf.registry ?? createMutableRegistry()
     this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
     this.descToSchemaCache = new LRUCache<string, SchemaInfo>({ max: this.config().cacheCapacity ?? 1000 } )
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
-    for (const rule of getRuleExecutors()) {
+    for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }
@@ -281,14 +281,14 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   registry: FileRegistry
   schemaToDescCache: LRUCache<string, DescFile>
 
-  constructor(client: Client, serdeType: SerdeType, conf: ProtobufDeserializerConfig) {
-    super(client, serdeType, conf)
+  constructor(client: Client, serdeType: SerdeType, conf: ProtobufDeserializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
     this.registry = createFileRegistry()
     this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
     }
-    for (const rule of getRuleExecutors()) {
+    for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
   }

@@ -1,7 +1,7 @@
 import { Client, Dek, Kek } from "./dekregistry-client";
 import { MOCK_TS } from "./constants";
 import stringify from "json-stringify-deterministic";
-import {RestError} from "../rest-error";
+import {RestError} from "../../../rest-error";
 
 class MockDekRegistryClient implements Client {
   private kekCache: Map<string, Kek>;
