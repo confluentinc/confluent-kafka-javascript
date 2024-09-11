@@ -5,10 +5,13 @@ npm-debug.log
 
 docs
 
+examples/**/package-lock.json
+
 deps/*
 !deps/*.gyp
 !deps/windows-install.*
 
 .DS_Store
 
+.idea
 .vscode
