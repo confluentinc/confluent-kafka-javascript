@@ -73,7 +73,7 @@ export class JsonSerializer extends Serializer implements JsonSerde {
       throw new Error('message is empty')
     }
 
-    const jsonSchema = generateSchema(msg)
+    const jsonSchema = JsonSerializer.messageToSchema(msg)
     const schema: SchemaInfo = {
       schemaType: 'JSON',
       schema: JSON.stringify(jsonSchema),
@@ -92,14 +92,14 @@ export class JsonSerializer extends Serializer implements JsonSerde {
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
-    const schema = this.toType(ctx.target)
+    const schema = await this.toType(ctx.target)
     if (typeof schema === 'boolean') {
       return msg
     }
     return await transform(ctx, schema, '$', msg, fieldTransform)
   }
 
-  toType(info: SchemaInfo): DereferencedJSONSchema {
+  async toType(info: SchemaInfo): Promise<DereferencedJSONSchema> {
     return toType(this.client, this.conf as JsonDeserializerConfig, this, info, async (client, info) => {
       const deps = new Map<string, string>()
       await this.resolveReferences(client, info, deps)
@@ -114,6 +114,10 @@ export class JsonSerializer extends Serializer implements JsonSerde {
         return deps
       },
     )
+  }
+
+  static messageToSchema(msg: any): DereferencedJSONSchema {
+    return generateSchema(msg)
   }
 }
 
@@ -173,7 +177,7 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
-    const schema = this.toType(ctx.target)
+    const schema = await this.toType(ctx.target)
     return await transform(ctx, schema, '$', msg, fieldTransform)
   }
 
