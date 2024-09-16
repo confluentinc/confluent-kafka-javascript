@@ -85,6 +85,26 @@ const demoSchemaWithUnion = `
   }
 }
 `
+const demoSchema2020_12 = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "intField": { "type": "integer" },
+    "doubleField": { "type": "number" },
+    "stringField": {
+       "type": "string",
+       "confluent:tags": [ "PII" ]
+    },
+    "boolField": { "type": "boolean" },
+    "bytesField": {
+       "type": "string",
+       "contentEncoding": "base64",
+       "confluent:tags": [ "PII" ]
+    }
+  }
+}
+`
 
 describe('JsonSerializer', () => {
   afterEach(async () => {
@@ -216,6 +236,37 @@ describe('JsonSerializer', () => {
     }
 
     await expect(() => ser.serialize(topic, diffObj)).rejects.toThrow(SerializationError)
+  })
+  it('basic serialization 2020-12', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new JsonSerializer(client, SerdeType.VALUE, {
+      useLatestVersion: true,
+      validate: true
+    })
+
+    let obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema: demoSchema2020_12
+    }
+
+    await client.register(subject, info, false)
+
+    let bytes = await ser.serialize(topic, obj)
+
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
   })
   it('basic encryption', async () => {
     let conf: ClientConfig = {
