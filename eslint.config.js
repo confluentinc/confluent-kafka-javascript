@@ -21,6 +21,7 @@ const ckjsSpecificSettings = {
         "no-caller": "error",
         "no-new": "error",
         "no-eq-null": "error",
+        "no-trailing-spaces": "error",
         "no-constant-condition": "off",
         "semi": "error"
     }
@@ -37,12 +38,12 @@ module.exports = ts.config(
     {
         ...js.configs.recommended,
         files: ["lib/**/*.js", "test/promisified/**/*.js"],
-        ignores: ["lib/kafkajs/_heap.js"]
+        ignores: []
     },
     {
         ...ckjsSpecificSettings,
         files: ["lib/**/*.js", "test/promisified/**/*.js"],
-        ignores: ["lib/kafkajs/_heap.js"]
+        ignores: []
     },
     {
         ...jest.configs['flat/recommended'],

@@ -168,7 +168,7 @@ export type Producer = Client & {
   transaction(): Promise<Transaction>
   commit(): Promise<void>
   abort(): Promise<void>
-  sendOffsets(args: { consumerGroupId?: string, consumer?: Consumer, topics: TopicOffsets[] }): Promise<void>
+  sendOffsets(args: { consumer: Consumer, topics: TopicOffsets[] }): Promise<void>
   isActive(): boolean
 }
 
@@ -287,6 +287,7 @@ export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; replace?: b
 
 export type ConsumerRunConfig = {
   eachBatchAutoResolve?: boolean,
+  partitionsConsumedConcurrently?: number,
   eachMessage?: EachMessageHandler
   eachBatch?: EachBatchHandler
 }
@@ -317,7 +318,7 @@ export type Consumer = Client & {
   storeOffsets(topicPartitions: Array<TopicPartitionOffsetAndMetadata>): void
   commitOffsets(topicPartitions?: Array<TopicPartitionOffsetAndMetadata>): Promise<void>
   committed(topicPartitions?: Array<TopicPartition>, timeout?: number): Promise<TopicPartitionOffsetAndMetadata[]>
-  seek(topicPartitionOffset: TopicPartitionOffset): Promise<void>
+  seek(topicPartitionOffset: TopicPartitionOffset): void
   pause(topics: Array<{ topic: string; partitions?: number[] }>): void
   paused(): TopicPartitions[]
   resume(topics: Array<{ topic: string; partitions?: number[] }>): void
