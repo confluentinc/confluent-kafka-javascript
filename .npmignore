@@ -5,6 +5,8 @@ deps/*
 .gitmodules
 Dockerfile
 deps/librdkafka/config.h
+schemaregistry
 build
 .github
 .vscode
+.semaphore
