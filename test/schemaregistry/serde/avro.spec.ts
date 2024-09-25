@@ -261,8 +261,8 @@ GcpKmsDriver.register()
 HcVaultDriver.register()
 LocalKmsDriver.register()
 
-//const baseURL = 'http://localhost:8081'
-const baseURL = 'mock://'
+const baseURL = 'http://localhost:8081'
+//const baseURL = 'mock://'
 
 const topic = 'topic1'
 const subject = topic + '-value'
@@ -401,6 +401,7 @@ describe('AvroSerializer', () => {
 
     await client.register(subject, info, false)
 
+    await client.clearLatestCaches()
     let deser = new AvroDeserializer(client, SerdeType.VALUE, {useLatestVersion: true})
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.fieldToDelete).toEqual(undefined);
