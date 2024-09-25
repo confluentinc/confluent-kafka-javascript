@@ -426,11 +426,11 @@ class MockClient implements Client {
     return config;
   }
 
-  async clearLatestCaches(): Promise<void> {
+  clearLatestCaches(): void {
     return;
   }
 
-  async clearCaches(): Promise<void> {
+  clearCaches(): void {
     return;
   }
 

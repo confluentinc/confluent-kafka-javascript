@@ -559,12 +559,12 @@ export class SchemaRegistryClient implements Client {
     return response.data;
   }
 
-  async clearLatestCaches(): Promise<void> {
+  clearLatestCaches(): void {
     this.latestToSchemaCache.clear();
     this.metadataToSchemaCache.clear();
   }
 
-  async clearCaches(): Promise<void> {
+  clearCaches(): void {
     this.schemaToIdCache.clear();
     this.idToSchemaInfoCache.clear();
     this.infoToSchemaCache.clear();
