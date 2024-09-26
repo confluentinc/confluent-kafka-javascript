@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "LICENSE.txt",
+    "dist/"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.37.0",
