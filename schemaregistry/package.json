@@ -50,9 +50,9 @@
     "validator": "^13.12.0"
   },
   "scripts": {
-    "test:types": "tsc -p .",
-    "test:schemaregistry": "make -f Makefile test",
-    "build": "npx tsc -p tsconfig-build.json"
+    "lint": "make lint",
+    "test": "make test",
+    "build": "rm -rf ./dist && tsc -p tsconfig-build.json"
   },
   "keywords": [
     "schemaregistry",
