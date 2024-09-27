@@ -419,7 +419,7 @@ export class SchemaRegistryClient implements Client {
 
   /**
    * Get all versions of a schema for a subject.
-   * @param subject
+   * @param subject - The subject for which to get all versions.
    */
   async getAllVersions(subject: string): Promise<number[]> {
     const response: AxiosResponse<number[]> = await this.restService.handleRequest(
