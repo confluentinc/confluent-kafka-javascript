@@ -66,9 +66,9 @@ const run = async () => {
             schema: JSON.stringify(schemaA),
             references: [
                 {
-                  name: 'test.B',
-                  subject: 'avro-b',
-                  version,
+                    name: 'test.B',
+                    subject: 'avro-b',
+                    version,
                 },
             ],
         }
