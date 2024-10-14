@@ -133,10 +133,7 @@ blocks:
           - sudo apt-get install -y librdkafka-dev bc
           - export CKJS_LINKING=dynamic
           - export BUILD_LIBRDKAFKA=0
-          - npm ci
-          - npx node-pre-gyp --build-from-source clean
-          - npx node-pre-gyp --build-from-source configure
-          - npx node-pre-gyp --build-from-source build
+          - npm run install-from-source
       jobs:
         - name: "Performance Test"
           commands:
@@ -144,7 +141,7 @@ blocks:
             - docker compose up -d && sleep 30
             - export NODE_OPTIONS='--max-old-space-size=1536'
             - cd examples/performance
-            - npm ci
+            - npm install
             - bash -c '../../ci/tests/run_perf_test.sh'
 
   - name: "Linux amd64: Release"
