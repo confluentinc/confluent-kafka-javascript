@@ -11,7 +11,7 @@
     "build": "node-gyp build",
     "test": "make test",
     "install": "node-pre-gyp install --fallback-to-build",
-    "install-from-source": "node-pre-gyp install --build-from-source=@confluentinc/kafka-javascript --fallback-to-build",
+    "install-from-source": "npm ci && node-pre-gyp install --build-from-source=@confluentinc/kafka-javascript --fallback-to-build",
     "prepack": "node ./ci/prepublish.js",
     "test:types": "tsc -p ."
   },
