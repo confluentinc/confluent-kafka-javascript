@@ -10,11 +10,5 @@
   "license": "MIT",
   "dependencies": {
     "@confluentinc/kafka-javascript": "file:.."
-  },
-  "workspaces": [
-    "kafkajs/oauthbearer_calback_authentication",
-    "node-rdkafka/oauthbearer_callback_authentication",
-    "performance",
-    "typescript"
-  ]
+  }
 }
