@@ -79,7 +79,6 @@
   },
   "workspaces": [
     ".",
-    "examples",
     "schemaregistry",
     "schemaregistry-examples"
   ]
