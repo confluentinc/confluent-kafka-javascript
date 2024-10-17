@@ -241,3 +241,15 @@ If it's needed to change librdkafka version, see the **Updating librdkafka versi
 
 1. Create a new GitHub release with the tag, and upload the release artifacts from Semaphore CI.
    The release title should be the same string as `version` in `package.json`.
+
+1. build schemaregistry project to prepare for the release:
+   `(cd schemaregistry && npm run build)`
+
+1. Clear any file that isn't ignored by `.npmignore`
+
+1. In case it's a release candidate add `--tag rc` to the following commands,
+   to avoid setting it as latest one
+
+1. Publish Kafka client `npm publish --workspace=. --otp=<otp_here>`
+
+1. Publish Schema Registry client `npm publish --workspace=schemaregistry --otp=<otp_here>`
