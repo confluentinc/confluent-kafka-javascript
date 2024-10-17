@@ -233,6 +233,8 @@ Steps to update:
 1. Increment the `version` in `package.json`. Change the version in `util.js` too.
 If it's needed to change librdkafka version, see the **Updating librdkafka version** section.
 
+1. Run `npm run prepack` to verify package version.
+
 1. Run `npm install` to update the `package-lock.json` file.
 
 1. Create a PR and merge the above changes, and tag the merged commit with the new version. This should be the same string as `version` in `package.json`.
