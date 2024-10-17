@@ -252,6 +252,6 @@ If it's needed to change librdkafka version, see the **Updating librdkafka versi
 1. In case it's a release candidate add `--tag rc` to the following commands,
    to avoid setting it as latest one
 
-1. Publish Kafka client `npm publish --workspace=. --otp=<otp_here>`
+1. Publish Kafka client, with `--dry-run` first: `npm publish --dry-run --workspace=. --otp=<otp_here>`
 
-1. Publish Schema Registry client `npm publish --workspace=schemaregistry --otp=<otp_here>`
+1. Publish Schema Registry client, with `--dry-run` first: `npm publish --dry-run --workspace=schemaregistry --otp=<otp_here>`
