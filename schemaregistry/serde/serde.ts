@@ -512,16 +512,15 @@ export class RuleContext {
 
   getParameter(name: string): string | null {
     const params = this.rule.params
-    if (params == null) {
-      return null
-    }
-    let value = params[name]
-    if (value != null) {
-      return value
+    if (params != null) {
+      let value = params[name]
+      if (value != null) {
+        return value
+      }
     }
     let metadata = this.target.metadata
     if (metadata != null && metadata.properties != null) {
-      value = metadata.properties[name]
+      let value = metadata.properties[name]
       if (value != null) {
         return value
       }
