@@ -544,8 +544,9 @@ export class RuleContext {
     return this.fieldContexts[size - 1]
   }
 
-  enterField(containingMessage: any, fullName: string, name: string, fieldType: FieldType, tags: Set<string>): FieldContext {
-    let allTags = new Set<string>(tags)
+  enterField(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
+             tags: Set<string> | null): FieldContext {
+    let allTags = new Set<string>(tags ?? this.getInlineTags(fullName))
     for (let v of this.getTags(fullName)) {
       allTags.add(v)
     }
