@@ -424,7 +424,7 @@ export abstract class Deserializer extends Serde {
       previous = version
     }
     if (migrationMode === RuleMode.DOWNGRADE) {
-      migrations = migrations.map(x => x).reverse()
+      migrations = migrations.reverse()
     }
     return migrations
   }
