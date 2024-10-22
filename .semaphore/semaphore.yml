@@ -116,7 +116,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-amd64-4
+          type: s1-nonprod-ubuntu20-04-amd64-1
       env_vars:
         - name: TARGET_PRODUCE_PERFORMANCE
           value: "35"
@@ -143,7 +143,6 @@ blocks:
             - cd examples/performance
             - npm install
             - bash -c '../../ci/tests/run_perf_test.sh'
-            - rm -rf ./node_modules
 
   - name: "Linux amd64: Release"
     dependencies: [ ]
