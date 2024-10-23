@@ -25,16 +25,19 @@ global_job_config:
   prologue:
     commands:
       - checkout
-      - git submodule update --init --recursive
-      - cd deps/librdkafka
-      - git fetch origin
-      - git checkout v2.5.3
-      - cd ../../
-      - cache clear
+      - make show-args
+      - . vault-setup
+      - . vault-sem-get-secret ci-reporting
+      - . vault-sem-get-secret v1/ci/kv/service-foundations/cc-mk-include
+      - make init-ci
+  epilogue:
+    always:
+      commands:
+        - make epilogue-ci
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -48,7 +51,7 @@ blocks:
             - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
 
   - name: "Linux arm64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -59,10 +62,10 @@ blocks:
       jobs:
         - name: "Build from source and test for musl"
           commands:
-              - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
+            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
 
   - name: "Linux arm64: Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -70,7 +73,8 @@ blocks:
       jobs:
         - name: "Build from source and test"
           commands:
-            - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+            - export CKJS_LINKING=dynamic
+            - npm run install-from-source
             - make test
 
   - name: 'macOS arm64/m1: Build and test'
@@ -82,18 +86,20 @@ blocks:
       jobs:
         - name: 'Build from source and test'
           commands:
-            - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+            - export CKJS_LINKING=dynamic
+            - npm run install-from-source
             - make test
 
   - name: "Linux amd64: Build, test, lint"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
           type: s1-prod-ubuntu20-04-amd64-2
       prologue:
         commands:
-          - npm install # this will actually not build anything if we have a release, but rather, fetch things using node-pre-gyp - so change this later.
+          - export CKJS_LINKING=dynamic
+          - npm run install-from-source
       jobs:
         - name: "Test"
           commands:
@@ -109,7 +115,7 @@ blocks:
             - npx eslint lib/kafkajs
 
   - name: "Linux amd64: Performance"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -130,10 +136,7 @@ blocks:
           - sudo apt-get install -y librdkafka-dev bc
           - export CKJS_LINKING=dynamic
           - export BUILD_LIBRDKAFKA=0
-          - npm install
-          - npx node-pre-gyp --build-from-source clean
-          - npx node-pre-gyp --build-from-source configure
-          - npx node-pre-gyp --build-from-source build
+          - npm run install-from-source
       jobs:
         - name: "Performance Test"
           commands:
@@ -143,9 +146,10 @@ blocks:
             - cd examples/performance
             - npm install
             - bash -c '../../ci/tests/run_perf_test.sh'
+            - rm -rf ./node_modules
 
   - name: "Linux amd64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -168,7 +172,7 @@ blocks:
             - sem-version node 18.19.0
             - export NODE_ABI=108
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -177,7 +181,7 @@ blocks:
             - sem-version node 20.10.0
             - export NODE_ABI=115
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -186,7 +190,7 @@ blocks:
             - sem-version node 21.4.0
             - export NODE_ABI=120
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -195,13 +199,13 @@ blocks:
             - sem-version node 22.2.0
             - export NODE_ABI=127
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -224,7 +228,7 @@ blocks:
             - sem-version node 18.19.0
             - export NODE_ABI=108
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -233,7 +237,7 @@ blocks:
             - sem-version node 20.10.0
             - export NODE_ABI=115
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -242,7 +246,7 @@ blocks:
             - sem-version node 21.4.0
             - export NODE_ABI=120
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -251,13 +255,13 @@ blocks:
             - sem-version node 22.2.0
             - export NODE_ABI=127
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux amd64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -305,7 +309,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -353,7 +357,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "macOS arm64/m1: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -373,7 +377,7 @@ blocks:
             - sem-version node 18.19.0
             - export NODE_ABI=108
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -382,7 +386,7 @@ blocks:
             - sem-version node 20.10.0
             - export NODE_ABI=115
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -391,7 +395,7 @@ blocks:
             - sem-version node 21.4.0
             - export NODE_ABI=120
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
@@ -400,13 +404,13 @@ blocks:
             - sem-version node 22.2.0
             - export NODE_ABI=127
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Windows x64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -450,7 +454,7 @@ blocks:
             - $env:NODE_ABI = 108
             - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
             - echo "$env:ARTIFACT_KEY"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
             - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
@@ -463,7 +467,7 @@ blocks:
             - $env:NODE_ABI = 115
             - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
             - echo "$env:ARTIFACT_KEY"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
             - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
@@ -476,7 +480,7 @@ blocks:
             - $env:NODE_ABI = 120
             - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
             - echo "$env:ARTIFACT_KEY"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
             - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
@@ -489,7 +493,7 @@ blocks:
             - $env:NODE_ABI = 127
             - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
             - echo "$env:ARTIFACT_KEY"
-            - npm install # node-pre-gyp will fallback to build here, because new tag implies no release yet.
+            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
             - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
