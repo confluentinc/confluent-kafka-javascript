@@ -2,7 +2,7 @@
 const { Kafka } = require("@confluentinc/kafka-javascript").KafkaJS;
 
 async function fetchOffsets() {
-  const args = process.argv.slice(2); // Skip "node" and script name
+  const args = process.argv.slice(2);
   if (args.length < 1) {
     console.error("Usage: node fetchOffsets.js <group_id> [topic [partition ...] ...]");
     process.exit(1);
