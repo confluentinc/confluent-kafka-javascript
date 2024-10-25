@@ -1484,12 +1484,13 @@ void AdminClientDeleteGroups::HandleErrorCallback() {
 }
 
 /**
- * @brief Fetch Offsets in an asynchronous worker
- * 
- * This callback will list all the consumer group offsets for the specified topic offsets.
- * 
-*/
-AdminClientFetchOffsets::AdminClientFetchOffsets(
+ * @brief List Consumer Group Offsets in an asynchronous worker
+ *
+ * This callback will list all the consumer group offsets for the specified
+ * group's topic partitions.
+ *
+ */
+AdminClientListConsumerGroupOffsets::AdminClientListConsumerGroupOffsets(
     Nan::Callback* callback, NodeKafka::AdminClient* client,
     rd_kafka_ListConsumerGroupOffsets_t **req,
     size_t req_cnt,
@@ -1502,7 +1503,7 @@ AdminClientFetchOffsets::AdminClientFetchOffsets(
       m_require_stable_offsets(require_stable_offsets),
       m_timeout_ms(timeout_ms) {}
 
-AdminClientFetchOffsets::~AdminClientFetchOffsets() {
+AdminClientListConsumerGroupOffsets::~AdminClientListConsumerGroupOffsets() {
   if (m_req) {
     rd_kafka_ListConsumerGroupOffsets_destroy_array(m_req, m_req_cnt);
     free(m_req);
@@ -1513,26 +1514,28 @@ AdminClientFetchOffsets::~AdminClientFetchOffsets() {
   }
 }
 
-void AdminClientFetchOffsets::Execute() {
-  Baton b = m_client->FetchOffsets(m_req, m_req_cnt, m_require_stable_offsets, m_timeout_ms, &m_event_response);
+void AdminClientListConsumerGroupOffsets::Execute() {
+  Baton b = m_client->ListConsumerGroupOffsets(m_req, m_req_cnt,
+                                               m_require_stable_offsets,
+                                               m_timeout_ms, &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
 }
 
-void AdminClientFetchOffsets::HandleOKCallback() {
+void AdminClientListConsumerGroupOffsets::HandleOKCallback() {
   Nan::HandleScope scope;
-
   const unsigned int argc = 2;
   v8::Local<v8::Value> argv[argc];
 
   argv[0] = Nan::Null();
-  argv[1] = Conversion::Admin::FromFetchOffsetsResult(rd_kafka_event_ListConsumerGroupOffsets_result(m_event_response));
+  argv[1] = Conversion::Admin::FormListConsumerGroupOffsetsResult(
+      rd_kafka_event_ListConsumerGroupOffsets_result(m_event_response));
 
   callback->Call(argc, argv);
 }
 
-void AdminClientFetchOffsets::HandleErrorCallback() {
+void AdminClientListConsumerGroupOffsets::HandleErrorCallback() {
   Nan::HandleScope scope;
 
   const unsigned int argc = 1;

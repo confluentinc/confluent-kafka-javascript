@@ -86,7 +86,7 @@ export interface TopicPartitionOffsetAndMetadata extends TopicPartitionOffset {
 
 export type TopicPartitionTime = TopicPartitionOffset;
 
-export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null };  
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };  
 
 export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
@@ -420,6 +420,17 @@ export type DeleteGroupsResult = {
     error?: LibrdKafkaError
 }
 
+export type ListGroupOffsets = {
+    groupId: string
+    partitions?: TopicPartition[]
+}
+
+export type GroupResults = {
+    groupId: string
+    error?: LibrdKafkaError
+    partitions: TopicPartitionOffsetAndMetadata[]
+}
+
 export interface IAdminClient {
     createTopic(topic: NewTopic, cb?: (err: LibrdKafkaError) => void): void;
     createTopic(topic: NewTopic, timeout?: number, cb?: (err: LibrdKafkaError) => void): void;
@@ -446,12 +457,10 @@ export interface IAdminClient {
     deleteGroups(groupIds: string[],
         options?: { timeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteGroupsResult[]) => any): void;
-    fetchOffsets(options: { groupId: string,
-                 topics?: TopicInput,
-                 timeout?: number,
-                 requireStableOffsets?: boolean },
-                 cb?: 
-                 (err: LibrdKafkaError, result: Array<{ topic: string; partitions: FetchOffsetsPartition[] }>) => any): void;
+
+    listConsumerGroupOffsets(listGroupOffsets : ListGroupOffsets[],
+        options?: { timeout?: number, requireStableOffsets?: boolean },
+        cb?: (err: LibrdKafkaError, result: GroupResults[]) => any): void;
 
     disconnect(): void;
 }

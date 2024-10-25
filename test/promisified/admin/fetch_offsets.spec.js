@@ -12,6 +12,7 @@ const {
 
 describe("fetchOffset function", () => {
   let topicName, topicName2, groupId, producer, consumer, admin;
+  let topicsToDelete = [];
 
   beforeEach(async () => {
     groupId = `consumer-group-id-${secureRandom()}`;
@@ -28,40 +29,41 @@ describe("fetchOffset function", () => {
     });
 
     admin = createAdmin({});
-  });
 
-  afterEach(async () => {
-    producer && (await producer.disconnect());
-    consumer && (await consumer.disconnect());
-  });
-
-  test("should timeout when fetching offsets", async () => {
-    await admin.connect();
-
-    topicName = `test-topic-${secureRandom()}`;
-
-    await createTopic({ topic: topicName, partitions: 1 });
-
-    await expect(
-      admin.fetchOffsets({ groupId, topic: topicName, timeout: 0 })
-    ).rejects.toHaveProperty("code", ErrorCodes.ERR__TIMED_OUT);
-
-    await admin.deleteTopics({
-      topics: [topicName],
-    });
-
-    await admin.deleteGroups([groupId]);
-  });
-
-  test("should return correct offset after consuming messages", async () => {
     await producer.connect();
     await consumer.connect();
 
     await admin.connect();
 
     topicName = `test-topic-${secureRandom()}`;
+    topicName2 = `test-topic-${secureRandom()}`;
+
+    topicsToDelete = [];
+  });
+
+  afterEach(async () => {
+    await admin.deleteTopics({
+      topics: topicsToDelete,
+    });
+    await admin.disconnect();
+    producer && (await producer.disconnect());
+    consumer && (await consumer.disconnect());
+  });
+
+  it("should timeout when fetching offsets", async () => {
 
     await createTopic({ topic: topicName, partitions: 1 });
+    topicsToDelete.push(topicName);
+
+    await expect(
+      admin.fetchOffsets({ groupId, topic: topicName, timeout: 0 })
+    ).rejects.toHaveProperty("code", ErrorCodes.ERR__TIMED_OUT);
+  });
+
+  it("should return correct offset after consuming messages", async () => {
+
+    await createTopic({ topic: topicName, partitions: 1 });
+    topicsToDelete.push(topicName);
 
     const messages = Array.from({ length: 5 }, (_, i) => ({
       value: `message${i}`,
@@ -74,24 +76,16 @@ describe("fetchOffset function", () => {
 
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
-        try {
-          messagesConsumed.push(message); // Populate messagesConsumed
-          if (messagesConsumed.length === 5) {
-            await consumer.commitOffsets([
-              {
-                topic,
-                partition,
-                offset: (parseInt(message.offset, 10) + 1).toString(),
-              },
-            ]);
-            await consumer.stop();
-          }
-        } catch (error) {
-          if (error.message.includes("Offset out of range")) {
-            await consumer.stop();
-          } else {
-            throw error; // Re-throw the error if it's not an "Offset out of range" error
-          }
+
+        messagesConsumed.push(message); // Populate messagesConsumed
+        if (messagesConsumed.length === 5) {
+          await consumer.commitOffsets([
+            {
+              topic,
+              partition,
+              offset: (parseInt(message.offset, 10) + 1).toString(),
+            },
+          ]);
         }
       },
     });
@@ -105,38 +99,26 @@ describe("fetchOffset function", () => {
     });
     expect(messagesConsumed.length).toEqual(5);
 
-    const resultWithoutLeaderEpoch = offsets.map(({ partitions, ...rest }) => {
-      const newPartitions = partitions.map(
-        ({ leaderEpoch, ...restPartitions }) => restPartitions
-      );
+    const resultWithPartitionAndOffset = offsets.map(({ partitions, ...rest }) => {
+      const newPartitions = partitions.map(({ partition, offset }) => ({
+        partition,
+        offset,
+      }));
       return { ...rest, partitions: newPartitions };
     });
 
-    expect(resultWithoutLeaderEpoch).toEqual([
+    expect(resultWithPartitionAndOffset).toEqual([
       {
         topic: topicName,
-        partitions: [{ partition: 0, offset: 5 }],
+        partitions: [{ partition: 0, offset: "5" }],
       },
     ]);
-
-    await admin.deleteTopics({
-      topics: [topicName],
-    });
-
-    await admin.deleteGroups([groupId]);
-
-    await admin.disconnect(); // Disconnect the admin client
   });
 
-  test("should return correct offset after consuming messages with specific partitions", async () => {
-    await producer.connect();
-    await consumer.connect();
-
-    await admin.connect();
-
-    topicName = `test-topic-${secureRandom()}`;
+  it("should return correct offset after consuming messages with specific partitions", async () => {
 
     await createTopic({ topic: topicName, partitions: 1 });
+    topicsToDelete.push(topicName);
 
     const messages = Array.from({ length: 5 }, (_, i) => ({
       value: `message${i}`,
@@ -149,24 +131,16 @@ describe("fetchOffset function", () => {
 
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
-        try {
-          messagesConsumed.push(message); // Populate messagesConsumed
-          if (messagesConsumed.length === 5) {
-            await consumer.commitOffsets([
-              {
-                topic,
-                partition,
-                offset: (parseInt(message.offset, 10) + 1).toString(),
-              },
-            ]);
-            await consumer.stop();
-          }
-        } catch (error) {
-          if (error.message.includes("Offset out of range")) {
-            await consumer.stop();
-          } else {
-            throw error; // Re-throw the error if it's not an "Offset out of range" error
-          }
+
+        messagesConsumed.push(message); // Populate messagesConsumed
+        if (messagesConsumed.length === 5) {
+          await consumer.commitOffsets([
+            {
+              topic,
+              partition,
+              offset: (parseInt(message.offset, 10) + 1).toString(),
+            },
+          ]);
         }
       },
     });
@@ -179,39 +153,27 @@ describe("fetchOffset function", () => {
       topics: [{ topic: topicName, partitions: [0] }],
     });
 
-    const resultWithoutLeaderEpoch = offsets.map(({ partitions, ...rest }) => {
-      const newPartitions = partitions.map(
-        ({ leaderEpoch, ...restPartitions }) => restPartitions
-      );
+    const resultWithPartitionAndOffset = offsets.map(({ partitions, ...rest }) => {
+      const newPartitions = partitions.map(({ partition, offset }) => ({
+        partition,
+        offset,
+      }));
       return { ...rest, partitions: newPartitions };
     });
 
     expect(messagesConsumed.length).toEqual(5);
-    expect(resultWithoutLeaderEpoch).toEqual([
+    expect(resultWithPartitionAndOffset).toEqual([
       {
         topic: topicName,
-        partitions: [{ partition: 0, offset: 5 }],
+        partitions: [{ partition: 0, offset: "5" }],
       },
     ]);
-
-    await admin.deleteTopics({
-      topics: [topicName],
-    });
-
-    await admin.deleteGroups([groupId]);
-
-    await admin.disconnect(); // Disconnect the admin client
   });
 
-  test("should handle unset or null topics", async () => {
-    await producer.connect();
-    await consumer.connect();
-
-    await admin.connect();
-
-    topicName = `test-topic-${secureRandom()}`;
+  it("should handle unset or null topics", async () => {
 
     await createTopic({ topic: topicName, partitions: 1 });
+    topicsToDelete.push(topicName);
 
     const messages = Array.from({ length: 5 }, (_, i) => ({
       value: `message${i}`,
@@ -224,24 +186,15 @@ describe("fetchOffset function", () => {
 
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
-        try {
-          messagesConsumed.push(message); // Populate messagesConsumed
-          if (messagesConsumed.length === 5) {
-            await consumer.commitOffsets([
-              {
-                topic,
-                partition,
-                offset: (parseInt(message.offset, 10) + 1).toString(),
-              },
-            ]);
-            await consumer.stop();
-          }
-        } catch (error) {
-          if (error.message.includes("Offset out of range")) {
-            await consumer.stop();
-          } else {
-            throw error; // Re-throw the error if it's not an "Offset out of range" error
-          }
+        messagesConsumed.push(message); // Populate messagesConsumed
+        if (messagesConsumed.length === 5) {
+          await consumer.commitOffsets([
+            {
+              topic,
+              partition,
+              offset: (parseInt(message.offset, 10) + 1).toString(),
+            },
+          ]);
         }
       },
     });
@@ -253,17 +206,18 @@ describe("fetchOffset function", () => {
       groupId,
     });
 
-    const resultWithoutLeaderEpoch = offsets.map(({ partitions, ...rest }) => {
-      const newPartitions = partitions.map(
-        ({ leaderEpoch, ...restPartitions }) => restPartitions
-      );
+    const resultWithPartitionAndOffset = offsets.map(({ partitions, ...rest }) => {
+      const newPartitions = partitions.map(({ partition, offset }) => ({
+        partition,
+        offset,
+      }));
       return { ...rest, partitions: newPartitions };
     });
     expect(messagesConsumed.length).toEqual(5);
-    expect(resultWithoutLeaderEpoch).toEqual([
+    expect(resultWithPartitionAndOffset).toEqual([
       {
         topic: topicName,
-        partitions: [{ partition: 0, offset: 5 }],
+        partitions: [{ partition: 0, offset: "5" }],
       },
     ]);
 
@@ -272,41 +226,26 @@ describe("fetchOffset function", () => {
       topics: null,
     });
 
-    const resultWithoutLeaderEpoch2 = offsets2.map(
-      ({ partitions, ...rest }) => {
-        const newPartitions = partitions.map(
-          ({ leaderEpoch, ...restPartitions }) => restPartitions
-        );
-        return { ...rest, partitions: newPartitions };
-      }
-    );
-    expect(resultWithoutLeaderEpoch2).toEqual([
+    const resultWithPartitionAndOffset2 = offsets2.map(({ partitions, ...rest }) => {
+      const newPartitions = partitions.map(({ partition, offset }) => ({
+        partition,
+        offset,
+      }));
+      return { ...rest, partitions: newPartitions };
+    });
+    expect(resultWithPartitionAndOffset2).toEqual([
       {
         topic: topicName,
-        partitions: [{ partition: 0, offset: 5 }],
+        partitions: [{ partition: 0, offset: "5" }],
       },
     ]);
-
-    await admin.deleteTopics({
-      topics: [topicName],
-    });
-
-    await admin.deleteGroups([groupId]);
-
-    await admin.disconnect(); // Disconnect the admin client  });
   });
 
-  test("should handle multiple topics each with more than 1 partition", async () => {
-    await producer.connect();
-    await consumer.connect();
-
-    await admin.connect();
-
-    topicName = `test-topic-${secureRandom()}`;
-    topicName2 = `test-topic-${secureRandom()}`;
+  it("should handle multiple topics each with more than 1 partition", async () => {
 
     await createTopic({ topic: topicName, partitions: 2 });
     await createTopic({ topic: topicName2, partitions: 2 });
+    topicsToDelete.push(topicName, topicName2);
 
     await consumer.subscribe({
       topics: [topicName, topicName2],
@@ -326,30 +265,19 @@ describe("fetchOffset function", () => {
 
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
-        try {
-          messagesConsumed.push(message); // Populate messagesConsumed
-          commitCount++;
 
-          if (commitCount === 5) {
-            await consumer.commitOffsets([
-              {
-                topic,
-                partition,
-                offset: (parseInt(message.offset, 10) + 1).toString(),
-              },
-            ]);
-            commitCount = 0; // Reset the commit count
-          }
+        messagesConsumed.push(message); // Populate messagesConsumed
+        commitCount++;
 
-          if (messagesConsumed.length === 20) {
-            await consumer.stop();
-          }
-        } catch (error) {
-          if (error.message.includes("Offset out of range")) {
-            await consumer.stop();
-          } else {
-            throw error; // Re-throw the error if it's not an "Offset out of range" error
-          }
+        if (commitCount === 5) {
+          await consumer.commitOffsets([
+            {
+              topic,
+              partition,
+              offset: (parseInt(message.offset, 10) + 1).toString(),
+            },
+          ]);
+          commitCount = 0; // Reset the commit count
         }
       },
     });
@@ -367,33 +295,32 @@ describe("fetchOffset function", () => {
     );
 
     // remove leaderEpoch from the partitions
-    const resultWithoutLeaderEpoch = sortedOffsets.map(
-      ({ partitions, ...rest }) => {
-        const newPartitions = partitions.map(
-          ({ leaderEpoch, ...restPartitions }) => restPartitions
-        );
-        return { ...rest, partitions: newPartitions };
-      }
-    );
+    const resultWithPartitionAndOffset = sortedOffsets.map(({ partitions, ...rest }) => {
+      const newPartitions = partitions.map(({ partition, offset }) => ({
+        partition,
+        offset,
+      }));
+      return { ...rest, partitions: newPartitions };
+    });
 
-    expect(resultWithoutLeaderEpoch.length).toEqual(2);
+    expect(resultWithPartitionAndOffset.length).toEqual(2);
 
-    resultWithoutLeaderEpoch.forEach((item) => {
+    resultWithPartitionAndOffset.forEach((item) => {
       expect(item.partitions.length).toEqual(2);
     });
 
-    expect(resultWithoutLeaderEpoch).toEqual(
+    expect(resultWithPartitionAndOffset).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           topic: topicName,
           partitions: expect.arrayContaining([
             expect.objectContaining({
               partition: 0,
-              offset: 5,
+              offset: "5",
             }),
             expect.objectContaining({
               partition: 1,
-              offset: 5,
+              offset: "5",
             }),
           ]),
         }),
@@ -402,23 +329,15 @@ describe("fetchOffset function", () => {
           partitions: expect.arrayContaining([
             expect.objectContaining({
               partition: 0,
-              offset: 5,
+              offset: "5",
             }),
             expect.objectContaining({
               partition: 1,
-              offset: 5,
+              offset: "5",
             }),
           ]),
         }),
       ])
     );
-
-    await admin.deleteTopics({
-      topics: [topicName, topicName2],
-    });
-
-    await admin.deleteGroups([groupId]);
-
-    await admin.disconnect(); // Disconnect the admin client
   });
 });

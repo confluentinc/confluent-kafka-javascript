@@ -120,7 +120,8 @@ void AdminClient::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "listGroups", NodeListGroups);
   Nan::SetPrototypeMethod(tpl, "describeGroups", NodeDescribeGroups);
   Nan::SetPrototypeMethod(tpl, "deleteGroups", NodeDeleteGroups);
-  Nan::SetPrototypeMethod(tpl, "fetchOffsets", NodeFetchOffsets);
+  Nan::SetPrototypeMethod(tpl, "listConsumerGroupOffsets",
+                          NodeListConsumerGroupOffsets);
 
   Nan::SetPrototypeMethod(tpl, "connect", NodeConnect);
   Nan::SetPrototypeMethod(tpl, "disconnect", NodeDisconnect);
@@ -671,11 +672,10 @@ Baton AdminClient::DeleteGroups(rd_kafka_DeleteGroup_t **group_list,
   }
 }
 
-Baton AdminClient::FetchOffsets(rd_kafka_ListConsumerGroupOffsets_t **req, 
-                                size_t req_cnt,
-                                bool require_stable_offsets, 
-                                int timeout_ms, 
-                                rd_kafka_event_t** event_response ) {
+Baton AdminClient::ListConsumerGroupOffsets(
+    rd_kafka_ListConsumerGroupOffsets_t **req, size_t req_cnt,
+    bool require_stable_offsets, int timeout_ms,
+    rd_kafka_event_t **event_response) {
   if (!IsConnected()) {
     return Baton(RdKafka::ERR__STATE);
   }
@@ -1068,63 +1068,91 @@ NAN_METHOD(AdminClient::NodeDeleteGroups) {
       callback, client, group_list, group_names_vector.size(), timeout_ms));
 }
 
-NAN_METHOD(AdminClient::NodeFetchOffsets) {
+/**
+ * List Consumer Group Offsets.
+ */
+NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
   Nan::HandleScope scope;
-  if (info.Length() < 2 || !info[1]->IsFunction()) {
+
+  if (info.Length() < 3 || !info[2]->IsFunction()) {
     return Nan::ThrowError("Need to specify a callback");
   }
-  if (!info[0]->IsObject()) {
-    return Nan::ThrowError("Must provide an options object");
+
+  if (!info[0]->IsArray()) {
+    return Nan::ThrowError("Must provide an array of 'listGroupOffsets'");
   }
 
-  v8::Local<v8::Object> options = info[0].As<v8::Object>();
+  v8::Local<v8::Array> listGroupOffsets = info[0].As<v8::Array>();
 
-  v8::Local<v8::Value> groupIdValue;
-  if (!Nan::Get(options, Nan::New("groupId").ToLocalChecked())
-           .ToLocal(&groupIdValue)) {
-    return Nan::ThrowError("Must provide 'groupId'");
+  if (listGroupOffsets->Length() == 0) {
+    return Nan::ThrowError("'listGroupOffsets' cannot be empty");
   }
 
-  Nan::MaybeLocal<v8::String> groupIdMaybe = Nan::To<v8::String>(groupIdValue);
-  if (groupIdMaybe.IsEmpty()) {
-    return Nan::ThrowError("'groupId' must be a string");
-  }
-  Nan::Utf8String groupIdUtf8(groupIdMaybe.ToLocalChecked());
-  std::string groupIdStr = *groupIdUtf8;
-
-  v8::Local<v8::Array> topics = GetParameter<v8::Local<v8::Array>>(
-      options, "topics", Nan::New<v8::Array>());
-
-  rd_kafka_topic_partition_list_t *partitions = NULL;
-
-  if (!topics->IsNull() && !topics->IsUndefined() && topics->Length() > 0) {
-    partitions = Conversion::TopicPartition::
-        GroupedTopicPartitionv8ArrayToTopicPartitionList(topics);
-  }
-
-  rd_kafka_ListConsumerGroupOffsets_t **request =
+  rd_kafka_ListConsumerGroupOffsets_t **requests =
       static_cast<rd_kafka_ListConsumerGroupOffsets_t **>(
-          malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) * 1));
-  request[0] =
-      rd_kafka_ListConsumerGroupOffsets_new(groupIdStr.c_str(), partitions);
+          malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) *
+                 listGroupOffsets->Length()));
 
-  if (partitions != NULL) {
-    rd_kafka_topic_partition_list_destroy(partitions);
+  for (uint32_t i = 0; i < listGroupOffsets->Length(); ++i) {
+    v8::Local<v8::Context> context = Nan::GetCurrentContext();
+    v8::Local<v8::Object> listGroupOffsetObj =
+        listGroupOffsets->Get(context, i).ToLocalChecked().As<v8::Object>();
+
+    v8::Local<v8::Value> groupIdValue;
+    if (!Nan::Get(listGroupOffsetObj, Nan::New("groupId").ToLocalChecked())
+             .ToLocal(&groupIdValue)) {
+      return Nan::ThrowError("Each entry must have 'groupId'");
+    }
+
+    Nan::MaybeLocal<v8::String> groupIdMaybe =
+        Nan::To<v8::String>(groupIdValue);
+    if (groupIdMaybe.IsEmpty()) {
+      return Nan::ThrowError("'groupId' must be a string");
+    }
+    Nan::Utf8String groupIdUtf8(groupIdMaybe.ToLocalChecked());
+    std::string groupIdStr = *groupIdUtf8;
+
+    v8::Local<v8::Value> partitionsValue;
+    rd_kafka_topic_partition_list_t *partitions = NULL;
+
+    if (Nan::Get(listGroupOffsetObj, Nan::New("partitions").ToLocalChecked())
+            .ToLocal(&partitionsValue) &&
+        partitionsValue->IsArray()) {
+      v8::Local<v8::Array> partitionsArray = partitionsValue.As<v8::Array>();
+
+      if (partitionsArray->Length() > 0) {
+        partitions = Conversion::TopicPartition::
+            GroupedTopicPartitionv8ArrayToTopicPartitionList(partitionsArray);
+      }
+    }
+
+    requests[i] =
+        rd_kafka_ListConsumerGroupOffsets_new(groupIdStr.c_str(), partitions);
+
+    if (partitions != NULL) {
+      rd_kafka_topic_partition_list_destroy(partitions);
+    }
   }
 
-  // Get the timeout - default 5000 and require_stable_offsets parameter.
+  // Now process the second argument: options (timeout and requireStableOffsets)
+  v8::Local<v8::Object> options = Nan::New<v8::Object>();
+  if (info.Length() > 2 && info[1]->IsObject()) {
+    options = info[1].As<v8::Object>();
+  }
 
   bool require_stable_offsets =
       GetParameter<bool>(options, "requireStableOffsets", false);
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[1].As<v8::Function>();
+  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
   Nan::Callback *callback = new Nan::Callback(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
-  Nan::AsyncQueueWorker(new Workers::AdminClientFetchOffsets(
-      callback, client, request, 1, require_stable_offsets, timeout_ms));
+  // Queue the worker to process the offset fetch request asynchronously
+  Nan::AsyncQueueWorker(new Workers::AdminClientListConsumerGroupOffsets(
+      callback, client, requests, listGroupOffsets->Length(),
+      require_stable_offsets, timeout_ms));
 }
 
 }  // namespace NodeKafka

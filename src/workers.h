@@ -589,12 +589,12 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
   rd_kafka_event_t *m_event_response;
 };
 
-class AdminClientFetchOffsets : public ErrorAwareWorker {
+class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
  public:
-  AdminClientFetchOffsets(Nan::Callback *, NodeKafka::AdminClient *,
+  AdminClientListConsumerGroupOffsets(Nan::Callback *, NodeKafka::AdminClient *,
                           rd_kafka_ListConsumerGroupOffsets_t **, size_t, bool,
                           const int &);
-  ~AdminClientFetchOffsets();
+  ~AdminClientListConsumerGroupOffsets();
 
   void Execute();
   void HandleOKCallback();
