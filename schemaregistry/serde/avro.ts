@@ -445,5 +445,3 @@ function impliedNamespace(name: string): string | null {
   const match = /^(.*)\.[^.]+$/.exec(name)
   return match ? match[1] : null
 }
-
-
