@@ -257,16 +257,15 @@ export abstract class Serializer extends Serde {
       id = await this.client.register(subject, info, Boolean(normalizeSchema))
     } else if (useSchemaId != null && useSchemaId >= 0) {
       info = await this.client.getBySubjectAndId(subject, useSchemaId, format)
-      id = await this.client.getId(subject, info, false)
-      if (id !== useSchemaId) {
-        throw new SerializationError(`failed to match schema ID (${id} != ${useSchemaId})`)
-      }
+      id = useSchemaId
     } else if (useLatestWithMetadata != null && Object.keys(useLatestWithMetadata).length !== 0) {
-      info = await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true, format)
-      id = await this.client.getId(subject, info, false)
+      let metadata = await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true, format)
+      info = metadata
+      id = metadata.id
     } else if (useLatest) {
-      info = await this.client.getLatestSchemaMetadata(subject, format)
-      id = await this.client.getId(subject, info, false)
+      let metadata = await this.client.getLatestSchemaMetadata(subject, format)
+      info = metadata
+      id = metadata.id
     } else {
       id = await this.client.getId(subject, info, Boolean(normalizeSchema))
     }
@@ -425,7 +424,7 @@ export abstract class Deserializer extends Serde {
       previous = version
     }
     if (migrationMode === RuleMode.DOWNGRADE) {
-      migrations = migrations.map(x => x).reverse()
+      migrations = migrations.reverse()
     }
     return migrations
   }
@@ -513,16 +512,15 @@ export class RuleContext {
 
   getParameter(name: string): string | null {
     const params = this.rule.params
-    if (params == null) {
-      return null
-    }
-    let value = params[name]
-    if (value != null) {
-      return value
+    if (params != null) {
+      let value = params[name]
+      if (value != null) {
+        return value
+      }
     }
     let metadata = this.target.metadata
     if (metadata != null && metadata.properties != null) {
-      value = metadata.properties[name]
+      let value = metadata.properties[name]
       if (value != null) {
         return value
       }
@@ -546,8 +544,9 @@ export class RuleContext {
     return this.fieldContexts[size - 1]
   }
 
-  enterField(containingMessage: any, fullName: string, name: string, fieldType: FieldType, tags: Set<string>): FieldContext {
-    let allTags = new Set<string>(tags)
+  enterField(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
+             tags: Set<string> | null): FieldContext {
+    let allTags = new Set<string>(tags ?? this.getInlineTags(fullName))
     for (let v of this.getTags(fullName)) {
       allTags.add(v)
     }
