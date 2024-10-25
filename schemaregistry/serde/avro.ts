@@ -446,4 +446,3 @@ function impliedNamespace(name: string): string | null {
   return match ? match[1] : null
 }
 
-
