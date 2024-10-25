@@ -314,7 +314,7 @@ async function transformField(
       fullName,
       field.name,
       getType(field.type),
-      ctx.getInlineTags(fullName),
+      null
     )
     const newVal = await transform(ctx, field.type, record[field.name], fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
@@ -445,5 +445,3 @@ function impliedNamespace(name: string): string | null {
   const match = /^(.*)\.[^.]+$/.exec(name)
   return match ? match[1] : null
 }
-
-
