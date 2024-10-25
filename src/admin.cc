@@ -699,8 +699,8 @@ Baton AdminClient::ListConsumerGroupOffsets(
 
     if (require_stable_offsets) {
       rd_kafka_error_t *error =
-          rd_kafka_AdminOptions_set_require_stable_offsets(options,
-                                                           require_stable_offsets);
+          rd_kafka_AdminOptions_set_require_stable_offsets(
+              options, require_stable_offsets);
       if (error) {
         return Baton::BatonFromErrorAndDestroy(error);
       }
@@ -709,8 +709,8 @@ Baton AdminClient::ListConsumerGroupOffsets(
     // Create queue just for this operation.
     rd_kafka_queue_t *rkqu = rd_kafka_queue_new(m_client->c_ptr());
 
-    rd_kafka_ListConsumerGroupOffsets(m_client->c_ptr(), req, req_cnt,
-                                      options, rkqu);
+    rd_kafka_ListConsumerGroupOffsets(m_client->c_ptr(), req, req_cnt, options,
+                                      rkqu);
 
     // Poll for an event by type in that queue
     // DON'T destroy the event. It is the out parameter, and ownership is
@@ -740,9 +740,7 @@ Baton AdminClient::ListConsumerGroupOffsets(
     // At this point, event_response contains the result, which needs
     // to be parsed/converted by the caller.
     return Baton(RdKafka::ERR_NO_ERROR);
-
-}
-
+  }
 }
 
 void AdminClient::ActivateDispatchers() {

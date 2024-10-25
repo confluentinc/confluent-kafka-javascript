@@ -123,41 +123,6 @@ std::vector<std::string> GetParameter<std::vector<std::string> >(
   return def;
 }
 
-rd_kafka_topic_partition_list_t *v8ArrayToTopicPartitionList(
-  v8::Local<v8::Array> parameter) {
-
-  rd_kafka_topic_partition_list_t *newList = rd_kafka_topic_partition_list_new(parameter->Length());
-
-  for (unsigned int i = 0; i < parameter->Length(); i++) {
-    v8::Local<v8::Value> v;
-    if (!Nan::Get(parameter, i).ToLocal(&v)) {
-      continue;
-    }
-    v8::Local<v8::Object> item = v8::Local<v8::Object>::Cast(v);
-    
-    v8::Isolate* isolate = v8::Isolate::GetCurrent();
-    v8::Local<v8::Context> context = isolate->GetCurrentContext();
-
-    v8::Local<v8::Value> topicVal = Nan::Get(item, Nan::New("topic").ToLocalChecked()).ToLocalChecked();
-    v8::Local<v8::String> topicStr = topicVal->ToString(context).ToLocalChecked();
-    Nan::Utf8String topicUtf8(topicStr);
-    std::string topic(*topicUtf8);
-
-    v8::Local<v8::Value> partitionsVal = Nan::Get(item, Nan::New("partitions").ToLocalChecked()).ToLocalChecked();
-    v8::Local<v8::Array> partitions = v8::Local<v8::Array>::Cast(partitionsVal);
-
-    for (unsigned int j = 0; j < partitions->Length(); j++) {
-        v8::Local<v8::Value> partitionVal;
-        if (!Nan::Get(partitions, j).ToLocal(&partitionVal)) {
-            continue;
-        }
-        int partition = partitionVal->Int32Value(context).FromJust();
-        rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
-    }
-  }
-  return newList;
-}
-
 std::vector<std::string> v8ArrayToStringVector(v8::Local<v8::Array> parameter) {
   std::vector<std::string> newItem;
 
@@ -1162,19 +1127,6 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
   }
 
   return returnArray;
-}
-
-std::unordered_map<std::string, std::vector<rd_kafka_topic_partition_t>> groupByTopic(
-    const rd_kafka_topic_partition_list_t* partitionList) {
-  std::unordered_map<std::string, std::vector<rd_kafka_topic_partition_t>> groupedPartitions;
-
-  for (int i = 0; i < partitionList->cnt; i++) {
-    rd_kafka_topic_partition_t partition = partitionList->elems[i];
-    std::string topic = partition.topic;
-    groupedPartitions[topic].push_back(partition);
-  }
-
-  return groupedPartitions;
 }
 
 v8::Local<v8::Array> FormListConsumerGroupOffsetsResult(
