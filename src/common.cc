@@ -1129,6 +1129,10 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
   return returnArray;
 }
 
+/**
+ * @brief Converts a rd_kafka_ListConsumerGroupOffsets_result_t* 
+ *        into a v8 Array.
+ */
 v8::Local<v8::Array> FormListConsumerGroupOffsetsResult(
     const rd_kafka_ListConsumerGroupOffsets_result_t* result) {
   /* Return Object type:
