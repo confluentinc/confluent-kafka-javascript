@@ -1120,7 +1120,7 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
 
       if (partitionsArray->Length() > 0) {
         partitions = Conversion::TopicPartition::
-            GroupedTopicPartitionv8ArrayToTopicPartitionList(partitionsArray);
+            TopicPartitionv8ArrayToTopicPartitionList(partitionsArray, false);
       }
     }
 

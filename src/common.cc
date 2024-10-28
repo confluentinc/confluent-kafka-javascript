@@ -442,10 +442,12 @@ std::vector<RdKafka::TopicPartition*> FromV8Array(
 
 /**
  * @brief v8 Array of Topic Partitions to rd_kafka_topic_partition_list_t
+ *
+ * @note Converts a v8 array of type [{topic: string, partition: number,
+ *       offset?: number}] to a rd_kafka_topic_partition_list_t
  */
-rd_kafka_topic_partition_list_t*
-GroupedTopicPartitionv8ArrayToTopicPartitionList(
-    v8::Local<v8::Array> parameter) {
+rd_kafka_topic_partition_list_t* TopicPartitionv8ArrayToTopicPartitionList(
+    v8::Local<v8::Array> parameter, bool include_offset) {
   rd_kafka_topic_partition_list_t* newList =
       rd_kafka_topic_partition_list_new(parameter->Length());
 
@@ -471,7 +473,15 @@ GroupedTopicPartitionv8ArrayToTopicPartitionList(
         Nan::Get(item, Nan::New("partition").ToLocalChecked()).ToLocalChecked();
     int partition = partitionVal->Int32Value(context).FromJust();
 
-    rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
+    rd_kafka_topic_partition_t* toppar =
+        rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
+
+    if (include_offset) {
+      v8::Local<v8::Value> offsetVal =
+          Nan::Get(item, Nan::New("offset").ToLocalChecked()).ToLocalChecked();
+      int offset = offsetVal->Int32Value(context).FromJust();
+      toppar->offset = offset;
+    }
   }
   return newList;
 }
