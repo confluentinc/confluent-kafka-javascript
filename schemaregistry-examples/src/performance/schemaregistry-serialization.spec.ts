@@ -14,7 +14,7 @@ const clientConfig: ClientConfig = {
   basicAuthCredentials: localAuthCredentials,
 };
 
-const schemaString: string = JSON.stringify({
+const avroSchemaString: string = JSON.stringify({
   type: 'record',
   name: 'User',
   fields: [
@@ -24,13 +24,36 @@ const schemaString: string = JSON.stringify({
   ],
 });
 
-const schemaInfo: SchemaInfo = {
-  schema: schemaString
+const jsonSchemaString: string = JSON.stringify({
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "User",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "age": {
+      "type": "integer"
+    },
+    "address": {
+      "type": "string"
+    }
+  },
+  "required": ["name", "age", "address"]
+});
+
+const avroSchemaInfo: SchemaInfo = {
+  schema: avroSchemaString,
+  schemaType: 'AVRO'
+};
+
+const jsonSchemaInfo: SchemaInfo = {
+  schema: jsonSchemaString,
+  schemaType: 'JSON'
 };
 
 const data: { name: string; age: number; address: string; }[] = [];
 
-let topic: string;
 let schemaRegistryClient: SchemaRegistryClient;
 
 function generateData(numRecords: number) {
@@ -58,11 +81,12 @@ describe('Serialization Performance Test', () => {
 
   beforeEach(async () => {
     schemaRegistryClient = new SchemaRegistryClient(clientConfig);
-    topic = v4();
-    await schemaRegistryClient.register(topic + "-value", schemaInfo);
   });
 
   it("Should measure serialization and deserialization performance for JSON", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", jsonSchemaInfo);
+    
     const jsonSerializerConfig: JsonSerializerConfig = { useLatestVersion: true };
     const jsonSerializer: JsonSerializer = new JsonSerializer(schemaRegistryClient, SerdeType.VALUE, jsonSerializerConfig);
     const jsonDeserializer: JsonDeserializer = new JsonDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
@@ -75,6 +99,9 @@ describe('Serialization Performance Test', () => {
   });
 
   it("Should measure serialization and deserialization performance for Avro", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", avroSchemaInfo);
+
     const avroSerializerConfig: AvroSerializerConfig = { useLatestVersion: true };
     const serializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
     const deserializer: AvroDeserializer = new AvroDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
