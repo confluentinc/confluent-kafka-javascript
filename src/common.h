@@ -137,6 +137,9 @@ namespace TopicPartition {
 v8::Local<v8::Array> ToV8Array(std::vector<RdKafka::TopicPartition *> &);
 v8::Local<v8::Array> ToTopicPartitionV8Array(
     const rd_kafka_topic_partition_list_t *, bool include_offset);
+rd_kafka_topic_partition_list_t*
+TopicPartitionOffsetv8ArrayToTopicPartitionList(
+    v8::Local<v8::Array> parameter);
 RdKafka::TopicPartition *FromV8Object(v8::Local<v8::Object>);
 std::vector<RdKafka::TopicPartition *> FromV8Array(const v8::Local<v8::Array> &);  // NOLINT
 

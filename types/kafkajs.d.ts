@@ -297,6 +297,7 @@ export type TopicPartitions = { topic: string; partitions: number[] }
 export type TopicPartition = {
   topic: string
   partition: number
+  error?: LibrdKafkaError
   leaderEpoch?: number
 }
 export type TopicPartitionOffset = TopicPartition & {
@@ -310,6 +311,8 @@ export type TopicPartitionOffsetAndMetadata = TopicPartitionOffset & {
 export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
+
+export type SeekEntry = PartitionOffset
 
 export type Consumer = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
@@ -369,4 +372,7 @@ export type Admin = {
     groups: string[],
     options?: { timeout?: number, includeAuthorizedOperations?: boolean }): Promise<GroupDescriptions>
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
+  deleteTopicRecords(options: { 
+    topic: string; partitions: SeekEntry[] ; 
+    timeout?: number; operationTimeout?: number}): Promise<TopicPartitionOffset[]>
 }

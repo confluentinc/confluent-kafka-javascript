@@ -441,6 +441,49 @@ std::vector<RdKafka::TopicPartition*> FromV8Array(
 }
 
 /**
+ * @brief v8 Array of Topic Partitions Offsets to rd_kafka_topic_partition_list_t
+ */
+rd_kafka_topic_partition_list_t*
+TopicPartitionOffsetv8ArrayToTopicPartitionList(
+    v8::Local<v8::Array> parameter) {
+  rd_kafka_topic_partition_list_t* newList =
+      rd_kafka_topic_partition_list_new(parameter->Length());
+
+  for (unsigned int i = 0; i < parameter->Length(); i++) {
+    v8::Local<v8::Value> v;
+    if (!Nan::Get(parameter, i).ToLocal(&v)) {
+      continue;
+    }
+
+    v8::Local<v8::Object> item = v8::Local<v8::Object>::Cast(v);
+
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+
+    v8::Local<v8::Value> topicVal =
+        Nan::Get(item, Nan::New("topic").ToLocalChecked()).ToLocalChecked();
+    v8::Local<v8::String> topicStr =
+        topicVal->ToString(context).ToLocalChecked();
+    Nan::Utf8String topicUtf8(topicStr);
+    std::string topic(*topicUtf8);
+
+    v8::Local<v8::Value> partitionVal =
+        Nan::Get(item, Nan::New("partition").ToLocalChecked()).ToLocalChecked();
+    int partition = partitionVal->Int32Value(context).FromJust();
+
+    rd_kafka_topic_partition_t* toppar =
+        rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
+
+    v8::Local<v8::Value> offsetVal =
+        Nan::Get(item, Nan::New("offset").ToLocalChecked()).ToLocalChecked();
+    int offset = offsetVal->Int32Value(context).FromJust();
+
+    toppar->offset = offset;
+  }
+  return newList;
+}
+
+/**
  * @brief v8::Object to RdKafka::TopicPartition
  *
  */

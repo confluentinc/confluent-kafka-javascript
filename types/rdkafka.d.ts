@@ -442,7 +442,9 @@ export interface IAdminClient {
     deleteGroups(groupIds: string[],
         options?: { timeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteGroupsResult[]) => any): void;
-
+    deleteRecords(delRecords: TopicPartitionOffset[],
+        options?: { timeout?: number, operationTimeout?: number }, 
+        cb?: (err: LibrdKafkaError, result: TopicPartitionOffset[]) => any): void;
     disconnect(): void;
 }
 
