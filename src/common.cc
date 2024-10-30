@@ -1143,7 +1143,7 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
  * @brief Converts a rd_kafka_ListConsumerGroupOffsets_result_t* 
  *        into a v8 Array.
  */
-v8::Local<v8::Array> FormListConsumerGroupOffsetsResult(
+v8::Local<v8::Array> FromListConsumerGroupOffsetsResult(
     const rd_kafka_ListConsumerGroupOffsets_result_t* result) {
   /* Return Object type:
     GroupResults[] = [{
@@ -1233,9 +1233,9 @@ v8::Local<v8::Array> FormListConsumerGroupOffsetsResult(
 
       // Set partition-level error (if any)
       if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-        Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
-                 Nan::New<v8::String>(rd_kafka_err2str(partition->err))
-                     .ToLocalChecked());
+        RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
+        Nan::Set(group_object, Nan::New("error").ToLocalChecked(),
+                 RdKafkaError(code, rd_kafka_err2str(partition->err)));
       }
 
       Nan::Set(partitionsArray, partitionIndex++, partition_object);

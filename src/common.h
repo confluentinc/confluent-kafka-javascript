@@ -132,7 +132,7 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
     const rd_kafka_DeleteGroups_result_t *);
 
 // ListConsumerGroupOffsets: Request
-v8::Local<v8::Array> FormListConsumerGroupOffsetsResult(
+v8::Local<v8::Array> FromListConsumerGroupOffsetsResult(
     const rd_kafka_ListConsumerGroupOffsets_result_t *result);
 }  // namespace Admin
 

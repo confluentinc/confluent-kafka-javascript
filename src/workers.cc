@@ -1529,7 +1529,7 @@ void AdminClientListConsumerGroupOffsets::HandleOKCallback() {
   v8::Local<v8::Value> argv[argc];
 
   argv[0] = Nan::Null();
-  argv[1] = Conversion::Admin::FormListConsumerGroupOffsetsResult(
+  argv[1] = Conversion::Admin::FromListConsumerGroupOffsetsResult(
       rd_kafka_event_ListConsumerGroupOffsets_result(m_event_response));
 
   callback->Call(argc, argv);
