@@ -474,7 +474,7 @@ async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage
   try {
     ctx.enterField(
       msg,
-      desc.name + '.' + fd.name,
+      desc.typeName + '.' + fd.name,
       fd.name,
       getType(fd),
       getInlineTags(fd)
