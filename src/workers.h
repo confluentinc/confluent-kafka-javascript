@@ -612,7 +612,8 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
 class AdminClientDeleteRecords : public ErrorAwareWorker {
  public:
   AdminClientDeleteRecords(Nan::Callback *, NodeKafka::AdminClient *,
-                            rd_kafka_DeleteRecords_t **, size_t,const int &, const int &);
+                           rd_kafka_DeleteRecords_t **, size_t, const int &,
+                           const int &);
   ~AdminClientDeleteRecords();
 
   void Execute();

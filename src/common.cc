@@ -1233,7 +1233,8 @@ v8::Local<v8::Array> FromListConsumerGroupOffsetsResult(
 
       // Set partition-level error (if any)
       if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-        RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
+        RdKafka::ErrorCode code =
+            static_cast<RdKafka::ErrorCode>(partition->err);
         Nan::Set(group_object, Nan::New("error").ToLocalChecked(),
                  RdKafkaError(code, rd_kafka_err2str(partition->err)));
       }

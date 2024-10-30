@@ -1250,8 +1250,9 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
       static_cast<rd_kafka_DeleteRecords_t **>(
           malloc(sizeof(rd_kafka_DeleteRecords_t *) * 1));
 
-  rd_kafka_topic_partition_list_t *partitions = Conversion::TopicPartition::
-            TopicPartitionv8ArrayToTopicPartitionList(delete_records_list, true);
+  rd_kafka_topic_partition_list_t *partitions =
+      Conversion::TopicPartition::TopicPartitionv8ArrayToTopicPartitionList(
+          delete_records_list, true);
   delete_records[0] = rd_kafka_DeleteRecords_new(partitions);
 
   rd_kafka_topic_partition_list_destroy(partitions);
@@ -1273,8 +1274,7 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
 
   // Queue the worker to process the offset fetch request asynchronously
   Nan::AsyncQueueWorker(new Workers::AdminClientDeleteRecords(
-      callback, client, delete_records, 1,
-      operation_timeout_ms, timeout_ms));
+      callback, client, delete_records, 1, operation_timeout_ms, timeout_ms));
 }
 
 }  // namespace NodeKafka
