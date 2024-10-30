@@ -301,7 +301,6 @@ export type TopicPartitions = { topic: string; partitions: number[] }
 export type TopicPartition = {
   topic: string
   partition: number
-  error?: LibrdKafkaError
   leaderEpoch?: number
 }
 export type TopicPartitionOffset = TopicPartition & {
