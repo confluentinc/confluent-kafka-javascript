@@ -1,18 +1,44 @@
-// require('kafkajs') is replaced with require('@confluentinc/kafka-javascript').KafkaJS.
-const { Kafka } = require("@confluentinc/kafka-javascript").KafkaJS;
+const { Kafka } = require('@confluentinc/kafka-javascript').KafkaJS;
+const { parseArgs } = require('node:util');
 
 async function deleteTopicRecords() {
-    const args = process.argv.slice(2);
-    if (args.length < 3 || args.length % 2 !== 1) {
-        console.error("Usage: node deleteTopicRecords.js <topic> <partition offset ...>");
+    const args = parseArgs({
+        allowPositionals: true,
+        options: {
+            'bootstrap-servers': {
+                type: 'string',
+                short: 'b',
+                default: 'localhost:9092',
+            },
+            'timeout': {
+                type: 'string',
+                short: 't',
+                default: '5000',
+            },
+            'operation-timeout': {
+                type: 'string',
+                short: 'o',
+                default: '6000',
+            },
+        },
+    });
+    
+    const {
+        'bootstrap-servers': bootstrapServers,
+        timeout,
+        'operation-timeout': operationTimeout,
+    } = args.values;
+
+    const [topic, ...rest] = args.positionals;
+
+    if (!topic || rest.length % 2 !== 0) {
+        console.error("Usage: node deleteTopicRecords.js --bootstrap-servers <servers> --timeout <timeout> --operation-timeout <operation-timeout> <topic> <partition offset ...>");
         process.exit(1);
     }
 
-    const [topic, ...rest] = args;
-
     const kafka = new Kafka({
         kafkaJS: {
-            brokers: ["localhost:9092"],
+            brokers: [bootstrapServers],
         },
     });
 
@@ -27,6 +53,8 @@ async function deleteTopicRecords() {
         const result = await admin.deleteTopicRecords({
             topic: topic,
             partitions: partitionsInput,
+            timeout: Number(timeout),
+            operationTimeout: Number(operationTimeout),
         });
 
         console.log(`Records deleted for Topic "${topic}":`, JSON.stringify(result, null, 2));

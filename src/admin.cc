@@ -1260,6 +1260,11 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
     return Nan::ThrowError("Must provide at least one TopicPartition");
   }
 
+  /**
+   * The ownership of this is taken by
+   * Workers::AdminClientDeleteRecords and freeing it is also handled
+   * by that class.
+   */
   rd_kafka_DeleteRecords_t **delete_records =
       static_cast<rd_kafka_DeleteRecords_t **>(
           malloc(sizeof(rd_kafka_DeleteRecords_t *) * 1));
@@ -1267,6 +1272,11 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
   rd_kafka_topic_partition_list_t *partitions =
       Conversion::TopicPartition::TopicPartitionv8ArrayToTopicPartitionList(
           delete_records_list, true);
+  if (partitions == NULL) {
+    return Nan::ThrowError(
+        "Failed to convert objects in delete records list, provide proper "
+        "TopicPartitionOffset objects");
+  }
   delete_records[0] = rd_kafka_DeleteRecords_new(partitions);
 
   rd_kafka_topic_partition_list_destroy(partitions);
