@@ -48,7 +48,7 @@ describe("deleteTopicRecords function", () => {
         ).rejects.toHaveProperty("code", ErrorCodes.ERR__TIMED_OUT);
     });
 
-    it("should return correct offset and success error code after consuming messages", async () => {
+    it("should return correct offset and success error code after deleting records", async () => {
 
         await createTopic({ topic: topicName, partitions: 1 });
 

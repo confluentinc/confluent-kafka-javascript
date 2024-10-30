@@ -1,65 +1,55 @@
 // require('kafkajs') is replaced with require('@confluentinc/kafka-javascript').KafkaJS.
 const { Kafka } = require("@confluentinc/kafka-javascript").KafkaJS;
 
-let producer, admin;
-let topicName = "newTopic";
-
-const kafka = new Kafka({
-    kafkaJS: {
-        brokers: ["localhost:9092"],
-    },
-});
-
-async function adminStart() {
-    admin = kafka.admin();
-    await admin.connect();
-
-    producer = kafka.producer();
-
-    await admin.createTopics({
-        topics: [{ topic: topicName, numPartitions: 2 }],
-    });
-    console.log("Topic created successfully");
-
-    await producer.connect();
-
-    const messagesPartition0 = Array.from({ length: 6 }, (_, i) => ({
-        value: `message${i}`,
-        partition: 0,
-    }));
-
-    const messagesPartition1 = Array.from({ length: 11 }, (_, i) => ({
-        value: `message${i}`,
-        partition: 1,
-    }));
-
-    await producer.send({ topic: topicName, messages: messagesPartition0 });
-    await producer.send({ topic: topicName, messages: messagesPartition1 });
-    console.log("Messages sent to partitions 0 and 1");
-
-    await producer.disconnect();
-
-    try {
-        const offsets = await admin.deleteTopicRecords({
-            topic: topicName,
-            partitions: [
-                { partition: 0, offset: 10 },
-                { partition: 1, offset: 4 },
-            ],
-        });
-
-        // Log the entire offsets array for reference
-        console.log("Delete Records: ", JSON.stringify(offsets, null, 2));
-
-    } catch (error) {
-        console.error("Error deleting topic records: ", error);
+async function deleteTopicRecords() {
+    const args = process.argv.slice(2);
+    if (args.length < 3 || args.length % 2 !== 1) {
+        console.error("Usage: node deleteTopicRecords.js <topic> <partition offset ...>");
+        process.exit(1);
     }
 
-    await admin.deleteTopics({
-        topics: [topicName],
+    const [topic, ...rest] = args;
+
+    const kafka = new Kafka({
+        kafkaJS: {
+            brokers: ["localhost:9092"],
+        },
     });
 
-    await admin.disconnect();
+    const admin = kafka.admin();
+    await admin.connect();
+
+    try {
+        // Parse partitions and offsets, ensuring pairs of partition and offset are provided
+        const partitionsInput = parsePartitionsAndOffsets(rest);
+
+        // Delete records for the specified topic and partitions
+        const result = await admin.deleteTopicRecords({
+            topic: topic,
+            partitions: partitionsInput,
+        });
+
+        console.log(`Records deleted for Topic "${topic}":`, JSON.stringify(result, null, 2));
+    } catch (err) {
+        console.error("Error deleting topic records:", err);
+    } finally {
+        await admin.disconnect();
+    }
 }
 
-adminStart();
+// Helper function to parse partitions and offsets from arguments
+function parsePartitionsAndOffsets(args) {
+    const partitions = [];
+    for (let i = 0; i < args.length; i += 2) {
+        const partition = parseInt(args[i]);
+        const offset = parseInt(args[i + 1]);
+        if (isNaN(partition) || isNaN(offset)) {
+            console.error("Partition and offset should be numbers and provided in pairs.");
+            process.exit(1);
+        }
+        partitions.push({ partition, offset });
+    }
+    return partitions;
+}
+
+deleteTopicRecords();
