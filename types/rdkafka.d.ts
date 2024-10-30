@@ -11,7 +11,6 @@ import {
 
 export * from './config';
 export * from './errors';
-import { PartitionOffset } from './kafkajs';
 import * as errors from './errors';
 
 export interface LibrdKafkaError {
@@ -85,10 +84,6 @@ export interface TopicPartitionOffsetAndMetadata extends TopicPartitionOffset {
 }
 
 export type TopicPartitionTime = TopicPartitionOffset;
-
-export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };  
-
-export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
 export type EofEvent = TopicPartitionOffset;
 

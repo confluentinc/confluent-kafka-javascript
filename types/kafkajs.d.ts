@@ -4,9 +4,7 @@ import {
   GroupOverview,
   LibrdKafkaError,
   GroupDescriptions,
-  DeleteGroupsResult,
-  TopicInput,
-  FetchOffsetsPartition
+  DeleteGroupsResult
 } from './rdkafka'
 
 // Admin API related interfaces, types etc; and Error types are common, so
@@ -312,6 +310,10 @@ export type TopicPartitionOffsetAndMetadata = TopicPartitionOffset & {
 export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
+
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };  
+
+export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
 export type Consumer = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
