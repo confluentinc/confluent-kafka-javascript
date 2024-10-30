@@ -5,8 +5,6 @@ import {
   LibrdKafkaError,
   GroupDescriptions,
   DeleteGroupsResult,
-  TopicInput,
-  FetchOffsetsPartition,
   DeleteRecordsResult
 } from './rdkafka'
 
@@ -314,6 +312,10 @@ export type TopicPartitionOffsetAndMetadata = TopicPartitionOffset & {
 export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
+
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };  
+
+export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
 export type SeekEntry = PartitionOffset
 

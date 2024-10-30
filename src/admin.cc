@@ -1155,15 +1155,24 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
     return Nan::ThrowError("'listGroupOffsets' cannot be empty");
   }
 
+  /**
+   * The ownership of this is taken by
+   * Workers::AdminClientListConsumerGroupOffsets and freeing it is also handled
+   * by that class.
+   */
   rd_kafka_ListConsumerGroupOffsets_t **requests =
       static_cast<rd_kafka_ListConsumerGroupOffsets_t **>(
           malloc(sizeof(rd_kafka_ListConsumerGroupOffsets_t *) *
                  listGroupOffsets->Length()));
 
   for (uint32_t i = 0; i < listGroupOffsets->Length(); ++i) {
-    v8::Local<v8::Context> context = Nan::GetCurrentContext();
+    v8::Local<v8::Value> listGroupOffsetValue =
+        Nan::Get(listGroupOffsets, i).ToLocalChecked();
+    if (!listGroupOffsetValue->IsObject()) {
+      return Nan::ThrowError("Each entry must be an object");
+    }
     v8::Local<v8::Object> listGroupOffsetObj =
-        listGroupOffsets->Get(context, i).ToLocalChecked().As<v8::Object>();
+        listGroupOffsetValue.As<v8::Object>();
 
     v8::Local<v8::Value> groupIdValue;
     if (!Nan::Get(listGroupOffsetObj, Nan::New("groupId").ToLocalChecked())
@@ -1190,6 +1199,11 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
       if (partitionsArray->Length() > 0) {
         partitions = Conversion::TopicPartition::
             TopicPartitionv8ArrayToTopicPartitionList(partitionsArray, false);
+        if (partitions == NULL) {
+          return Nan::ThrowError(
+              "Failed to convert partitions to list, provide proper object in "
+              "partitions");
+        }
       }
     }
 

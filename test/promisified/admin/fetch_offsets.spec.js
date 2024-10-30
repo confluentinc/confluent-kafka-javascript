@@ -261,15 +261,13 @@ describe("fetchOffset function", () => {
 
     let messagesConsumed = []; // Define messagesConsumed
 
-    let commitCount = 0;
-
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
 
         messagesConsumed.push(message); // Populate messagesConsumed
-        commitCount++;
 
-        if (commitCount === 5) {
+        // Check the offset of the message and commit only if the offset is 4
+        if (parseInt(message.offset, 10) === 4) {
           await consumer.commitOffsets([
             {
               topic,
@@ -277,7 +275,6 @@ describe("fetchOffset function", () => {
               offset: (parseInt(message.offset, 10) + 1).toString(),
             },
           ]);
-          commitCount = 0; // Reset the commit count
         }
       },
     });
