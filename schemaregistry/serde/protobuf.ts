@@ -100,6 +100,7 @@ export type ProtobufSerializerConfig = SerializerConfig & {
  */
 export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   registry: MutableRegistry
+  fileRegistry: FileRegistry
   schemaToDescCache: LRUCache<string, DescFile>
   descToSchemaCache: LRUCache<string, SchemaInfo>
 
@@ -113,6 +114,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   constructor(client: Client, serdeType: SerdeType, conf: ProtobufSerializerConfig, ruleRegistry?: RuleRegistry) {
     super(client, serdeType, conf, ruleRegistry)
     this.registry = conf.registry ?? createMutableRegistry()
+    this.fileRegistry = createFileRegistry()
     this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
     this.descToSchemaCache = new LRUCache<string, SchemaInfo>({ max: this.config().cacheCapacity ?? 1000 } )
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
@@ -281,94 +283,9 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
+    const fileDesc = await this.toFileDesc(this.client, ctx.target)
     const typeName = msg.$typeName
-    if (typeName == null) {
-      throw new SerializationError('message type name is empty')
-    }
-    const messageDesc = this.registry.getMessage(typeName)
-    if (messageDesc == null) {
-      throw new SerializationError('message descriptor not in registry')
-    }
-    return await transform(ctx, messageDesc, msg, fieldTransform)
-  }
-}
-
-/**
- * ProtobufDeserializerConfig is the configuration for ProtobufDeserializer.
- */
-export type ProtobufDeserializerConfig = DeserializerConfig
-
-/**
- * ProtobufDeserializer is a deserializer for Protobuf messages.
- */
-export class ProtobufDeserializer extends Deserializer implements ProtobufSerde {
-  registry: FileRegistry
-  schemaToDescCache: LRUCache<string, DescFile>
-
-  /**
-   * Creates a new ProtobufDeserializer.
-   * @param client - the schema registry client
-   * @param serdeType - the deserializer type
-   * @param conf - the deserializer configuration
-   * @param ruleRegistry - the rule registry
-   */
-  constructor(client: Client, serdeType: SerdeType, conf: ProtobufDeserializerConfig, ruleRegistry?: RuleRegistry) {
-    super(client, serdeType, conf, ruleRegistry)
-    this.registry = createFileRegistry()
-    this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
-    this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
-      return await this.fieldTransform(ctx, fieldTransform, msg)
-    }
-    for (const rule of this.ruleRegistry.getExecutors()) {
-      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
-    }
-  }
-
-  /**
-   * Deserializes a message.
-   * @param topic - the topic
-   * @param payload - the message payload
-   */
-  override async deserialize(topic: string, payload: Buffer): Promise<any> {
-    if (!Buffer.isBuffer(payload)) {
-      throw new Error('Invalid buffer')
-    }
-    if (payload.length === 0) {
-      return null
-    }
-
-    const info = await this.getSchema(topic, payload, 'serialized')
-    const fd = await this.toFileDesc(this.client, info)
-    const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(5))
-    const messageDesc = this.toMessageDesc(fd, msgIndexes)
-
-    const subject = this.subjectName(topic, info)
-    const readerMeta = await this.getReaderSchema(subject, 'serialized')
-
-    const msgBytes = payload.subarray(5 + bytesRead)
-    let msg = fromBinary(messageDesc, msgBytes)
-
-    // Currently JavaScript does not support migration rules
-    // because of lack of support for DynamicMessage
-    let target: SchemaInfo
-    if (readerMeta != null) {
-      target = readerMeta
-    } else {
-      target = info
-    }
-    msg = await this.executeRules(subject, topic, RuleMode.READ, null, target, msg, null)
-    return msg
-  }
-
-  async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
-    const typeName = msg.$typeName
-    if (typeName == null) {
-      throw new SerializationError('message type name is empty')
-    }
-    const messageDesc = this.registry.getMessage(typeName)
-    if (messageDesc == null) {
-      throw new SerializationError('message descriptor not in registry')
-    }
+    const messageDesc = this.toMessageDescFromName(fileDesc, typeName)
     return await transform(ctx, messageDesc, msg, fieldTransform)
   }
 
@@ -407,8 +324,140 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       }
     }
     const fileRegistry = createFileRegistry(fileDesc, resolve)
-    this.registry = createFileRegistry(this.registry, fileRegistry)
-    return this.registry.getFile(fileDesc.name)
+    this.fileRegistry = createFileRegistry(this.fileRegistry, fileRegistry)
+    return this.fileRegistry.getFile(fileDesc.name)
+  }
+
+  toMessageDescFromName(fd: DescFile, msgName: string): DescMessage {
+    for (let i = 0; i < fd.messages.length; i++) {
+      if (fd.messages[i].typeName === msgName) {
+        return fd.messages[i]
+      }
+    }
+    throw new SerializationError('message descriptor not found')
+  }
+}
+
+/**
+ * ProtobufDeserializerConfig is the configuration for ProtobufDeserializer.
+ */
+export type ProtobufDeserializerConfig = DeserializerConfig
+
+/**
+ * ProtobufDeserializer is a deserializer for Protobuf messages.
+ */
+export class ProtobufDeserializer extends Deserializer implements ProtobufSerde {
+  fileRegistry: FileRegistry
+  schemaToDescCache: LRUCache<string, DescFile>
+
+  /**
+   * Creates a new ProtobufDeserializer.
+   * @param client - the schema registry client
+   * @param serdeType - the deserializer type
+   * @param conf - the deserializer configuration
+   * @param ruleRegistry - the rule registry
+   */
+  constructor(client: Client, serdeType: SerdeType, conf: ProtobufDeserializerConfig, ruleRegistry?: RuleRegistry) {
+    super(client, serdeType, conf, ruleRegistry)
+    this.fileRegistry = createFileRegistry()
+    this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
+    this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
+      return await this.fieldTransform(ctx, fieldTransform, msg)
+    }
+    for (const rule of this.ruleRegistry.getExecutors()) {
+      rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
+    }
+  }
+
+  /**
+   * Deserializes a message.
+   * @param topic - the topic
+   * @param payload - the message payload
+   */
+  override async deserialize(topic: string, payload: Buffer): Promise<any> {
+    if (!Buffer.isBuffer(payload)) {
+      throw new Error('Invalid buffer')
+    }
+    if (payload.length === 0) {
+      return null
+    }
+
+    const info = await this.getSchema(topic, payload, 'serialized')
+    const fd = await this.toFileDesc(this.client, info)
+    const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(5))
+    const messageDesc = this.toMessageDescFromIndexes(fd, msgIndexes)
+
+    const subject = this.subjectName(topic, info)
+    const readerMeta = await this.getReaderSchema(subject, 'serialized')
+
+    const msgBytes = payload.subarray(5 + bytesRead)
+    let msg = fromBinary(messageDesc, msgBytes)
+
+    // Currently JavaScript does not support migration rules
+    // because of lack of support for DynamicMessage
+    let target: SchemaInfo
+    if (readerMeta != null) {
+      target = readerMeta
+    } else {
+      target = info
+    }
+    msg = await this.executeRules(subject, topic, RuleMode.READ, null, target, msg, null)
+    return msg
+  }
+
+  async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
+    const fileDesc = await this.toFileDesc(this.client, ctx.target)
+    const typeName = msg.$typeName
+    const messageDesc = this.toMessageDescFromName(fileDesc, typeName)
+    return await transform(ctx, messageDesc, msg, fieldTransform)
+  }
+
+  async toFileDesc(client: Client, info: SchemaInfo): Promise<DescFile> {
+    const value = this.schemaToDescCache.get(stringify(info.schema))
+    if (value != null) {
+      return value
+    }
+    const fileDesc = await this.parseFileDesc(client, info)
+    if (fileDesc == null) {
+      throw new SerializationError('file descriptor not found')
+    }
+    this.schemaToDescCache.set(stringify(info.schema), fileDesc)
+    return fileDesc
+  }
+
+  async parseFileDesc(client: Client, info: SchemaInfo): Promise<DescFile | undefined> {
+    const deps = new Map<string, string>()
+    await this.resolveReferences(client, info, deps, 'serialized')
+    const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(info.schema, 'base64'))
+    const resolve = (depName: string) => {
+      if (isBuiltin(depName)) {
+        const dep = builtinDeps.get(depName)
+        if (dep == null) {
+          throw new SerializationError(`dependency ${depName} not found`)
+        }
+        return dep
+      } else {
+        const dep = deps.get(depName)
+        if (dep == null) {
+          throw new SerializationError(`dependency ${depName} not found`)
+        }
+        const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
+        fileDesc.name = depName
+        return fileDesc
+      }
+    }
+    const fileRegistry = createFileRegistry(fileDesc, resolve)
+    this.fileRegistry = createFileRegistry(this.fileRegistry, fileRegistry)
+    return this.fileRegistry.getFile(fileDesc.name)
+  }
+
+  toMessageDescFromName(fd: DescFile, msgName: string): DescMessage {
+    for (let i = 0; i < fd.messages.length; i++) {
+      if (fd.messages[i].typeName === msgName) {
+        return fd.messages[i]
+      }
+    }
+    throw new SerializationError('message descriptor not found')
   }
 
   readMessageIndexes(payload: Buffer): [number, number[]] {
@@ -421,7 +470,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     return [bw.pos, msgIndexes]
   }
 
-  toMessageDesc(fd: DescFile, msgIndexes: number[]): DescMessage {
+  toMessageDescFromIndexes(fd: DescFile, msgIndexes: number[]): DescMessage {
     let index = msgIndexes[0]
     if (msgIndexes.length === 1) {
       return fd.messages[index]
