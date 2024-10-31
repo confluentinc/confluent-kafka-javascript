@@ -32,7 +32,10 @@ import {
   file_google_protobuf_field_mask,
   file_google_protobuf_source_context,
   file_google_protobuf_struct,
-  file_google_protobuf_timestamp, file_google_protobuf_type, file_google_protobuf_wrappers,
+  file_google_protobuf_timestamp,
+  file_google_protobuf_type,
+  file_google_protobuf_wrappers,
+  FileDescriptorProto,
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
 import { BufferWrapper, MAX_VARINT_LEN_64 } from "./buffer-wrapper";
@@ -306,24 +309,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const deps = new Map<string, string>()
     await this.resolveReferences(client, info, deps, 'serialized')
     const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(info.schema, 'base64'))
-    const resolve = (depName: string) => {
-      if (isBuiltin(depName)) {
-        const dep = builtinDeps.get(depName)
-        if (dep == null) {
-          throw new SerializationError(`dependency ${depName} not found`)
-        }
-        return dep
-      } else {
-        const dep = deps.get(depName)
-        if (dep == null) {
-          throw new SerializationError(`dependency ${depName} not found`)
-        }
-        const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
-        fileDesc.name = depName
-        return fileDesc
-      }
-    }
-    const fileRegistry = createFileRegistry(fileDesc, resolve)
+    const fileRegistry = newFileRegistry(fileDesc, deps)
     this.fileRegistry = createFileRegistry(this.fileRegistry, fileRegistry)
     return this.fileRegistry.getFile(fileDesc.name)
   }
@@ -429,24 +415,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const deps = new Map<string, string>()
     await this.resolveReferences(client, info, deps, 'serialized')
     const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(info.schema, 'base64'))
-    const resolve = (depName: string) => {
-      if (isBuiltin(depName)) {
-        const dep = builtinDeps.get(depName)
-        if (dep == null) {
-          throw new SerializationError(`dependency ${depName} not found`)
-        }
-        return dep
-      } else {
-        const dep = deps.get(depName)
-        if (dep == null) {
-          throw new SerializationError(`dependency ${depName} not found`)
-        }
-        const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
-        fileDesc.name = depName
-        return fileDesc
-      }
-    }
-    const fileRegistry = createFileRegistry(fileDesc, resolve)
+    const fileRegistry = newFileRegistry(fileDesc, deps)
     this.fileRegistry = createFileRegistry(this.fileRegistry, fileRegistry)
     return this.fileRegistry.getFile(fileDesc.name)
   }
@@ -485,6 +454,27 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     }
     return this.toNestedMessageDesc(parent.nestedMessages[index], msgIndexes.slice(1))
   }
+}
+
+function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
+  const resolve = (depName: string) => {
+    if (isBuiltin(depName)) {
+      const dep = builtinDeps.get(depName)
+      if (dep == null) {
+        throw new SerializationError(`dependency ${depName} not found`)
+      }
+      return dep
+    } else {
+      const dep = deps.get(depName)
+      if (dep == null) {
+        throw new SerializationError(`dependency ${depName} not found`)
+      }
+      const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
+      fileDesc.name = depName
+      return fileDesc
+    }
+  }
+  return createFileRegistry(fileDesc, resolve)
 }
 
 async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fieldTransform: FieldTransform): Promise<any> {
