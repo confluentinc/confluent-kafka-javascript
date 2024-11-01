@@ -509,7 +509,7 @@ async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fi
 }
 
 async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage,
-                        msg: any, fieldTransform: FieldTransform) {
+                              msg: any, fieldTransform: FieldTransform) {
   try {
     ctx.enterField(
       msg,
