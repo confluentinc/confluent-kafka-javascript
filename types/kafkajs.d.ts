@@ -375,8 +375,7 @@ export type Admin = {
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
   fetchOffsets(options: { 
     groupId: string,
-    topics?: TopicInput,  
-    resolveOffsets?: boolean,
+    topics?: TopicInput,
     timeout?: number,
     requireStableOffsets?: boolean }): 
     Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
