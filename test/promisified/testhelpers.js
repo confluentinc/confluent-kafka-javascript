@@ -19,6 +19,8 @@ function makeConfig(config, common) {
     const kafkaJS =  Object.assign(config, clusterInformation.kafkaJS);
     if (debug) {
         common['debug'] = debug;
+    } else {
+        common['log_level'] = 0;
     }
 
     return Object.assign(common, { kafkaJS });
