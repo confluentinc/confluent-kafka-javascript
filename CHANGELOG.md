@@ -1,3 +1,23 @@
+# confluent-kafka-javascript v0.4.0
+
+v0.4.0 is a limited availability feature release. It is supported for all usage.
+
+## Enhancements
+
+1. Fixes an issue where headers were not passed correctly to the `eachBatch` callback (#130).
+2. Add support for an Admin API to list a consumer group's offsets (#49).
+
+
+# confluent-kafka-javascript v0.3.0
+
+v0.3.0 is a limited availability feature release. It is supported for all usage.
+
+## Enhancements
+
+1. References librdkafka v2.6.0. Refer to the [librdkafka v2.6.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.6.0) for more information.
+1. Minor optimization to reduce schema ID lookups (#123).
+
+
 # confluent-kafka-javascript v0.2.1
 
 v0.2.1 is a limited availability release. It is supported for all usage.
