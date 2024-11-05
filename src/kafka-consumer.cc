@@ -131,7 +131,7 @@ void KafkaConsumer::DeactivateDispatchers() {
 void KafkaConsumer::ConfigureCallback(const std::string& string_key,
                                       const v8::Local<v8::Function>& cb,
                                       bool add) {
-  if (string_key.compare("js.queue_non_empty_cb") == 0) {
+  if (string_key.compare("queue_non_empty_cb") == 0) {
     if (add) {
       this->m_queue_not_empty_cb.dispatcher.AddCallback(cb);
     } else {

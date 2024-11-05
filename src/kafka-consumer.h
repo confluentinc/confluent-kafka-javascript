@@ -107,7 +107,7 @@ class KafkaConsumer : public Connection {
   bool m_is_subscribed = false;
 
   void* m_consume_loop = nullptr;
-  NodeKafka::Callbacks::QueueNotEmpty m_queue_not_empty_cb;
+  Callbacks::QueueNotEmpty m_queue_not_empty_cb;
 
   /* This is the same client as stored in m_client.
    * Prevents a dynamic_cast in every single method. */
