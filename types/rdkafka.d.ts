@@ -147,6 +147,19 @@ export interface ConsumerStream extends Readable {
     close(cb?: () => void): void;
 }
 
+export enum IsolationLevel {
+    READ_UNCOMMITTED = 0,
+    READ_COMMITTED = 1,
+}
+
+export interface ListOffsetsResult {
+    topic: string;
+    partition: number;
+    offset: string;
+    error: LibrdKafkaError;
+    timestamp: number;
+}
+
 type KafkaClientEvents = 'disconnected' | 'ready' | 'connection.failure' | 'event.error' | 'event.stats' | 'event.log' | 'event.event' | 'event.throttle';
 type KafkaConsumerEvents = 'data' | 'partition.eof' | 'rebalance' | 'rebalance.error' | 'subscribed' | 'unsubscribed' | 'unsubscribe' | 'offset.commit' | KafkaClientEvents;
 type KafkaProducerEvents = 'delivery-report' | KafkaClientEvents;
@@ -456,6 +469,10 @@ export interface IAdminClient {
     listConsumerGroupOffsets(listGroupOffsets : ListGroupOffsets[],
         options?: { timeout?: number, requireStableOffsets?: boolean },
         cb?: (err: LibrdKafkaError, result: GroupResults[]) => any): void;
+
+    listOffsets(partitions: TopicPartitionOffset[],
+        options?: {timeout?: number, isolationLevel?: IsolationLevel},
+        cb?: (err: LibrdKafkaError, result: ListOffsetsResult[]) => any): void;
 
     disconnect(): void;
 }

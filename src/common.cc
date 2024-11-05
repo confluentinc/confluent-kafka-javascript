@@ -1241,6 +1241,54 @@ v8::Local<v8::Array> FromListConsumerGroupOffsetsResult(
 
   return returnArray;
 }
+/**
+ * @brief Converts a rd_kafka_ListOffsets_result_t* into a v8 Array.
+ */
+v8::Local<v8::Array> FromListOffsetsResult(
+    const rd_kafka_ListOffsets_result_t* result) {
+  /* Return object type:
+   [{
+     topic: string,
+     partition: number,
+     offset: number,
+     error: LibrdKafkaError
+     timestamp: number
+   }]
+ */
+
+  size_t result_cnt;
+  const rd_kafka_ListOffsetsResultInfo_t** results =
+      rd_kafka_ListOffsets_result_infos(result, &result_cnt);
+
+  v8::Local<v8::Array> resultArray = Nan::New<v8::Array>();
+  int partitionIndex = 0;
+
+  for (int i = 0; i < result_cnt; i++) {
+    const rd_kafka_topic_partition_t* partition =
+        rd_kafka_ListOffsetsResultInfo_topic_partition(results[i]);
+    int64_t timestamp = rd_kafka_ListOffsetsResultInfo_timestamp(results[i]);
+
+    // Create the ListOffsetsResult object
+    v8::Local<v8::Object> partition_object = Nan::New<v8::Object>();
+
+    // Set topic, partition, offset, error and timestamp
+    Nan::Set(partition_object, Nan::New("topic").ToLocalChecked(),
+             Nan::New<v8::String>(partition->topic).ToLocalChecked());
+    Nan::Set(partition_object, Nan::New("partition").ToLocalChecked(),
+             Nan::New<v8::Number>(partition->partition));
+    Nan::Set(partition_object, Nan::New("offset").ToLocalChecked(),
+             Nan::New<v8::Number>(partition->offset));
+    RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
+    Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
+             RdKafkaError(code, rd_kafka_err2str(partition->err)));
+    Nan::Set(partition_object, Nan::New("timestamp").ToLocalChecked(),
+             Nan::New<v8::Number>(timestamp));
+
+    Nan::Set(resultArray, partitionIndex++, partition_object);
+  }
+
+  return resultArray;
+}
 
 }  // namespace Admin
 

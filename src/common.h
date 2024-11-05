@@ -134,6 +134,10 @@ v8::Local<v8::Array> FromDeleteGroupsResult(
 // ListConsumerGroupOffsets: Request
 v8::Local<v8::Array> FromListConsumerGroupOffsetsResult(
     const rd_kafka_ListConsumerGroupOffsets_result_t *result);
+
+// ListOffsets: Response
+v8::Local<v8::Array> FromListOffsetsResult(
+    const rd_kafka_ListOffsets_result_t* result);
 }  // namespace Admin
 
 namespace TopicPartition {
