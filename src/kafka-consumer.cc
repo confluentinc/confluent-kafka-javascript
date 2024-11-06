@@ -522,6 +522,30 @@ std::string KafkaConsumer::RebalanceProtocol() {
   return m_consumer->rebalance_protocol();
 }
 
+Baton KafkaConsumer::DisableQueueForwarding(RdKafka::TopicPartition * toppar) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE, "KafkaConsumer is not connected");
+  }
+
+  // Disable forwarding for own partition
+  RdKafka::Queue *queue = m_client->get_partition_queue(toppar);
+
+  if (queue == NULL) {
+    return Baton(RdKafka::ERR__STATE,
+      "TopicPartition has an invalid queue.");
+  }
+
+  RdKafka::ErrorCode err = queue->forward(NULL);
+  if (err != RdKafka::ERR_NO_ERROR) {
+    delete queue;
+    return Baton(RdKafka::ERR__STATE,
+      "Could not disable queue for given partition.");
+  }
+
+  delete queue;
+  return Baton(err);
+}
+
 Nan::Persistent<v8::Function> KafkaConsumer::constructor;
 
 void KafkaConsumer::Init(v8::Local<v8::Object> exports) {
@@ -583,6 +607,7 @@ void KafkaConsumer::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "assignments", NodeAssignments);
   Nan::SetPrototypeMethod(tpl, "assignmentLost", NodeAssignmentLost);
   Nan::SetPrototypeMethod(tpl, "rebalanceProtocol", NodeRebalanceProtocol);
+  Nan::SetPrototypeMethod(tpl, "disableQueueForwarding", NodeDisableQueueForwarding);  // NOLINT
 
   Nan::SetPrototypeMethod(tpl, "commit", NodeCommit);
   Nan::SetPrototypeMethod(tpl, "commitSync", NodeCommitSync);
@@ -772,6 +797,36 @@ NAN_METHOD(KafkaConsumer::NodeRebalanceProtocol) {
   KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
   std::string protocol = consumer->RebalanceProtocol();
   info.GetReturnValue().Set(Nan::New<v8::String>(protocol).ToLocalChecked());
+}
+
+NAN_METHOD(KafkaConsumer::NodeDisableQueueForwarding) {
+  Nan::HandleScope scope;
+
+  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+
+  if (!consumer->IsConnected()) {
+    Nan::ThrowError("KafkaConsumer is disconnected");
+    return;
+  }
+
+  if (info[0]->IsObject()) {
+    RdKafka::TopicPartition * toppar =
+      Conversion::TopicPartition::FromV8Object(info[0].As<v8::Object>());
+
+    if (toppar == NULL) {
+      Nan::ThrowError("Invalid topic partition provided");
+      return;
+    }
+
+    Baton b = consumer->DisableQueueForwarding(toppar);
+
+    delete toppar;
+  } else {
+    Nan::ThrowError("First parameter must be an object");
+    return;
+  }
+
+  info.GetReturnValue().Set(Nan::Null());
 }
 
 NAN_METHOD(KafkaConsumer::NodeAssign) {
@@ -1388,42 +1443,82 @@ NAN_METHOD(KafkaConsumer::NodeConsume) {
   }
 
   if (info[1]->IsNumber()) {
-    if (!info[2]->IsBoolean()) {
-      return Nan::ThrowError("Need to specify a boolean");
-    }
+    if (info[2]->IsString() && info[3]->IsNumber()) {
+      // Consume per partition
+      if (!info[4]->IsFunction()) {
+        return Nan::ThrowError("Need to specify a callback");
+      }
 
-    if (!info[3]->IsFunction()) {
-      return Nan::ThrowError("Need to specify a callback");
-    }
+      v8::Local<v8::Number> numMessagesNumber = info[1].As<v8::Number>();
+      Nan::Maybe<uint32_t> numMessagesMaybe = Nan::To<uint32_t>(numMessagesNumber);  // NOLINT
 
-    v8::Local<v8::Number> numMessagesNumber = info[1].As<v8::Number>();
-    Nan::Maybe<uint32_t> numMessagesMaybe = Nan::To<uint32_t>(numMessagesNumber);  // NOLINT
+      uint32_t numMessages;
+      if (numMessagesMaybe.IsNothing()) {
+        return Nan::ThrowError("Parameter must be a number over 0");
+      } else {
+        numMessages = numMessagesMaybe.FromJust();
+      }
 
-    uint32_t numMessages;
-    if (numMessagesMaybe.IsNothing()) {
-      return Nan::ThrowError("Parameter must be a number over 0");
+      // Get string pointer for the topic name
+      Nan::Utf8String topicUTF8(Nan::To<v8::String>(info[2]).ToLocalChecked());
+      std::string topic_name(*topicUTF8);
+
+      // Parse partition
+      v8::Local<v8::Number> partitionNumber = info[3].As<v8::Number>();
+      Nan::Maybe<uint32_t> partitionMaybe = Nan::To<uint32_t>(partitionNumber);  // NOLINT
+
+      uint32_t partition;
+      if (partitionMaybe.IsNothing()) {
+        return Nan::ThrowError("Parameter must be a number equal to or over 0");
+      } else {
+        partition = partitionMaybe.FromJust();
+      }
+
+      // Parse onlyApplyTimeoutToFirstMessage
+      bool isTimeoutOnlyForFirstMessage;
+      if (!Nan::To<bool>(info[5]).To(&isTimeoutOnlyForFirstMessage)) {
+        isTimeoutOnlyForFirstMessage = false;
+      }
+
+      KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+
+      v8::Local<v8::Function> cb = info[4].As<v8::Function>();
+      Nan::Callback *callback = new Nan::Callback(cb);
+      Nan::AsyncQueueWorker(
+        new Workers::KafkaConsumerConsumeNumOfPartition(callback, consumer, numMessages, topic_name, partition, timeout_ms, isTimeoutOnlyForFirstMessage));  // NOLINT
     } else {
-      numMessages = numMessagesMaybe.FromJust();
-    }
+      if (!info[2]->IsFunction()) {
+        return Nan::ThrowError("Need to specify a callback");
+      }
 
-    v8::Local<v8::Boolean> isTimeoutOnlyForFirstMessageBoolean = info[2].As<v8::Boolean>(); // NOLINT
-    Nan::Maybe<bool> isTimeoutOnlyForFirstMessageMaybe =
+      v8::Local<v8::Number> numMessagesNumber = info[1].As<v8::Number>();
+      Nan::Maybe<uint32_t> numMessagesMaybe = Nan::To<uint32_t>(numMessagesNumber);  // NOLINT
+
+      uint32_t numMessages;
+      if (numMessagesMaybe.IsNothing()) {
+        return Nan::ThrowError("Parameter must be a number over 0");
+      } else {
+        numMessages = numMessagesMaybe.FromJust();
+      }
+
+      v8::Local<v8::Boolean> isTimeoutOnlyForFirstMessageBoolean = info[2].As<v8::Boolean>(); // NOLINT
+      Nan::Maybe<bool> isTimeoutOnlyForFirstMessageMaybe =
       Nan::To<bool>(isTimeoutOnlyForFirstMessageBoolean);
 
-    bool isTimeoutOnlyForFirstMessage;
-    if (isTimeoutOnlyForFirstMessageMaybe.IsNothing()) {
-      return Nan::ThrowError("Parameter must be a boolean");
-    } else {
-      isTimeoutOnlyForFirstMessage = isTimeoutOnlyForFirstMessageMaybe.FromJust(); // NOLINT
+      bool isTimeoutOnlyForFirstMessage;
+      if (isTimeoutOnlyForFirstMessageMaybe.IsNothing()) {
+        return Nan::ThrowError("Parameter must be a boolean");
+      } else {
+        isTimeoutOnlyForFirstMessage = isTimeoutOnlyForFirstMessageMaybe.FromJust(); // NOLINT
+      }
+
+      KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+
+      v8::Local<v8::Function> cb = info[3].As<v8::Function>();
+      Nan::Callback *callback = new Nan::Callback(cb);
+      Nan::AsyncQueueWorker(
+        new Workers::KafkaConsumerConsumeNum(callback, consumer, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage));  // NOLINT
     }
-
-    KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
-    v8::Local<v8::Function> cb = info[3].As<v8::Function>();
-    Nan::Callback *callback = new Nan::Callback(cb);
-    Nan::AsyncQueueWorker(
-      new Workers::KafkaConsumerConsumeNum(callback, consumer, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage));  // NOLINT
-
   } else {
     if (!info[1]->IsFunction()) {
       return Nan::ThrowError("Need to specify a callback");

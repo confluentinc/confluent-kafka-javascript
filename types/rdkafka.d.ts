@@ -228,9 +228,9 @@ export class KafkaConsumer extends Client<KafkaConsumerEvents> {
     committed(toppars: TopicPartition[], timeout: number, cb: (err: LibrdKafkaError, topicPartitions: TopicPartitionOffsetAndMetadata[]) => void): this;
     committed(timeout: number, cb: (err: LibrdKafkaError, topicPartitions: TopicPartitionOffsetAndMetadata[]) => void): this;
 
-    consume(number: number, cb?: (err: LibrdKafkaError, messages: Message[]) => void): void;
-    consume(cb: (err: LibrdKafkaError, messages: Message[]) => void): void;
-    consume(): void;
+    consume(number: number, topic: string, partition: number, cb?: (err: LibrdKafkaError | null, messages: Message[] | undefined) => void): void;
+    consume(number: number, cb?: (err: LibrdKafkaError | null, messages: Message[] | undefined) => void): void;
+    consume(cb: (err: LibrdKafkaError | null, messages: Message[] | undefined) => void): void;
 
     getWatermarkOffsets(topic: string, partition: number): WatermarkOffsets;
 
@@ -243,6 +243,8 @@ export class KafkaConsumer extends Client<KafkaConsumerEvents> {
     resume(topicPartitions: TopicPartition[]): any;
 
     seek(toppar: TopicPartitionOffset, timeout: number | null, cb: (err: LibrdKafkaError) => void): this;
+
+    disableQueueForwarding(topicPartition: TopicPartition): this;
 
     setDefaultConsumeTimeout(timeoutMs: number): void;
 
