@@ -1276,8 +1276,8 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
        isr: Node[],
        replicas: Node[],
      }]
-     error: LibrdKafkaError,
-     authorizedOperations: AclOperationType[]
+     error?: LibrdKafkaError,
+     authorizedOperations?: AclOperationType[]
     }]
   */
 

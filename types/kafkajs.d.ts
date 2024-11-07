@@ -334,6 +334,7 @@ export type ITopicMetadata = {
   name: string
   topicId?: Uuid
   isInternal?: boolean
+  error?: LibrdKafkaError
   partitions: PartitionMetadata[]
   authorizedOperations?: AclOperationTypes[]
 }

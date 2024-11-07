@@ -1309,7 +1309,7 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
 NAN_METHOD(AdminClient::NodeDescribeTopics) {
   Nan::HandleScope scope;
 
-  if (info.Length() < 3 || !info[1]->IsFunction()) {
+  if (info.Length() < 3 || !info[2]->IsFunction()) {
     return Nan::ThrowError("Need to specify a callback");
   }
 
@@ -1335,10 +1335,7 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
   rd_kafka_TopicCollection_t *topic_collection =
       rd_kafka_TopicCollection_of_topic_names(topics, topicNamesVector.size());
 
-  v8::Local<v8::Object> options = Nan::New<v8::Object>();
-  if (info.Length() > 2 && info[1]->IsObject()) {
-    options = info[1].As<v8::Object>();
-  }
+  v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
   bool include_authorised_operations =
       GetParameter<bool>(options, "includeAuthorizedOperations", false);

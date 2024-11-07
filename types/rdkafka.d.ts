@@ -457,7 +457,7 @@ export type TopicDescription = {
     topicId: Uuid
     isInternal: boolean
     partitions: TopicPartitionInfo[]
-    error: LibrdKafkaError
+    error?: LibrdKafkaError
     authorizedOperations?: AclOperationTypes[]
 }
 
