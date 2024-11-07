@@ -609,6 +609,25 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
   rd_kafka_event_t *m_event_response;
 };
 
+class AdminClientDescribeTopics : public ErrorAwareWorker {
+ public:
+  AdminClientDescribeTopics(Nan::Callback *, NodeKafka::AdminClient *,
+                            rd_kafka_TopicCollection_t *, const bool,
+                            const int &);
+  ~AdminClientDescribeTopics();
+
+  void Execute();
+  void HandleOKCallback();
+  void HandleErrorCallback();
+
+ private:
+  NodeKafka::AdminClient *m_client;
+  rd_kafka_TopicCollection_t *m_topics;
+  const bool m_include_authorized_operations;
+  const int m_timeout_ms;
+  rd_kafka_event_t *m_event_response;
+};
+
 class AdminClientListOffsets : public ErrorAwareWorker {
  public:
   AdminClientListOffsets(Nan::Callback *, NodeKafka::AdminClient *,
