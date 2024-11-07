@@ -1252,7 +1252,7 @@ v8::Local<v8::Array> FromDeleteRecordsResult(
       topic: string,
       partition: number,
       lowWatermark: number,
-      error: LibrdKafkaError
+      error?: LibrdKafkaError
     }]
   */
   const rd_kafka_topic_partition_list_t* partitionList =
@@ -1267,16 +1267,19 @@ v8::Local<v8::Array> FromDeleteRecordsResult(
     // Create the TopicPartitionOffset object
     v8::Local<v8::Object> partition_object = Nan::New<v8::Object>();
 
-    // Set topic, partition, and offset
+    // Set topic, partition, and offset and error(if required)
     Nan::Set(partition_object, Nan::New("topic").ToLocalChecked(),
              Nan::New<v8::String>(partition->topic).ToLocalChecked());
     Nan::Set(partition_object, Nan::New("partition").ToLocalChecked(),
              Nan::New<v8::Number>(partition->partition));
     Nan::Set(partition_object, Nan::New("lowWatermark").ToLocalChecked(),
              Nan::New<v8::Number>(partition->offset));
-    RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
-    Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
-             RdKafkaError(code, rd_kafka_err2str(partition->err)));
+
+    if(partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+      RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
+      Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
+               RdKafkaError(code, rd_kafka_err2str(partition->err)));
+    }
 
     Nan::Set(partitionsArray, partitionIndex++, partition_object);
   }

@@ -44,7 +44,7 @@ describe("deleteTopicRecords function", () => {
         await producer.send({ topic: topicName, messages: messages });
 
         await expect(
-            admin.deleteTopicRecords({ topic: topicName, partitions: [{ partition: 0, offset: 4 }], timeout: 0 })
+            admin.deleteTopicRecords({ topic: topicName, partitions: [{ partition: 0, offset: "4" }], timeout: 0 })
         ).rejects.toHaveProperty("code", ErrorCodes.ERR__TIMED_OUT);
     });
 
@@ -59,18 +59,14 @@ describe("deleteTopicRecords function", () => {
 
         const records = await admin.deleteTopicRecords({
             topic: topicName,
-            partitions: [{ partition: 0, offset: 5 }],
+            partitions: [{ partition: 0, offset: "5" }],
         });
 
         expect(records).toEqual([
             {
                 topic: topicName,
                 partition: 0,
-                lowWatermark: 5,
-                error: {
-                    message: "Success",
-                    code: 0,
-                }
+                lowWatermark: 5
             }
         ]);
     });
@@ -86,18 +82,14 @@ describe("deleteTopicRecords function", () => {
 
         const records = await admin.deleteTopicRecords({
             topic: topicName,
-            partitions: [{ partition: 0, offset: -1 }],
+            partitions: [{ partition: 0, offset: "-1" }],
         });
 
         expect(records).toEqual([
             {
                 topic: topicName,
                 partition: 0,
-                lowWatermark: 5,
-                error: {
-                    message: "Success",
-                    code: 0,
-                }
+                lowWatermark: 5
             }
         ]);
     });
@@ -126,8 +118,8 @@ describe("deleteTopicRecords function", () => {
         const records = await admin.deleteTopicRecords({
             topic: topicName,
             partitions: [
-                { partition: 0, offset: 5 },
-                { partition: 1, offset: 10 },
+                { partition: 0, offset: "5" },
+                { partition: 1, offset: "10" },
             ],
         });
 
@@ -136,20 +128,12 @@ describe("deleteTopicRecords function", () => {
             {
                 topic: topicName,
                 partition: 0,
-                lowWatermark: 5,
-                error: {
-                    message: "Success",
-                    code: 0,
-                }
+                lowWatermark: 5
             },
             {
                 topic: topicName,
                 partition: 1,
-                lowWatermark: 10,
-                error: {
-                    message: "Success",
-                    code: 0,
-                }
+                lowWatermark: 10
             }
         ]);
     });

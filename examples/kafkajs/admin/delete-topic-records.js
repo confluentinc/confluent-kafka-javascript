@@ -18,7 +18,7 @@ async function deleteTopicRecords() {
             'operation-timeout': {
                 type: 'string',
                 short: 'o',
-                default: '6000',
+                default: '60000',
             },
         },
     });
@@ -70,11 +70,11 @@ function parsePartitionsAndOffsets(args) {
     const partitions = [];
     for (let i = 0; i < args.length; i += 2) {
         const partition = parseInt(args[i]);
-        const offset = parseInt(args[i + 1]);
-        if (isNaN(partition) || isNaN(offset)) {
+        const offset = args[i + 1];
+        if (isNaN(partition) || isNaN(parseInt(offset))) {
             console.error("Partition and offset should be numbers and provided in pairs.");
             process.exit(1);
-        }
+          }
         partitions.push({ partition, offset });
     }
     return partitions;

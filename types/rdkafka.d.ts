@@ -430,7 +430,7 @@ export type DeleteRecordsResult = {
     topic: string
     partition: number
     lowWatermark: number
-    error: LibrdKafkaError
+    error?: LibrdKafkaError
 }
 
 export interface IAdminClient {

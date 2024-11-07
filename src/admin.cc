@@ -1216,10 +1216,7 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
   }
 
   // Now process the second argument: options (timeout and requireStableOffsets)
-  v8::Local<v8::Object> options = Nan::New<v8::Object>();
-  if (info.Length() > 2 && info[1]->IsObject()) {
-    options = info[1].As<v8::Object>();
-  }
+  v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
   bool require_stable_offsets =
       GetParameter<bool>(options, "requireStableOffsets", false);
@@ -1248,7 +1245,7 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
 
   if (!info[0]->IsArray()) {
     return Nan::ThrowError(
-        "Must provide array containg 'TopicPartition' objects");
+        "Must provide array containg 'TopicPartitionOffset' objects");
   }
 
   if (!info[1]->IsObject()) {
@@ -1285,13 +1282,10 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
   rd_kafka_topic_partition_list_destroy(partitions);
 
   // Now process the second argument: options (timeout and operation_timeout)
-  v8::Local<v8::Object> options = Nan::New<v8::Object>();
-  if (info.Length() > 2 && info[1]->IsObject()) {
-    options = info[1].As<v8::Object>();
-  }
+  v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
   int operation_timeout_ms =
-      GetParameter<int64_t>(options, "operation_timeout", 6000);
+      GetParameter<int64_t>(options, "operation_timeout", 60000);
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 
   // Create the final callback object
