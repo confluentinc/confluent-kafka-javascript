@@ -278,6 +278,9 @@ v8::Local<v8::Object> ToV8Object(const rd_kafka_Node_t* node) {
   return obj;
 }
 
+/**
+ * @brief Converts a rd_kafka_Uuid_t* into a v8 object.
+ */
 v8::Local<v8::Object> UuidToV8Object(const rd_kafka_Uuid_t* uuid) {
   /*Return object type
     {
@@ -1263,6 +1266,9 @@ v8::Local<v8::Array> FromListConsumerGroupOffsetsResult(
   return returnArray;
 }
 
+/**
+ * @brief Converts a rd_kafka_DescribeTopics_result_t* into a v8 Array.
+ */
 v8::Local<v8::Array> FromDescribeTopicsResult(
     const rd_kafka_DescribeTopics_result_t* result) {
   /* Return object type:

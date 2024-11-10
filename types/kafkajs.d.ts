@@ -7,7 +7,8 @@ import {
   DeleteGroupsResult,
   Node,
   AclOperationTypes,
-  Uuid
+  Uuid,
+  IsolationLevel
 } from './rdkafka'
 
 // Admin API related interfaces, types etc; and Error types are common, so
@@ -330,6 +331,8 @@ export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null,
 
 export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
+export type SeekEntry = PartitionOffset
+
 export type ITopicMetadata = {
   name: string
   topicId?: Uuid
@@ -407,4 +410,9 @@ export type Admin = {
     topics: string[], 
     includeAuthorizedOperations?: boolean,
     timeout?: number }): Promise<{ topics: Array<ITopicMetadata> }>
+  fetchTopicOffsets(topic: string,
+    options?: {
+      timeout?: number,
+      isolationLevel: IsolationLevel
+    }): Promise<Array<SeekEntry & { high: string; low: string }>>
 }

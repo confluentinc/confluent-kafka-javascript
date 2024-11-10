@@ -589,6 +589,9 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
   rd_kafka_event_t *m_event_response;
 };
 
+/**
+ * @brief List consumer group offsets on a remote broker cluster.
+ */
 class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
  public:
   AdminClientListConsumerGroupOffsets(Nan::Callback *, NodeKafka::AdminClient *,
@@ -609,6 +612,9 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
   rd_kafka_event_t *m_event_response;
 };
 
+/**
+ * @brief Describe Topics on a remote broker cluster.
+ */
 class AdminClientDescribeTopics : public ErrorAwareWorker {
  public:
   AdminClientDescribeTopics(Nan::Callback *, NodeKafka::AdminClient *,
@@ -628,6 +634,9 @@ class AdminClientDescribeTopics : public ErrorAwareWorker {
   rd_kafka_event_t *m_event_response;
 };
 
+/**
+ * @brief List Offsets on a remote broker cluster.
+ */
 class AdminClientListOffsets : public ErrorAwareWorker {
  public:
   AdminClientListOffsets(Nan::Callback *, NodeKafka::AdminClient *,

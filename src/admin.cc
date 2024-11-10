@@ -1306,6 +1306,9 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
       require_stable_offsets, timeout_ms));
 }
 
+/**
+ * Describe Topics.
+ */
 NAN_METHOD(AdminClient::NodeDescribeTopics) {
   Nan::HandleScope scope;
 
@@ -1350,6 +1353,9 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
       callback, client, topic_collection, include_authorised_operations, timeout_ms));
 }
 
+/**
+ * List Offsets.
+ */
 NAN_METHOD(AdminClient::NodeListOffsets) {
   Nan::HandleScope scope;
 
@@ -1363,10 +1369,6 @@ NAN_METHOD(AdminClient::NodeListOffsets) {
 
   v8::Local<v8::Array> listOffsets = info[0].As<v8::Array>();
 
-  if (listOffsets->Length() == 0) {
-    return Nan::ThrowError("'listOffsets' cannot be empty");
-  }
-
   /**
    * The ownership of this is taken by
    * Workers::AdminClientListOffsets and freeing it is also handled
@@ -1377,12 +1379,10 @@ NAN_METHOD(AdminClient::NodeListOffsets) {
           listOffsets, true);
 
   // Now process the second argument: options (timeout and isolationLevel)
-  v8::Local<v8::Object> options = Nan::New<v8::Object>();
-  if (info.Length() > 2 && info[1]->IsObject()) {
-    options = info[1].As<v8::Object>();
-  }
+  v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
-  rd_kafka_IsolationLevel_t isolation_level = RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED;
+  rd_kafka_IsolationLevel_t isolation_level =
+      RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED;
 
   int32_t isolationLevelInt =
       GetParameter<int32_t>(options, "isolationLevel", -1);

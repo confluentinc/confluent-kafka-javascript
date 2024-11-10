@@ -147,19 +147,6 @@ export interface ConsumerStream extends Readable {
     close(cb?: () => void): void;
 }
 
-export enum IsolationLevel {
-    READ_UNCOMMITTED = 0,
-    READ_COMMITTED = 1,
-}
-
-export interface ListOffsetsResult {
-    topic: string;
-    partition: number;
-    offset: string;
-    error: LibrdKafkaError;
-    timestamp: number;
-}
-
 type KafkaClientEvents = 'disconnected' | 'ready' | 'connection.failure' | 'event.error' | 'event.stats' | 'event.log' | 'event.event' | 'event.throttle';
 type KafkaConsumerEvents = 'data' | 'partition.eof' | 'rebalance' | 'rebalance.error' | 'subscribed' | 'unsubscribed' | 'unsubscribe' | 'offset.commit' | KafkaClientEvents;
 type KafkaProducerEvents = 'delivery-report' | KafkaClientEvents;
@@ -459,6 +446,19 @@ export type TopicDescription = {
     partitions: TopicPartitionInfo[]
     error?: LibrdKafkaError
     authorizedOperations?: AclOperationTypes[]
+}
+
+export enum IsolationLevel {
+    READ_UNCOMMITTED = 0,
+    READ_COMMITTED = 1,
+}
+
+export interface ListOffsetsResult {
+    topic: string;
+    partition: number;
+    offset: string;
+    error: LibrdKafkaError;
+    timestamp: number;
 }
 
 export interface IAdminClient {

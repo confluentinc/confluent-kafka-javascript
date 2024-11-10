@@ -1544,6 +1544,11 @@ void AdminClientListConsumerGroupOffsets::HandleErrorCallback() {
   callback->Call(argc, argv);
 }
 
+/**
+ * @brief Describe Topics in an asynchronous worker
+ * 
+ * This callback will describe topics.
+ */
 AdminClientDescribeTopics::AdminClientDescribeTopics(
     Nan::Callback* callback, NodeKafka::AdminClient* client,
     rd_kafka_TopicCollection_t* topics,const bool include_authorized_operations,
@@ -1593,6 +1598,11 @@ void AdminClientDescribeTopics::HandleErrorCallback() {
   callback->Call(argc, argv);
 }
 
+/**
+ * @brief ListOffsets in an asynchronous worker
+ * 
+ * This callback will list requested offsets for the specified topic partitions.
+ */
 AdminClientListOffsets::AdminClientListOffsets(
     Nan::Callback* callback, NodeKafka::AdminClient* client,
     rd_kafka_topic_partition_list_t* partitions, const int& timeout_ms,
