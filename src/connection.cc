@@ -254,6 +254,9 @@ Baton Connection::GetMetadata(
     err = RdKafka::ERR__STATE;
   }
 
+  if (topic != NULL)
+    delete topic;
+
   if (err == RdKafka::ERR_NO_ERROR) {
     return Baton(metadata);
   } else {
