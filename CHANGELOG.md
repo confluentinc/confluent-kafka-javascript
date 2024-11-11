@@ -1,3 +1,12 @@
+# confluent-kafka-javascript v0.4.1
+
+v0.4.1 is a limited availability maintainence release. It is supported for all usage.
+
+## Enhancements
+
+1. Fixes an issue with unresolved raced Promises leaking in the consumer (#151).
+
+
 # confluent-kafka-javascript v0.4.0
 
 v0.4.0 is a limited availability feature release. It is supported for all usage.
