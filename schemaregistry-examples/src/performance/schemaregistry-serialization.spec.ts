@@ -1,7 +1,7 @@
 import {
   AvroSerializer, AvroDeserializer, AvroSerializerConfig, SerdeType, Serializer, Deserializer,
   JsonSerializer, JsonDeserializer, JsonSerializerConfig,
-  ClientConfig, SchemaRegistryClient, SchemaInfo
+  ClientConfig, SchemaRegistryClient, SchemaInfo, Rule, RuleMode, RuleSet
 } from "@confluentinc/schemaregistry";
 import { localAuthCredentials } from "../constants";
 import { v4 } from "uuid";
@@ -23,6 +23,25 @@ const avroSchemaString: string = JSON.stringify({
     { name: 'address', type: 'string' },
   ],
 });
+
+let encRule: Rule = {
+  name: 'EncryptionDemo',
+  kind: 'TRANSFORM',
+  mode: RuleMode.WRITEREAD,
+  type: 'ENCRYPT',
+  tags: ['PII'],
+  params: {
+    'encrypt.kek.name': 'schemaregistryperf',
+    'encrypt.kms.type': 'aws-kms',
+    'encrypt.kms.key.id': 'your-kms-key',
+  },
+  onFailure: 'ERROR,NONE'
+};
+
+let ruleSet: RuleSet = {
+  domainRules: [encRule]
+};
+
 
 const jsonSchemaString: string = JSON.stringify({
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -52,6 +71,18 @@ const jsonSchemaInfo: SchemaInfo = {
   schemaType: 'JSON'
 };
 
+const avroSchemaInfoWithRules: SchemaInfo = {
+  schema: avroSchemaString,
+  schemaType: 'AVRO',
+  ruleSet: ruleSet
+};
+
+const jsonSchemaInfoWithRules: SchemaInfo = {
+  schema: jsonSchemaString,
+  schemaType: 'JSON',
+  ruleSet: ruleSet
+};
+
 const data: { name: string; age: number; address: string; }[] = [];
 
 let schemaRegistryClient: SchemaRegistryClient;
@@ -66,10 +97,12 @@ function generateData(numRecords: number) {
   }
 }
 
-generateData(10000);
+const numRecords = 10000;
+
+generateData(numRecords);
 
 async function serializeAndDeserializeSchemas(serializer: Serializer, deserializer: Deserializer, topic: string) {
-  Promise.all(
+  await Promise.all(
     data.map(async (record) => {
       const serialized = await serializer.serialize(topic, record);
       await deserializer.deserialize(topic, serialized);
@@ -77,7 +110,7 @@ async function serializeAndDeserializeSchemas(serializer: Serializer, deserializ
   );
 }
 
-describe('Serialization Performance Test', () => {
+describe('Concurrent Serialization Performance Test', () => {
 
   beforeEach(async () => {
     schemaRegistryClient = new SchemaRegistryClient(clientConfig);
@@ -95,7 +128,7 @@ describe('Serialization Performance Test', () => {
     await serializeAndDeserializeSchemas(jsonSerializer, jsonDeserializer, topic);
     const end = performance.now();
 
-    console.log(`JSON serialization and deserialization took ${end - start} ms`);
+    console.log(`Concurrent JSON serialization and deserialization took ${end - start} ms`);
   });
 
   it("Should measure serialization and deserialization performance for Avro", async () => {
@@ -103,14 +136,14 @@ describe('Serialization Performance Test', () => {
     await schemaRegistryClient.register(topic + "-value", avroSchemaInfo);
 
     const avroSerializerConfig: AvroSerializerConfig = { useLatestVersion: true };
-    const serializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
-    const deserializer: AvroDeserializer = new AvroDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
+    const avroSerializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
+    const avroDeserializer: AvroDeserializer = new AvroDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
 
     const start = performance.now();
-    await serializeAndDeserializeSchemas(serializer, deserializer, topic);
+    await serializeAndDeserializeSchemas(avroSerializer, avroDeserializer, topic);
     const end = performance.now();
 
-    console.log(`Avro serialization and deserialization took ${end - start} ms`);
+    console.log(`Concurrent Avro serialization and deserialization took ${end - start} ms`);
   });
 
   // it("Should measure serialization and deserialization performance for Protobuf", async () => {
@@ -124,4 +157,133 @@ describe('Serialization Performance Test', () => {
 
   //   console.log(`Protobuf serialization and deserialization took ${end - start} ms`);
   // });
+});
+
+describe('Concurrent Serialization Performance Test with Rules', () => {
+  beforeEach(async () => {
+    schemaRegistryClient = new SchemaRegistryClient(clientConfig);
+  });
+
+  it("Should measure serialization and deserialization performance for JSON with rules", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", jsonSchemaInfoWithRules);
+
+    const jsonSerializerConfig: JsonSerializerConfig = { useLatestVersion: true };
+    const jsonSerializer: JsonSerializer = new JsonSerializer(schemaRegistryClient, SerdeType.VALUE, jsonSerializerConfig);
+    const jsonDeserializer: JsonDeserializer = new JsonDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
+
+    const start = performance.now();
+    await serializeAndDeserializeSchemas(jsonSerializer, jsonDeserializer, topic);
+    const end = performance.now();
+
+    console.log(`Concurrent JSON serialization and deserialization with rules took ${end - start} ms`);
+  });
+
+  it("Should measure serialization and deserialization performance for Avro with rules", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", avroSchemaInfoWithRules);
+
+    const avroSerializerConfig: AvroSerializerConfig = { useLatestVersion: true };
+    const avroSerializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
+    const avroDeserializer: AvroDeserializer = new AvroDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
+
+    const start = performance.now();
+    await serializeAndDeserializeSchemas(avroSerializer, avroDeserializer, topic);
+    const end = performance.now();
+
+    console.log(`Concurrent Avro serialization and deserialization with rules took ${end - start} ms`);
+  });
+}); 
+
+describe("Sequential Serialization Performance Test", () => {
+  beforeEach(async () => {
+    schemaRegistryClient = new SchemaRegistryClient(clientConfig);
+  });
+
+  it("Should measure serialization and deserialization performance for JSON", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", jsonSchemaInfo);
+
+    const jsonSerializerConfig: JsonSerializerConfig = { useLatestVersion: true };
+    const jsonSerializer: JsonSerializer = new JsonSerializer(schemaRegistryClient, SerdeType.VALUE, jsonSerializerConfig);
+    const jsonDeserializer: JsonDeserializer = new JsonDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
+
+    await jsonSerializer.serialize(topic, data[0]);
+
+    const start = performance.now();
+    for (let i = 0; i < numRecords; i++) {
+      const serialized = await jsonSerializer.serialize(topic, data[i]);
+      await jsonDeserializer.deserialize(topic, serialized);
+    }
+    const end = performance.now();
+
+    console.log(`Sequential JSON serialization and deserialization took ${end - start} ms`);
+  });
+
+  it("Should measure serialization and deserialization performance for Avro", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", avroSchemaInfo);
+
+    const avroSerializerConfig: AvroSerializerConfig = { useLatestVersion: true };
+    const avroSerializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
+    const avroDeserializer: AvroDeserializer = new AvroDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
+
+    await avroSerializer.serialize(topic, data[0]);
+
+    const start = performance.now();
+    for (let i = 0; i < numRecords; i++) {
+      const serialized = await avroSerializer.serialize(topic, data[i]);
+      await avroDeserializer.deserialize(topic, serialized);
+    }
+    const end = performance.now();
+
+    console.log(`Sequential Avro serialization and deserialization took ${end - start} ms`);
+  });
+});
+
+describe("Sequential Serialization Performance Test with Rules", () => {
+  beforeEach(async () => {
+    schemaRegistryClient = new SchemaRegistryClient(clientConfig);
+  });
+
+  it("Should measure serialization and deserialization performance for JSON with rules", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", jsonSchemaInfoWithRules);
+
+    const jsonSerializerConfig: JsonSerializerConfig = { useLatestVersion: true };
+    const jsonSerializer: JsonSerializer = new JsonSerializer(schemaRegistryClient, SerdeType.VALUE, jsonSerializerConfig);
+    const jsonDeserializer: JsonDeserializer = new JsonDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
+
+    await jsonSerializer.serialize(topic, data[0]);
+
+    const start = performance.now();
+    for (let i = 0; i < numRecords; i++) {
+      const serialized = await jsonSerializer.serialize(topic, data[i]);
+      await jsonDeserializer.deserialize(topic, serialized);
+    }
+    const end = performance.now();
+
+    console.log(`Sequential JSON serialization and deserialization with rules took ${end - start} ms`);
+  });
+
+  it("Should measure serialization and deserialization performance for Avro with rules", async () => {
+    const topic = v4();
+    await schemaRegistryClient.register(topic + "-value", avroSchemaInfoWithRules);
+
+    const avroSerializerConfig: AvroSerializerConfig = { useLatestVersion: true };
+    const avroSerializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
+    const avroDeserializer: AvroDeserializer = new AvroDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
+
+    await avroSerializer.serialize(topic, data[0]);
+
+    const start = performance.now();
+    for (let i = 0; i < numRecords; i++) {
+      const serialized = await avroSerializer.serialize(topic, data[i]);
+      await avroDeserializer.deserialize(topic, serialized);
+    }
+    const end = performance.now();
+
+    console.log(`Sequential Avro serialization and deserialization with rules took ${end - start} ms`);
+  });
+
 });
