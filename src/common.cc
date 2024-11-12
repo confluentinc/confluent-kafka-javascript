@@ -1275,7 +1275,7 @@ v8::Local<v8::Array> FromDeleteRecordsResult(
     Nan::Set(partition_object, Nan::New("lowWatermark").ToLocalChecked(),
              Nan::New<v8::Number>(partition->offset));
 
-    if(partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+    if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
       RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
       Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
                RdKafkaError(code, rd_kafka_err2str(partition->err)));
