@@ -91,6 +91,7 @@ type Client = {
   disconnect(): Promise<void>
   logger(): Logger
   setSaslCredentialProvider(authInfo: { username: string, password: string }): void
+  dependentAdmin(): Admin
 }
 
 export enum CompressionTypes {
@@ -311,7 +312,7 @@ export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
 
-export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };  
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };
 
 export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
@@ -373,10 +374,10 @@ export type Admin = {
     groups: string[],
     options?: { timeout?: number, includeAuthorizedOperations?: boolean }): Promise<GroupDescriptions>
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
-  fetchOffsets(options: { 
+  fetchOffsets(options: {
     groupId: string,
     topics?: TopicInput,
     timeout?: number,
-    requireStableOffsets?: boolean }): 
+    requireStableOffsets?: boolean }):
     Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
 }
