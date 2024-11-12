@@ -1,6 +1,6 @@
 # confluent-kafka-javascript v0.5.0
 
-v0.4.0 is a limited availability feature release. It is supported for all usage.
+v0.5.0 is a limited availability feature release. It is supported for all usage.
 
 ## Enhancements
 
