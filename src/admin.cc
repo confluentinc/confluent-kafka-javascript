@@ -1257,7 +1257,7 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
   v8::Local<v8::Array> delete_records_list = info[0].As<v8::Array>();
 
   if (delete_records_list->Length() == 0) {
-    return Nan::ThrowError("Must provide at least one TopicPartition");
+    return Nan::ThrowError("Must provide at least one TopicPartitionOffset");
   }
 
   /**

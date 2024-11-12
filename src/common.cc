@@ -458,7 +458,7 @@ rd_kafka_topic_partition_list_t* TopicPartitionv8ArrayToTopicPartitionList(
     }
 
     if (!v->IsObject()) {
-      return NULL; // Return NULL to indicate an error
+      return NULL;  // Return NULL to indicate an error
     }
 
     v8::Local<v8::Object> item = v.As<v8::Object>();
