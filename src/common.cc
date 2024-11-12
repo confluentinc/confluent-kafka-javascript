@@ -1383,6 +1383,7 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
 
   return returnArray;
 }
+
 /**
  * @brief Converts a rd_kafka_ListOffsets_result_t* into a v8 Array.
  */
