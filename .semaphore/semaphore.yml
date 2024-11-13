@@ -164,37 +164,19 @@ blocks:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
       jobs:
-        - name: "Release: LTS:18"
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+                - 23,131
           commands:
-            - sem-version node 18.19.0
-            - export NODE_ABI=108
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: LTS:20"
-          commands:
-            - sem-version node 20.10.0
-            - export NODE_ABI=115
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 21"
-          commands:
-            - sem-version node 21.4.0
-            - export NODE_ABI=120
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 22"
-          commands:
-            - sem-version node 22.2.0
-            - export NODE_ABI=127
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - sem-version node $NODE_VERSION
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
             - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
@@ -220,37 +202,19 @@ blocks:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
       jobs:
-        - name: "Release: LTS:18"
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+                - 23,131
           commands:
-            - sem-version node 18.19.0
-            - export NODE_ABI=108
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: LTS:20"
-          commands:
-            - sem-version node 20.10.0
-            - export NODE_ABI=115
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 21"
-          commands:
-            - sem-version node 21.4.0
-            - export NODE_ABI=120
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 22"
-          commands:
-            - sem-version node 22.2.0
-            - export NODE_ABI=127
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - sem-version node $NODE_VERSION
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
             - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
@@ -276,32 +240,20 @@ blocks:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
       jobs:
-        - name: "Release: LTS:18"
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+                - 23,131
           commands:
-            - export NODE_ABI=108
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: LTS:20"
-          commands:
-            - export NODE_ABI=115
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:20-alpine /v/.semaphore/build-docker.sh
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 21"
-          commands:
-            - export NODE_ABI=120
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:21-alpine /v/.semaphore/build-docker.sh
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 22"
-          commands:
-            - export NODE_ABI=127
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:22-alpine /v/.semaphore/build-docker.sh
+            - docker run -v "$(pwd):/v" node:${NODE_VERSION}-alpine /v/.semaphore/build-docker.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -324,32 +276,20 @@ blocks:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
       jobs:
-        - name: "Release: LTS:18"
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+                - 23,131
           commands:
-            - export NODE_ABI=108
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: LTS:20"
-          commands:
-            - export NODE_ABI=115
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:20-alpine /v/.semaphore/build-docker.sh
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 21"
-          commands:
-            - export NODE_ABI=120
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:21-alpine /v/.semaphore/build-docker.sh
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 22"
-          commands:
-            - export NODE_ABI=127
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:22-alpine /v/.semaphore/build-docker.sh
+            - docker run -v "$(pwd):/v" node:${NODE_VERSION}-alpine /v/.semaphore/build-docker.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -369,37 +309,19 @@ blocks:
         - name: LIBC
           value: "unknown"
       jobs:
-        - name: "Release: LTS:18"
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+                - 23,131
           commands:
-            - sem-version node 18.19.0
-            - export NODE_ABI=108
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: LTS:20"
-          commands:
-            - sem-version node 20.10.0
-            - export NODE_ABI=115
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 21"
-          commands:
-            - sem-version node 21.4.0
-            - export NODE_ABI=120
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 22"
-          commands:
-            - sem-version node 22.2.0
-            - export NODE_ABI=127
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - sem-version node $NODE_VERSION
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
             - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
@@ -422,37 +344,19 @@ blocks:
         - name: LIBC
           value: "unknown"
       jobs:
-        - name: "Release: LTS:18"
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+                - 23,131
           commands:
-            - sem-version node 18.19.0
-            - export NODE_ABI=108
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: LTS:20"
-          commands:
-            - sem-version node 20.10.0
-            - export NODE_ABI=115
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 21"
-          commands:
-            - sem-version node 21.4.0
-            - export NODE_ABI=120
-            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
-        - name: "Release: latest: 22"
-          commands:
-            - sem-version node 22.2.0
-            - export NODE_ABI=127
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - sem-version node $NODE_VERSION
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
             - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
@@ -494,53 +398,23 @@ blocks:
           - msiexec /qn /l* node-old-log.txt /uninstall node_old.msi
           - cat .\node-old-log.txt
       jobs:
-        - name: "Release: LTS:18"
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18.19.0,108
+                - 20.11.0,115
+                - 21.6.1,120
+                - 22.2.0,127
+                - 23.2.0,131
           commands:
-            - Invoke-WebRequest "https://nodejs.org/download/release/v18.19.0/node-v18.19.0-x64.msi" -OutFile node.msi
+            - $env:NODE_VERSION = $env:NODE_VERSION_ABI.Split(',')[0]
+            - $env:NODE_ABI = $env:NODE_VERSION_ABI.Split(',')[1]
+            - Invoke-WebRequest "https://nodejs.org/download/release/v${env:NODE_VERSION}/node-v${env:NODE_VERSION}-x64.msi" -OutFile node.msi
             - msiexec /qn /l* node-log.txt /i node.msi
             - cat .\node-log.txt
             - node --version
             - pip install setuptools
-            - $env:NODE_ABI = 108
-            - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
-            - echo "$env:ARTIFACT_KEY"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
-            - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
-        - name: "Release: LTS:20"
-          commands:
-            - Invoke-WebRequest "https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi" -OutFile node.msi
-            - msiexec /qn /l* node-log.txt /i node.msi
-            - node --version
-            - pip install setuptools
-            - $env:NODE_ABI = 115
-            - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
-            - echo "$env:ARTIFACT_KEY"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
-            - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
-        - name: "Release: latest: 21"
-          commands:
-            - Invoke-WebRequest "https://nodejs.org/dist/v21.6.1/node-v21.6.1-x64.msi" -OutFile node.msi
-            - msiexec /qn /l* node-log.txt /i node.msi
-            - node --version
-            - pip install setuptools
-            - $env:NODE_ABI = 120
-            - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
-            - echo "$env:ARTIFACT_KEY"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
-            - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
-            - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
-        - name: "Release: latest: 22"
-          commands:
-            - Invoke-WebRequest "https://nodejs.org/dist/v22.2.0/node-v22.2.0-x64.msi" -OutFile node.msi
-            - msiexec /qn /l* node-log.txt /i node.msi
-            - node --version
-            - pip install setuptools
-            - $env:NODE_ABI = 127
             - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
             - echo "$env:ARTIFACT_KEY"
             - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
