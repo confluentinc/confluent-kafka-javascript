@@ -42,6 +42,10 @@ blocks:
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+          - sudo apt-get update
+          - sudo apt-get install -y gcc-10 g++-10
+          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
       jobs:
         - name: "Build from source and test for musl"
           commands:
@@ -70,6 +74,10 @@ blocks:
       jobs:
         - name: "Build from source and test"
           commands:
+            - sudo apt-get update
+            - sudo apt-get install -y gcc-10 g++-10
+            - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+            - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
             - export CKJS_LINKING=dynamic
             - npm run install-from-source
             - make test
@@ -95,6 +103,10 @@ blocks:
           type: s1-prod-ubuntu20-04-amd64-2
       prologue:
         commands:
+          - sudo apt-get update
+          - sudo apt-get install -y gcc-10 g++-10
+          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
           - export CKJS_LINKING=dynamic
           - npm run install-from-source
       jobs:
@@ -131,6 +143,9 @@ blocks:
           - sudo apt-get update
           - sudo apt-get install -y build-essential gcc g++ make python3
           - sudo apt-get install -y librdkafka-dev bc
+          - sudo apt-get install -y gcc-10 g++-10
+          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
           - export CKJS_LINKING=dynamic
           - export BUILD_LIBRDKAFKA=0
           - npm run install-from-source
