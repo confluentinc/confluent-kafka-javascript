@@ -163,6 +163,10 @@ blocks:
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+          - sudo apt-get update
+          - sudo apt-get install -y gcc-10 g++-10
+          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
       jobs:
         - name: "Release"
           matrix:
@@ -201,6 +205,10 @@ blocks:
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+          - sudo apt-get update
+          - sudo apt-get install -y gcc-10 g++-10
+          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
       jobs:
         - name: "Release"
           matrix:
