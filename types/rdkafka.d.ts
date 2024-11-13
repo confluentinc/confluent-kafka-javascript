@@ -63,7 +63,7 @@ export interface Metadata {
     brokers: BrokerMetadata[];
 }
 
-export interface WatermarkOffsets{
+export interface WatermarkOffsets {
     lowOffset: number;
     highOffset: number;
 }
@@ -288,17 +288,17 @@ export class Producer extends Client<KafkaProducerEvents> {
 }
 
 export class HighLevelProducer extends Producer {
-  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, callback: (err: any, offset?: NumberNullUndefined) => void): any;
-  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeader[], callback: (err: any, offset?: NumberNullUndefined) => void): any;
+    produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, callback: (err: any, offset?: NumberNullUndefined) => void): any;
+    produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeader[], callback: (err: any, offset?: NumberNullUndefined) => void): any;
 
-  setKeySerializer(serializer: (key: any, cb: (err: any, key: MessageKey) => void) => void): void;
-  setKeySerializer(serializer: (key: any) => MessageKey | Promise<MessageKey>): void;
-  setValueSerializer(serializer: (value: any, cb: (err: any, value: MessageValue) => void) => void): void;
-  setValueSerializer(serializer: (value: any) => MessageValue | Promise<MessageValue>): void;
-  setTopicKeySerializer(serializer: (topic: string, key: any, cb: (err: any, key: MessageKey) => void) => void): void;
-  setTopicKeySerializer(serializer: (topic: string, key: any) => MessageKey | Promise<MessageKey>): void;
-  setTopicValueSerializer(serializer: (topic: string, value: any, cb: (err: any, value: MessageValue) => void) => void): void;
-  setTopicValueSerializer(serializer: (topic: string, value: any) => MessageValue | Promise<MessageValue>): void;
+    setKeySerializer(serializer: (key: any, cb: (err: any, key: MessageKey) => void) => void): void;
+    setKeySerializer(serializer: (key: any) => MessageKey | Promise<MessageKey>): void;
+    setValueSerializer(serializer: (value: any, cb: (err: any, value: MessageValue) => void) => void): void;
+    setValueSerializer(serializer: (value: any) => MessageValue | Promise<MessageValue>): void;
+    setTopicKeySerializer(serializer: (topic: string, key: any, cb: (err: any, key: MessageKey) => void) => void): void;
+    setTopicKeySerializer(serializer: (topic: string, key: any) => MessageKey | Promise<MessageKey>): void;
+    setTopicValueSerializer(serializer: (topic: string, value: any, cb: (err: any, value: MessageValue) => void) => void): void;
+    setTopicValueSerializer(serializer: (topic: string, value: any) => MessageValue | Promise<MessageValue>): void;
 }
 
 export const features: string[];
@@ -455,6 +455,19 @@ export type TopicDescription = {
     authorizedOperations?: AclOperationTypes[]
 }
 
+export enum IsolationLevel {
+    READ_UNCOMMITTED = 0,
+    READ_COMMITTED = 1,
+}
+
+export interface ListOffsetsResult {
+    topic: string;
+    partition: number;
+    offset: string;
+    error: LibrdKafkaError;
+    timestamp: number;
+}
+
 export interface IAdminClient {
     createTopic(topic: NewTopic, cb?: (err: LibrdKafkaError) => void): void;
     createTopic(topic: NewTopic, timeout?: number, cb?: (err: LibrdKafkaError) => void): void;
@@ -482,17 +495,21 @@ export interface IAdminClient {
         options?: { timeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteGroupsResult[]) => any): void;
 
-    listConsumerGroupOffsets(listGroupOffsets : ListGroupOffsets[],
+    listConsumerGroupOffsets(listGroupOffsets: ListGroupOffsets[],
         options?: { timeout?: number, requireStableOffsets?: boolean },
         cb?: (err: LibrdKafkaError, result: GroupResults[]) => any): void;
 
     deleteRecords(delRecords: TopicPartitionOffset[],
         options?: { timeout?: number, operationTimeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteRecordsResult[]) => any): void;
-    
+
     describeTopics(topics: string[],
         options?: { includeAuthorizedOperations?: boolean, timeout?: number },
         cb?: (err: LibrdKafkaError, result: TopicDescription[]) => any): void;
+
+    listOffsets(partitions: TopicPartitionOffset[],
+        options?: { timeout?: number, isolationLevel?: IsolationLevel },
+        cb?: (err: LibrdKafkaError, result: ListOffsetsResult[]) => any): void;
 
     disconnect(): void;
 }
@@ -506,15 +523,15 @@ export abstract class AdminClient {
 }
 
 export type RdKafka = {
-  Consumer: KafkaConsumer,
-  Producer: Producer,
-  HighLevelProducer: HighLevelProducer,
-  AdminClient: AdminClient,
-  KafkaConsumer: KafkaConsumer,
-  createReadStream: typeof KafkaConsumer.createReadStream,
-  createWriteStream: typeof Producer.createWriteStream,
-  CODES: typeof errors.CODES,
-  Topic: (name: string) => string,
-  features: typeof features,
-  librdkafkaVersion: typeof librdkafkaVersion,
+    Consumer: KafkaConsumer,
+    Producer: Producer,
+    HighLevelProducer: HighLevelProducer,
+    AdminClient: AdminClient,
+    KafkaConsumer: KafkaConsumer,
+    createReadStream: typeof KafkaConsumer.createReadStream,
+    createWriteStream: typeof Producer.createWriteStream,
+    CODES: typeof errors.CODES,
+    Topic: (name: string) => string,
+    features: typeof features,
+    librdkafkaVersion: typeof librdkafkaVersion,
 }
