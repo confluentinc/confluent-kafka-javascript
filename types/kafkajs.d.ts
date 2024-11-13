@@ -9,6 +9,7 @@ import {
   Node,
   AclOperationTypes,
   Uuid,
+  IsolationLevel
 } from './rdkafka'
 
 // Admin API related interfaces, types etc; and Error types are common, so
@@ -19,7 +20,8 @@ export {
   LibrdKafkaError,
   GroupDescriptions,
   DeleteGroupsResult,
-  DeleteRecordsResult
+  DeleteRecordsResult,
+  IsolationLevel
 } from './rdkafka'
 
 export interface OauthbearerProviderResponse {
@@ -416,4 +418,9 @@ export type Admin = {
     includeAuthorizedOperations?: boolean,
     timeout?: number
   }): Promise<{ topics: Array<ITopicMetadata> }>
+  fetchTopicOffsets(topic: string,
+    options?: {
+      timeout?: number,
+      isolationLevel: IsolationLevel
+    }): Promise<Array<SeekEntry & { high: string; low: string }>>
 }
