@@ -4,7 +4,8 @@ import {
   GroupOverview,
   LibrdKafkaError,
   GroupDescriptions,
-  DeleteGroupsResult
+  DeleteGroupsResult,
+  DeleteRecordsResult
 } from './rdkafka'
 
 // Admin API related interfaces, types etc; and Error types are common, so
@@ -14,7 +15,8 @@ export {
   GroupOverview,
   LibrdKafkaError,
   GroupDescriptions,
-  DeleteGroupsResult
+  DeleteGroupsResult,
+  DeleteRecordsResult
 } from './rdkafka'
 
 export interface OauthbearerProviderResponse {
@@ -311,6 +313,12 @@ export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
 
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };  
+
+export type TopicInput = string[] | { topic: string; partitions: number[] }[]
+
+export type SeekEntry = PartitionOffset
+
 export type Consumer = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
   stop(): Promise<void>
@@ -369,4 +377,14 @@ export type Admin = {
     groups: string[],
     options?: { timeout?: number, includeAuthorizedOperations?: boolean }): Promise<GroupDescriptions>
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
+  fetchOffsets(options: { 
+    groupId: string,
+    topics?: TopicInput,
+    timeout?: number,
+    requireStableOffsets?: boolean }): 
+    Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
+  deleteTopicRecords(options: {
+    topic: string; partitions: SeekEntry[];
+    timeout?: number; operationTimeout?: number
+  }): Promise<DeleteRecordsResult[]>
 }
