@@ -288,17 +288,17 @@ export class Producer extends Client<KafkaProducerEvents> {
 }
 
 export class HighLevelProducer extends Producer {
-    produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, callback: (err: any, offset?: NumberNullUndefined) => void): any;
-    produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeader[], callback: (err: any, offset?: NumberNullUndefined) => void): any;
+  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, callback: (err: any, offset?: NumberNullUndefined) => void): any;
+  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeader[], callback: (err: any, offset?: NumberNullUndefined) => void): any;
 
-    setKeySerializer(serializer: (key: any, cb: (err: any, key: MessageKey) => void) => void): void;
-    setKeySerializer(serializer: (key: any) => MessageKey | Promise<MessageKey>): void;
-    setValueSerializer(serializer: (value: any, cb: (err: any, value: MessageValue) => void) => void): void;
-    setValueSerializer(serializer: (value: any) => MessageValue | Promise<MessageValue>): void;
-    setTopicKeySerializer(serializer: (topic: string, key: any, cb: (err: any, key: MessageKey) => void) => void): void;
-    setTopicKeySerializer(serializer: (topic: string, key: any) => MessageKey | Promise<MessageKey>): void;
-    setTopicValueSerializer(serializer: (topic: string, value: any, cb: (err: any, value: MessageValue) => void) => void): void;
-    setTopicValueSerializer(serializer: (topic: string, value: any) => MessageValue | Promise<MessageValue>): void;
+  setKeySerializer(serializer: (key: any, cb: (err: any, key: MessageKey) => void) => void): void;
+  setKeySerializer(serializer: (key: any) => MessageKey | Promise<MessageKey>): void;
+  setValueSerializer(serializer: (value: any, cb: (err: any, value: MessageValue) => void) => void): void;
+  setValueSerializer(serializer: (value: any) => MessageValue | Promise<MessageValue>): void;
+  setTopicKeySerializer(serializer: (topic: string, key: any, cb: (err: any, key: MessageKey) => void) => void): void;
+  setTopicKeySerializer(serializer: (topic: string, key: any) => MessageKey | Promise<MessageKey>): void;
+  setTopicValueSerializer(serializer: (topic: string, value: any, cb: (err: any, value: MessageValue) => void) => void): void;
+  setTopicValueSerializer(serializer: (topic: string, value: any) => MessageValue | Promise<MessageValue>): void;
 }
 
 export const features: string[];
@@ -523,15 +523,15 @@ export abstract class AdminClient {
 }
 
 export type RdKafka = {
-    Consumer: KafkaConsumer,
-    Producer: Producer,
-    HighLevelProducer: HighLevelProducer,
-    AdminClient: AdminClient,
-    KafkaConsumer: KafkaConsumer,
-    createReadStream: typeof KafkaConsumer.createReadStream,
-    createWriteStream: typeof Producer.createWriteStream,
-    CODES: typeof errors.CODES,
-    Topic: (name: string) => string,
-    features: typeof features,
-    librdkafkaVersion: typeof librdkafkaVersion,
+  Consumer: KafkaConsumer,
+  Producer: Producer,
+  HighLevelProducer: HighLevelProducer,
+  AdminClient: AdminClient,
+  KafkaConsumer: KafkaConsumer,
+  createReadStream: typeof KafkaConsumer.createReadStream,
+  createWriteStream: typeof Producer.createWriteStream,
+  CODES: typeof errors.CODES,
+  Topic: (name: string) => string,
+  features: typeof features,
+  librdkafkaVersion: typeof librdkafkaVersion,
 }
