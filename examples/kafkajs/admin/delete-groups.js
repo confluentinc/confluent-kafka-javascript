@@ -29,7 +29,7 @@ async function adminStart() {
     timeout,
     'group-ids': groupIds,
   } = args.values;
-
+  
   if (!groupIds.length) {
     console.error('Group ids are required');
     process.exit(1);
