@@ -610,7 +610,7 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
 };
 
 /**
- * @brief List consumer group offsets on a remote broker cluster.
+ * @brief Delete Records on a remote broker cluster.
  */
 class AdminClientDeleteRecords : public ErrorAwareWorker {
  public:

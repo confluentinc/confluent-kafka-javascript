@@ -1,3 +1,11 @@
+# confluent-kafka-javascript v0.6.0
+
+v0.6.0 is a limited availability feature release. It is supported for all usage.
+
+## Enhancements
+
+1. Add support for an Admin API to describe topics.(#155).
+
 
 # confluent-kafka-javascript v0.5.0
 

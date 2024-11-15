@@ -55,12 +55,23 @@ async function fetchMetadata() {
                 timeout: Number(timeout), // Convert timeout to a number
             });
 
-        console.log(`Metadata for topic "${topicName}":`, JSON.stringify(metadata, null, 2));
+        console.log(`Metadata for topic "${topicName}":`, stringifyBigInt(metadata));
     } catch (err) {
         console.error('Error fetching topic metadata:', err);
     } finally {
         await admin.disconnect();
     }
+}
+
+function stringifyBigInt(obj) {
+    return JSON.stringify(
+        obj,
+        (key, value) =>
+            typeof value === 'bigint'
+                ? value.toString() // Convert BigInt to string
+                : value,
+        2 // Add indentation for readability
+    );
 }
 
 fetchMetadata();

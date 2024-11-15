@@ -1397,9 +1397,16 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
   for (size_t i = 0; i < topicNamesVector.size(); i++) {
     topics[i] = topicNamesVector[i].c_str();
   }
-
+  
+  /**
+   * The ownership of this is taken by
+   * Workers::AdminClientDescribeTopics and freeing it is also handled
+   * by that class.
+   */
   rd_kafka_TopicCollection_t *topic_collection =
       rd_kafka_TopicCollection_of_topic_names(topics, topicNamesVector.size());
+
+  free(topics);
 
   v8::Local<v8::Object> options = info[1].As<v8::Object>();
 

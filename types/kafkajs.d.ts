@@ -8,7 +8,7 @@ import {
   DeleteRecordsResult,
   Node,
   AclOperationTypes,
-  Uuid,
+  Uuid
 } from './rdkafka'
 
 // Admin API related interfaces, types etc; and Error types are common, so
@@ -19,7 +19,10 @@ export {
   LibrdKafkaError,
   GroupDescriptions,
   DeleteGroupsResult,
-  DeleteRecordsResult
+  DeleteRecordsResult,
+  Node,
+  AclOperationTypes,
+  Uuid
 } from './rdkafka'
 
 export interface OauthbearerProviderResponse {
@@ -338,7 +341,6 @@ export type ITopicMetadata = {
   name: string
   topicId?: Uuid
   isInternal?: boolean
-  error?: LibrdKafkaError
   partitions: PartitionMetadata[]
   authorizedOperations?: AclOperationTypes[]
 }
@@ -412,7 +414,7 @@ export type Admin = {
     timeout?: number; operationTimeout?: number
   }): Promise<DeleteRecordsResult[]>
   fetchTopicMetadata(options?: {
-    topics: string[],
+    topics?: string[],
     includeAuthorizedOperations?: boolean,
     timeout?: number
   }): Promise<{ topics: Array<ITopicMetadata> }>

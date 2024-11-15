@@ -284,17 +284,19 @@ v8::Local<v8::Object> ToV8Object(const rd_kafka_Node_t* node) {
 v8::Local<v8::Object> UuidToV8Object(const rd_kafka_Uuid_t* uuid) {
   /*Return object type
     {
-        mostSignificantBits: number
-        leastSignificantBits: number
+        mostSignificantBits: bigint
+        leastSignificantBits: bigint
         base64: string
     }
   */
   v8::Local<v8::Object> obj = Nan::New<v8::Object>();
 
   Nan::Set(obj, Nan::New("mostSignificantBits").ToLocalChecked(),
-           Nan::New<v8::Number>(rd_kafka_Uuid_most_significant_bits(uuid)));
+           v8::BigInt::New(v8::Isolate::GetCurrent(),
+                           rd_kafka_Uuid_most_significant_bits(uuid)));
   Nan::Set(obj, Nan::New("leastSignificantBits").ToLocalChecked(),
-           Nan::New<v8::Number>(rd_kafka_Uuid_least_significant_bits(uuid)));
+           v8::BigInt::New(v8::Isolate::GetCurrent(),
+                           rd_kafka_Uuid_least_significant_bits(uuid)));
   Nan::Set(
       obj, Nan::New("base64").ToLocalChecked(),
       Nan::New<v8::String>(rd_kafka_Uuid_base64str(uuid)).ToLocalChecked());
