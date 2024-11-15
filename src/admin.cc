@@ -1397,7 +1397,7 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
   for (size_t i = 0; i < topicNamesVector.size(); i++) {
     topics[i] = topicNamesVector[i].c_str();
   }
-  
+
   /**
    * The ownership of this is taken by
    * Workers::AdminClientDescribeTopics and freeing it is also handled
@@ -1420,7 +1420,8 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   Nan::AsyncQueueWorker(new Workers::AdminClientDescribeTopics(
-      callback, client, topic_collection, include_authorised_operations, timeout_ms));
+      callback, client, topic_collection,
+      include_authorised_operations, timeout_ms));
 }
 
 }  // namespace NodeKafka
