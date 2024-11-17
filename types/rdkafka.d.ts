@@ -11,7 +11,6 @@ import {
 
 export * from './config';
 export * from './errors';
-import { Kafka } from './kafkajs';
 import * as errors from './errors';
 
 export interface LibrdKafkaError {
@@ -416,6 +415,24 @@ export type DeleteGroupsResult = {
     error?: LibrdKafkaError
 }
 
+export type ListGroupOffsets = {
+    groupId: string
+    partitions?: TopicPartition[]
+}
+
+export type GroupResults = {
+    groupId: string
+    error?: LibrdKafkaError
+    partitions: TopicPartitionOffsetAndMetadata[]
+}
+
+export type DeleteRecordsResult = {
+    topic: string
+    partition: number
+    lowWatermark: number
+    error?: LibrdKafkaError
+}
+
 export interface IAdminClient {
     createTopic(topic: NewTopic, cb?: (err: LibrdKafkaError) => void): void;
     createTopic(topic: NewTopic, timeout?: number, cb?: (err: LibrdKafkaError) => void): void;
@@ -442,6 +459,14 @@ export interface IAdminClient {
     deleteGroups(groupIds: string[],
         options?: { timeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteGroupsResult[]) => any): void;
+
+    listConsumerGroupOffsets(listGroupOffsets : ListGroupOffsets[],
+        options?: { timeout?: number, requireStableOffsets?: boolean },
+        cb?: (err: LibrdKafkaError, result: GroupResults[]) => any): void;
+
+    deleteRecords(delRecords: TopicPartitionOffset[],
+        options?: { timeout?: number, operationTimeout?: number },
+        cb?: (err: LibrdKafkaError, result: DeleteRecordsResult[]) => any): void;
 
     disconnect(): void;
 }
