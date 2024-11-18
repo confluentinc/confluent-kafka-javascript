@@ -71,7 +71,8 @@ class DekRegistryClient implements DekClient {
 
 
     this.restService = new RestService(config.baseURLs, config.isForward, config.createAxiosDefaults,
-      config.basicAuthCredentials, config.bearerAuthCredentials, config.maxRetries, config.retryWaitMs);
+      config.basicAuthCredentials, config.bearerAuthCredentials,
+      config.maxRetries, config.retryWaitMs, config.retryMaxWaitMs);
     this.kekCache = new LRUCache<string, Kek>(cacheOptions);
     this.dekCache = new LRUCache<string, Dek>(cacheOptions);
     this.kekMutex = new Mutex();

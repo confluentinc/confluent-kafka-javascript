@@ -44,6 +44,7 @@ export interface ClientConfig {
   bearerAuthCredentials?: BearerAuthCredentials,
   maxRetries?: number,
   retryWaitMs?: number,
+  retryMaxWaitMs?: number,
 }
 
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
@@ -56,12 +57,12 @@ export class RestService {
 
   constructor(baseURLs: string[], isForward?: boolean, axiosDefaults?: CreateAxiosDefaults,
     basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
-    maxRetries?: number, retryWaitMs?: number) {
+    maxRetries?: number, retryWaitMs?: number, retryMaxWaitMs?: number) {
     this.client = axios.create(axiosDefaults);
     axiosRetry(this.client, {
       retries: maxRetries ?? 2,
       retryDelay: (retryCount) => {
-        return this.fullJitter(retryWaitMs ?? 1000, retryCount - 1);
+        return this.fullJitter(retryWaitMs ?? 1000, retryMaxWaitMs ?? 20000, retryCount - 1)
       },
       retryCondition: (error) => {
         return this.isRetriable(error.response?.status ?? 0);
@@ -83,8 +84,8 @@ export class RestService {
       || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504;
   }
 
-  fullJitter(baseDelayMs: number, retriesAttempted: number): number {
-    return this.randRange(0, baseDelayMs * 2 ** retriesAttempted)
+  fullJitter(baseDelayMs: number, maxDelayMs: number, retriesAttempted: number): number {
+    return this.randRange(0, Math.min(maxDelayMs, baseDelayMs * 2 ** retriesAttempted))
   }
 
   randRange(min: number, max: number): number {
