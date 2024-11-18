@@ -70,7 +70,7 @@ function stringifyBigInt(obj) {
             typeof value === 'bigint'
                 ? value.toString() // Convert BigInt to string
                 : value,
-        2 // Add indentation for readability
+        2
     );
 }
 
