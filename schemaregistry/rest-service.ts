@@ -59,7 +59,7 @@ export class RestService {
     maxRetries?: number, retryWaitMs?: number) {
     this.client = axios.create(axiosDefaults);
     axiosRetry(this.client, {
-      retries: maxRetries ?? 3,
+      retries: maxRetries ?? 2,
       retryDelay: (retryCount) => {
         return this.fullJitter(retryWaitMs ?? 1000, retryCount - 1);
       },
