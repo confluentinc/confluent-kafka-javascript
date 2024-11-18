@@ -21,6 +21,9 @@ export {
   GroupDescriptions,
   DeleteGroupsResult,
   DeleteRecordsResult,
+  Node,
+  AclOperationTypes,
+  Uuid,
   IsolationLevel
 } from './rdkafka'
 
@@ -340,7 +343,6 @@ export type ITopicMetadata = {
   name: string
   topicId?: Uuid
   isInternal?: boolean
-  error?: LibrdKafkaError
   partitions: PartitionMetadata[]
   authorizedOperations?: AclOperationTypes[]
 }
@@ -414,7 +416,7 @@ export type Admin = {
     timeout?: number; operationTimeout?: number
   }): Promise<DeleteRecordsResult[]>
   fetchTopicMetadata(options?: {
-    topics: string[],
+    topics?: string[],
     includeAuthorizedOperations?: boolean,
     timeout?: number
   }): Promise<{ topics: Array<ITopicMetadata> }>

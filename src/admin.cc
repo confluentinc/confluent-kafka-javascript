@@ -884,6 +884,7 @@ Baton AdminClient::DescribeTopics(rd_kafka_TopicCollection_t *topics,
   }
 }
 
+
 Baton AdminClient::ListOffsets(rd_kafka_topic_partition_list_t *partitions,
                                int timeout_ms,
                                rd_kafka_IsolationLevel_t isolation_level,
@@ -1466,8 +1467,15 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
     topics[i] = topicNamesVector[i].c_str();
   }
 
+  /**
+   * The ownership of this is taken by
+   * Workers::AdminClientDescribeTopics and freeing it is also handled
+   * by that class.
+   */
   rd_kafka_TopicCollection_t *topic_collection =
       rd_kafka_TopicCollection_of_topic_names(topics, topicNamesVector.size());
+
+  free(topics);
 
   v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
@@ -1481,8 +1489,10 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   Nan::AsyncQueueWorker(new Workers::AdminClientDescribeTopics(
-      callback, client, topic_collection, include_authorised_operations, timeout_ms));
+      callback, client, topic_collection,
+      include_authorised_operations, timeout_ms));
 }
+
 
 /**
  * List Offsets.

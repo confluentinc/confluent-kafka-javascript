@@ -58,12 +58,11 @@ describe('Admin > fetchTopicMetadata', () => {
             expect.objectContaining({
                 name: topicNameSinglePartition,
                 topicId: expect.objectContaining({
-                    mostSignificantBits: expect.any(Number),
-                    leastSignificantBits: expect.any(Number),
+                    mostSignificantBits: expect.any(BigInt),
+                    leastSignificantBits: expect.any(BigInt),
                     base64: expect.any(String),
                 }),
                 isInternal: false,
-                error: undefined,
                 partitions: [
                     expect.objectContaining({
                         partitionErrorCode: expect.any(Number),
@@ -112,12 +111,11 @@ describe('Admin > fetchTopicMetadata', () => {
             expect.objectContaining({
                 name: topicNameSinglePartition,
                 topicId: expect.objectContaining({
-                    mostSignificantBits: expect.any(Number),
-                    leastSignificantBits: expect.any(Number),
+                    mostSignificantBits: expect.any(BigInt),
+                    leastSignificantBits: expect.any(BigInt),
                     base64: expect.any(String),
                 }),
                 isInternal: false,
-                error: undefined,
                 partitions: [
                     expect.objectContaining({
                         partitionErrorCode: expect.any(Number),
@@ -173,12 +171,11 @@ describe('Admin > fetchTopicMetadata', () => {
             expect.objectContaining({
                 name: topicNameSinglePartition,
                 topicId: expect.objectContaining({
-                    mostSignificantBits: expect.any(Number),
-                    leastSignificantBits: expect.any(Number),
+                    mostSignificantBits: expect.any(BigInt),
+                    leastSignificantBits: expect.any(BigInt),
                     base64: expect.any(String),
                 }),
                 isInternal: false,
-                error: undefined,
                 partitions: [
                     expect.objectContaining({
                         partitionErrorCode: 0,
@@ -216,12 +213,11 @@ describe('Admin > fetchTopicMetadata', () => {
             expect.objectContaining({
                 name: topicNameMultiplePartitions,
                 topicId: expect.objectContaining({
-                    mostSignificantBits: expect.any(Number),
-                    leastSignificantBits: expect.any(Number),
+                    mostSignificantBits: expect.any(BigInt),
+                    leastSignificantBits: expect.any(BigInt),
                     base64: expect.any(String),
                 }),
                 isInternal: false,
-                error: undefined,
                 partitions: expect.arrayContaining([
                     expect.objectContaining({
                         partitionErrorCode: 0,
@@ -241,6 +237,32 @@ describe('Admin > fetchTopicMetadata', () => {
                 ]),
                 authorizedOperations: undefined
             })
+        );
+    });
+
+    it('should throw an error when fetching metadata for a non-existent topic', async () => {
+        await admin.connect();
+
+        const nonExistentTopic = `non-existent-topic-${secureRandom()}`;
+
+        await expect(admin.fetchTopicMetadata({
+            topics: [nonExistentTopic],
+        })).rejects.toHaveProperty(
+            'code',
+            ErrorCodes.ERR_UNKNOWN_TOPIC_OR_PART
+        );
+    });
+
+    it('should throw an error when fetching metadata for a list with one valid topic and one non-existent topic', async () => {
+        await admin.connect();
+
+        const nonExistentTopic = `non-existent-topic-${secureRandom()}`;
+
+        await expect(admin.fetchTopicMetadata({
+            topics: [topicNameSinglePartition, nonExistentTopic],
+        })).rejects.toHaveProperty(
+            'code',
+            ErrorCodes.ERR_UNKNOWN_TOPIC_OR_PART
         );
     });
 });

@@ -393,8 +393,8 @@ export type Node = {
 }
 
 export type Uuid = {
-    mostSignificantBits: number; // Most significant 64 bits for the UUID
-    leastSignificantBits: number; // Least significant 64 bits for the UUID
+    mostSignificantBits: bigint; // Most significant 64 bits for the UUID
+    leastSignificantBits: bigint; // Least significant 64 bits for the UUID
     base64str: string; // Base64 encoding for the UUID
 }
 
