@@ -9,7 +9,7 @@ function adminFromProducer() {
         'dr_msg_cb': true,
     });
 
-    const createAdminAndListTopics = () => {
+    const createAdminAndListAndDescribeTopics = (done) => {
         // Create an admin client from the producer, which must be connected.
         // Thus, this is called from the producer's 'ready' event.
         const admin = Kafka.AdminClient.createFrom(producer);
@@ -21,7 +21,26 @@ function adminFromProducer() {
                 return;
             }
             console.log("Topics: ", topics);
-            admin.disconnect();
+
+            // A common use case for the dependent admin client is to make sure the topic
+            // is cached before producing to it. This avoids delay in sending the first
+            // message to any topic. Using the admin client linked to the producer allows
+            // us to do this, by calling `describeTopics` before we produce.
+            // Here, we cache all possible topics, but it's advisable to only cache the
+            // topics you are going to produce to (if you know it in advance),
+            // and avoid calling listTopics().
+            // Once a topic is cached, it will stay cached for `metadata.max.age.ms`,
+            // which is 15 minutes by default, after which it will be removed if
+            // it has not been produced to.
+            admin.describeTopics(topics, null, (err, topicDescriptions) => {
+                if (err) {
+                    console.error(err);
+                    return;
+                }
+                console.log("Topic descriptions fetched successfully");
+                admin.disconnect();
+                done();
+            });
         });
     };
 
@@ -32,10 +51,11 @@ function adminFromProducer() {
         producer.setPollInterval(100);
 
         // After the producer is ready, it can be used to create an admin client.
-        createAdminAndListTopics();
+        createAdminAndListAndDescribeTopics(() => {
+            // The producer can also be used normally to produce messages.
+            producer.produce('test-topic', null, Buffer.from('Hello World!'), null, Date.now());
+        });
 
-        // It can also be used normally to produce messages.
-        producer.produce('test-topic', null, Buffer.from('Hello World!'), null, Date.now());
     });
 
     producer.on('event.error', (err) => {
