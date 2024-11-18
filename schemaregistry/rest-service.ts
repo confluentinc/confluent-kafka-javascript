@@ -34,7 +34,6 @@ export interface BearerAuthCredentials {
   identityPoolId?: string,
 }
 
-//TODO: Consider retry policy, may need additional libraries on top of Axios
 export interface ClientConfig {
   baseURLs: string[],
   cacheCapacity?: number,
