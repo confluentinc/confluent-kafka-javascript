@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults } from 'axios';
 import { OAuthClient } from './oauth/oauth-client';
 import { RestError } from './rest-error';
+import axiosRetry from "axios-retry";
 /*
  * Confluent-Schema-Registry-TypeScript - Node.js wrapper for Confluent Schema Registry
  *
@@ -42,6 +43,8 @@ export interface ClientConfig {
   createAxiosDefaults?: CreateAxiosDefaults,
   basicAuthCredentials?: BasicAuthCredentials,
   bearerAuthCredentials?: BearerAuthCredentials,
+  maxRetries?: number,
+  retryWaitMs?: number,
 }
 
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
@@ -53,17 +56,36 @@ export class RestService {
   private oauthBearer: boolean = false;
 
   constructor(baseURLs: string[], isForward?: boolean, axiosDefaults?: CreateAxiosDefaults,
-    basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials) {
+    basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
+    maxRetries?: number, retryWaitMs?: number) {
     this.client = axios.create(axiosDefaults);
+    axiosRetry(this.client, {
+      retries: maxRetries ?? 3,
+      retryDelay: (retryCount) => {
+        return this.fullJitter(retryWaitMs ?? 1000, retryCount - 1);
+      },
+      retryCondition: (error) => {
+        return this.isRetriable(error.response?.status ?? 0);
+      }
+    });
     this.baseURLs = baseURLs;
 
     if (isForward) {
       this.setHeaders({ 'X-Forward': 'true' });
     }
     this.setHeaders({ 'Content-Type': 'application/vnd.schemaregistry.v1+json' });
-    
+
     this.handleBasicAuth(basicAuthCredentials);
     this.handleBearerAuth(bearerAuthCredentials);
+  }
+
+  isRetriable(statusCode: number): boolean {
+    return statusCode == 408 || statusCode == 429
+      || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504;
+  }
+
+  fullJitter(baseDelay: number, retriesAttempted: number): number {
+    return Math.random() * baseDelay * Math.pow(2, retriesAttempted)
   }
 
   handleBasicAuth(basicAuthCredentials?: BasicAuthCredentials): void {
