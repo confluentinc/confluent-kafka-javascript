@@ -85,11 +85,7 @@ export class RestService {
   }
 
   fullJitter(baseDelayMs: number, maxDelayMs: number, retriesAttempted: number): number {
-    return this.randRange(0, Math.min(maxDelayMs, baseDelayMs * 2 ** retriesAttempted))
-  }
-
-  randRange(min: number, max: number): number {
-    return Math.floor(Math.random() * (max - min + 1)) + min
+    return Math.random() * Math.min(maxDelayMs, baseDelayMs * 2 ** retriesAttempted)
   }
 
   handleBasicAuth(basicAuthCredentials?: BasicAuthCredentials): void {
