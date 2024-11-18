@@ -43,8 +43,8 @@ export interface ClientConfig {
   basicAuthCredentials?: BasicAuthCredentials,
   bearerAuthCredentials?: BearerAuthCredentials,
   maxRetries?: number,
-  retryWaitMs?: number,
-  retryMaxWaitMs?: number,
+  retriesWaitMs?: number,
+  retriesMaxWaitMs?: number,
 }
 
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
@@ -56,13 +56,13 @@ export class RestService {
   private oauthBearer: boolean = false;
 
   constructor(baseURLs: string[], isForward?: boolean, axiosDefaults?: CreateAxiosDefaults,
-    basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
-    maxRetries?: number, retryWaitMs?: number, retryMaxWaitMs?: number) {
+              basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
+              maxRetries?: number, retriesWaitMs?: number, retriesMaxWaitMs?: number) {
     this.client = axios.create(axiosDefaults);
     axiosRetry(this.client, {
       retries: maxRetries ?? 2,
       retryDelay: (retryCount) => {
-        return this.fullJitter(retryWaitMs ?? 1000, retryMaxWaitMs ?? 20000, retryCount - 1)
+        return this.fullJitter(retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, retryCount - 1)
       },
       retryCondition: (error) => {
         return this.isRetriable(error.response?.status ?? 0);

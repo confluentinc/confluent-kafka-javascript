@@ -203,7 +203,7 @@ export class SchemaRegistryClient implements Client {
 
     this.restService = new RestService(config.baseURLs, config.isForward, config.createAxiosDefaults,
       config.basicAuthCredentials, config.bearerAuthCredentials,
-      config.maxRetries, config.retryWaitMs, config.retryMaxWaitMs);
+      config.maxRetries, config.retriesWaitMs, config.retriesMaxWaitMs);
 
     this.schemaToIdCache = new LRUCache(cacheOptions);
     this.idToSchemaInfoCache = new LRUCache(cacheOptions);
