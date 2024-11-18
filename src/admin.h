@@ -99,6 +99,7 @@ class AdminClient : public Connection {
   static NAN_METHOD(NodeDeleteRecords);
   static NAN_METHOD(NodeDescribeTopics);
   static NAN_METHOD(NodeListOffsets);
+
   static NAN_METHOD(NodeConnect);
   static NAN_METHOD(NodeDisconnect);
 };
