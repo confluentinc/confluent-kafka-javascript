@@ -83,8 +83,12 @@ export class RestService {
       || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504;
   }
 
-  fullJitter(baseDelay: number, retriesAttempted: number): number {
-    return Math.random() * baseDelay * Math.pow(2, retriesAttempted)
+  fullJitter(baseDelayMs: number, retriesAttempted: number): number {
+    return this.randRange(0, baseDelayMs * 2 ** retriesAttempted)
+  }
+
+  randRange(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min
   }
 
   handleBasicAuth(basicAuthCredentials?: BasicAuthCredentials): void {
