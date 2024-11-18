@@ -3,7 +3,7 @@ const admin = require('../../lib/admin');
 
 const bootstrapServers = 'localhost:9092';
 
-function adminFromProducer() {
+function adminFromProducer(callback) {
     const producer = new Kafka.Producer({
         'bootstrap.servers': bootstrapServers,
         'dr_msg_cb': true,
@@ -60,15 +60,13 @@ function adminFromProducer() {
 
     producer.on('event.error', (err) => {
         console.error(err);
+        producer.disconnect(callback);
     });
 
     producer.on('delivery-report', (err, report) => {
         console.log("Delivery report received:", report);
+        producer.disconnect(callback);
     });
-
-    setTimeout(() => {
-        producer.disconnect();
-    }, 30000);
 }
 
 function adminFromConsumer() {
@@ -108,17 +106,15 @@ function adminFromConsumer() {
     });
 
     consumer.on('data', (data) => {
+        // Quit after receiving a message.
         console.log("Consumer:data", data);
+        consumer.disconnect();
     });
 
     consumer.on('event.error', (err) => {
         console.error("Consumer:error", err);
-    });
-
-    setTimeout(() => {
         consumer.disconnect();
-    }, 30000);
+    });
 }
 
-adminFromProducer();
-setTimeout(() => adminFromConsumer(), 35000);
+adminFromProducer(() => adminFromConsumer());
