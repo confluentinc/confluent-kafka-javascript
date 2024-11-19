@@ -438,7 +438,7 @@ export class SchemaRegistryClient implements Client {
    */
   async getVersion(subject: string, schema: SchemaInfo,
                    normalize: boolean = false, deleted: boolean = false): Promise<number> {
-    const cacheKey = stringify({ subject, schema: minimize(schema) });
+    const cacheKey = stringify({ subject, schema: minimize(schema), deleted });
 
     return await this.schemaToVersionMutex.runExclusive(async () => {
       const cachedVersion: number | undefined = this.schemaToVersionCache.get(cacheKey);
