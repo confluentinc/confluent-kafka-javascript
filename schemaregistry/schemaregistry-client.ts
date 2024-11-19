@@ -198,11 +198,12 @@ export class SchemaRegistryClient implements Client {
     this.clientConfig = config
     const cacheOptions = {
       max: config.cacheCapacity !== undefined ? config.cacheCapacity : 1000,
-      ...(config.cacheLatestTtlSecs !== undefined && { maxAge: config.cacheLatestTtlSecs * 1000 })
+      ...(config.cacheLatestTtlSecs !== undefined && { ttl: config.cacheLatestTtlSecs * 1000 })
     };
 
     this.restService = new RestService(config.baseURLs, config.isForward, config.createAxiosDefaults,
-      config.basicAuthCredentials, config.bearerAuthCredentials);
+      config.basicAuthCredentials, config.bearerAuthCredentials,
+      config.maxRetries, config.retriesWaitMs, config.retriesMaxWaitMs);
 
     this.schemaToIdCache = new LRUCache(cacheOptions);
     this.idToSchemaInfoCache = new LRUCache(cacheOptions);
