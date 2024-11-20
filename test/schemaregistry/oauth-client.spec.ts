@@ -1,7 +1,7 @@
 import { OAuthClient } from '../../schemaregistry/oauth/oauth-client';
 import { ClientCredentials, AccessToken } from 'simple-oauth2';
 import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
-import * as retryHelper from '../../schemaregistry/retryHelper';
+import * as retryHelper from '@confluentinc/schemaregistry/retry-helper';
 import { maxRetries, retriesWaitMs, retriesMaxWaitMs } from './test-constants';
 
 jest.mock('simple-oauth2');

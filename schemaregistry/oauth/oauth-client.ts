@@ -1,5 +1,5 @@
 import { ModuleOptions, ClientCredentials, ClientCredentialTokenConfig, AccessToken } from 'simple-oauth2';
-import { sleep, fullJitter, isRetriable } from '../retryHelper';
+import { sleep, fullJitter, isRetriable } from '../retry-helper';
 
 const TOKEN_EXPIRATION_THRESHOLD_SECONDS = 30 * 60; // 30 minutes
 
@@ -71,3 +71,4 @@ export class OAuthClient {
     throw new Error('Access token is not available');
   }
 }
+

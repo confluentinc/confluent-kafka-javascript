@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDef
 import { OAuthClient } from './oauth/oauth-client';
 import { RestError } from './rest-error';
 import axiosRetry from "axios-retry";
-import { fullJitter, isRetriable } from './retryHelper';
+import { fullJitter, isRetriable } from './retry-helper';
 /*
  * Confluent-Schema-Registry-TypeScript - Node.js wrapper for Confluent Schema Registry
  *
