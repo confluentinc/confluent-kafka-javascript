@@ -9,6 +9,7 @@ v0.5.0 is a limited availability feature release. It is supported for all usage.
 2. Fixes an issue with unresolved raced Promises leaking in the consumer (#151).
 3. Add support for an Admin API to describe topics.(#155).
 4. Add support for dependent Admin client (#153).
+5. References librdkafka v2.6.1. Refer to the [librdkafka v2.6.1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.6.1) for more information.
 
 
 # confluent-kafka-javascript v0.4.0
