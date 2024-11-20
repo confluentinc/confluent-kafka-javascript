@@ -49,7 +49,7 @@ export class OAuthClient {
         const token = await this.client.getToken(this.tokenParams);
         this.token = token;
       } catch (error: any) {
-        if (error.isBoom() && i < this.maxRetries) {
+        if (isBoom(error) && i < this.maxRetries) {
           const statusCode = error.output.statusCode;
           if (isRetriable(statusCode)) {
             const waitTime = fullJitter(this.retriesWaitMs, this.retriesMaxWaitMs, i);

@@ -3,8 +3,12 @@ import { ClientCredentials, AccessToken } from 'simple-oauth2';
 import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
 import * as retryHelper from '@confluentinc/schemaregistry/retry-helper';
 import { maxRetries, retriesWaitMs, retriesMaxWaitMs } from './test-constants';
+import { boomify } from '@hapi/boom';
 
 jest.mock('simple-oauth2');
+
+const mockError = boomify(new Error('Error Message'), { statusCode: 429 });
+const mockErrorNonRetry = boomify(new Error('Error Message'), { statusCode: 401 });
 
 describe('OAuthClient', () => {
   const clientId = 'clientId';
@@ -92,46 +96,41 @@ describe('OAuthClient', () => {
 
     // Fail twice with retriable errors, then succeed
     clientCredentials.prototype.getToken
-      .mockRejectedValueOnce({
-        isBoom: true,
-        output: { statusCode: 429 },
-      })
-      .mockRejectedValueOnce({
-        isBoom: true,
-        output: { statusCode: 503 },
-      })
+      .mockRejectedValueOnce(mockError)
+      .mockRejectedValueOnce(mockError)
       .mockResolvedValue(mockToken);
 
     const token = await oauthClient.getAccessToken();
 
     expect(token).toBe('mockAccessToken');
-    expect(retryHelper.isRetriable).toHaveBeenCalledTimes(maxRetries);
     expect(retryHelper.fullJitter).toHaveBeenCalledTimes(maxRetries);
+    expect(retryHelper.fullJitter).toHaveBeenCalledWith(retriesWaitMs, retriesMaxWaitMs, 0);
+    expect(retryHelper.fullJitter).toHaveBeenCalledWith(retriesWaitMs, retriesMaxWaitMs, 1);
+    
+    expect(retryHelper.isRetriable).toHaveBeenCalledTimes(maxRetries);
     expect(retryHelper.sleep).toHaveBeenCalledTimes(maxRetries);
   });
 
   it('should fail immediately on non-retriable errors', async () => {
-    clientCredentials.prototype.getToken.mockRejectedValueOnce({
-      isBoom: true,
-      output: { statusCode: 401 },
-    });
+    clientCredentials.prototype.getToken.mockRejectedValueOnce(mockErrorNonRetry);
     await expect(oauthClient.getAccessToken()).rejects.toThrowError();
 
     expect(retryHelper.isRetriable).toHaveBeenCalledTimes(1);
-    expect(retryHelper.fullJitter).toHaveBeenCalledTimes(0);
-    expect(retryHelper.sleep).toHaveBeenCalledTimes(0);
+    expect(retryHelper.fullJitter).not.toHaveBeenCalled();
+    expect(retryHelper.sleep).not.toHaveBeenCalled();
   });
 
   it('should fail after exhausting all retries', async () => {
-    clientCredentials.prototype.getToken.mockRejectedValue({
-      isBoom: true,
-      output: { statusCode: 429 },
-    });
+    clientCredentials.prototype.getToken.mockRejectedValue(mockError);
 
     await expect(oauthClient.getAccessToken()).rejects.toThrowError();
 
+
     expect(retryHelper.isRetriable).toHaveBeenCalledTimes(maxRetries);
+
     expect(retryHelper.fullJitter).toHaveBeenCalledTimes(maxRetries);
+    expect(retryHelper.fullJitter).toHaveBeenCalledWith(retriesWaitMs, retriesMaxWaitMs, 0);
+    expect(retryHelper.fullJitter).toHaveBeenCalledWith(retriesWaitMs, retriesMaxWaitMs, 1);
     expect(retryHelper.sleep).toHaveBeenCalledTimes(maxRetries);
   });
 
