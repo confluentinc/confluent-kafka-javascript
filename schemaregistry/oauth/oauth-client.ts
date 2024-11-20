@@ -1,5 +1,6 @@
 import { ModuleOptions, ClientCredentials, ClientCredentialTokenConfig, AccessToken } from 'simple-oauth2';
 import { sleep, fullJitter, isRetriable } from '../retry-helper';
+import { isBoom } from '@hapi/boom';
 
 const TOKEN_EXPIRATION_THRESHOLD_SECONDS = 30 * 60; // 30 minutes
 
@@ -48,7 +49,7 @@ export class OAuthClient {
         const token = await this.client.getToken(this.tokenParams);
         this.token = token;
       } catch (error: any) {
-        if (error.isBoom && i < this.maxRetries) {
+        if (error.isBoom() && i < this.maxRetries) {
           const statusCode = error.output.statusCode;
           if (isRetriable(statusCode)) {
             const waitTime = fullJitter(this.retriesWaitMs, this.retriesMaxWaitMs, i);
