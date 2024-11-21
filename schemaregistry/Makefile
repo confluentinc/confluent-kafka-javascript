@@ -10,7 +10,6 @@ DOCKER ?= ./run_docker_schemaregistry.sh
 # Paths
 SRC_DIR = .
 SR_TEST_DIR = ./schemaregistry/test
-# DEK_TEST_DIR = ../test/schemaregistry/rules/encryption/dekregistry
 INTEG_DIR = ../e2e/schemaregistry
 
 # Tasks
