@@ -71,12 +71,19 @@ export class AvroSerializer extends Serializer implements AvroSerde {
       throw new Error('message is empty')
     }
 
-    let avroSchema = AvroSerializer.messageToSchema(msg)
-    const schema: SchemaInfo = {
-      schemaType: 'AVRO',
-      schema: JSON.stringify(avroSchema),
+    let schema: SchemaInfo | undefined = undefined
+    // Don't derive the schema if it is being looked up in the following ways
+    if (this.config().useSchemaId == null &&
+        !this.config().useLatestVersion &&
+        this.config().useLatestWithMetadata == null) {
+      const avroSchema = AvroSerializer.messageToSchema(msg)
+      schema = {
+        schemaType: 'AVRO',
+        schema: JSON.stringify(avroSchema),
+      }
     }
     const [id, info] = await this.getId(topic, msg, schema)
+    let avroSchema: avro.Type
     let deps: Map<string, string>
     [avroSchema, deps] = await this.toType(info)
     const subject = this.subjectName(topic, info)
@@ -285,7 +292,7 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       const recordSchema = schema as RecordType
       const record = msg as Record<string, any>
       for (const field of recordSchema.fields) {
-        await transformField(ctx, recordSchema, field, record, record[field.name], fieldTransform)
+        await transformField(ctx, recordSchema, field, record, fieldTransform)
       }
       return record
     default:
@@ -304,17 +311,16 @@ async function transformField(
   recordSchema: RecordType,
   field: Field,
   record: Record<string, any>,
-  val: any,
   fieldTransform: FieldTransform,
 ): Promise<void> {
   const fullName = recordSchema.name + '.' + field.name
   try {
     ctx.enterField(
-      val,
+      record,
       fullName,
       field.name,
       getType(field.type),
-      ctx.getInlineTags(fullName),
+      null
     )
     const newVal = await transform(ctx, field.type, record[field.name], fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
