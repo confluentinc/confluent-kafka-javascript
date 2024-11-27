@@ -730,10 +730,8 @@ NAN_METHOD(Producer::NodeConnect) {
 
   Producer* producer = ObjectWrap::Unwrap<Producer>(info.This());
 
-  // Activate the dispatchers before starting the async worker, as it must be
-  // done on the event loop thread.
-  // Some callbacks may run on the librdkafka background thread so this cannot
-  // wait until RdKafka::Producer has been created.
+  // Activate the dispatchers before the connection, as some callbacks may run
+  // on the background thread.
   // We will deactivate them if the connection fails.
   producer->ActivateDispatchers();
 
