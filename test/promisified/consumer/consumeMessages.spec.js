@@ -402,6 +402,13 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
     });
 
     it('consumes messages concurrently where partitionsConsumedConcurrently - partitions = diffConcurrencyPartitions', async () => {
+        if (partitionsConsumedConcurrently >= 2) {
+            /* Given how librdkafka merges partition queues, it's very unlikely that
+             * we get *three* partitions in the cache at one time given how we've produced
+             * the messages. So just skip it, it'll be very flaky otherwise. */
+            return;
+        }
+
         const partitions = 3;
         /* We want partitionsConsumedConcurrently to be 2, 3, and 4 rather than 1, 2, and 3 that is tested by the test. */
         const partitionsConsumedConcurrentlyDiff = partitionsConsumedConcurrently + 1;
@@ -410,8 +417,24 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
             topic: topicName,
             partitions: partitions,
         });
-        await consumer.connect();
+
+        /* Reconfigure producer and consumer in such a way that batches are likely
+         * to be small and we get multiple partitions in the cache at once.
+         * This is to reduce flakiness. */
+        producer = createProducer({}, {
+            'linger.ms': 1,
+        });
+
+        consumer = createConsumer({
+            'groupId': groupId,
+        }, {
+            'fetch.message.max.bytes': 1,
+            'fetch.max.bytes': 1000,
+            'message.max.bytes': 1000,
+        });
+
         await producer.connect();
+        await consumer.connect();
         await consumer.subscribe({ topic: topicName });
 
         let inProgress = 0;

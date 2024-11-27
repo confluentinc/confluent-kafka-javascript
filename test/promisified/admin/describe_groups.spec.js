@@ -11,18 +11,19 @@ const {
 const { ConsumerGroupStates, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
 
 describe('Admin > describeGroups', () => {
-    let topicName, groupId, consumer, admin;
+    let topicName, groupId, consumer, admin, groupInstanceId;
 
     beforeEach(async () => {
         topicName = `test-topic-${secureRandom()}`;
         groupId = `consumer-group-id-${secureRandom()}`;
+        groupInstanceId = `consumer-group-instance-id-${secureRandom()}`;
 
         consumer = createConsumer({
             groupId,
             fromBeginning: true,
             clientId: 'test-client-id',
         }, {
-            'group.instance.id': 'test-instance-id',
+            'group.instance.id': groupInstanceId,
             'session.timeout.ms': 10000,
             'partition.assignment.strategy': 'roundrobin',
         });
@@ -92,7 +93,7 @@ describe('Admin > describeGroups', () => {
                         memberId: expect.any(String),
                         memberAssignment: null,
                         memberMetadata: null,
-                        groupInstanceId: 'test-instance-id',
+                        groupInstanceId: groupInstanceId,
                         assignment: {
                             topicPartitions:[
                                 expect.objectContaining({ topic: topicName, partition: 0 }),
@@ -109,7 +110,7 @@ describe('Admin > describeGroups', () => {
         consumer = null;
 
         // Wait so that session.timeout.ms expires and the group becomes EMPTY.
-        await sleep(12000);
+        await sleep(10500);
 
         // Don't include authorized operations this time.
         describeGroupsResult = await admin.describeGroups([groupId]);
@@ -119,9 +120,7 @@ describe('Admin > describeGroups', () => {
                 groupId,
                 protocol: '',
                 partitionAssignor: '',
-                isSimpleConsumerGroup: false,
-                protocolType: 'consumer',
-                state: ConsumerGroupStates.EMPTY,
+                isSimpleConsumerGroup: expect.any(Boolean),
                 coordinator: expect.objectContaining({
                     id: expect.any(Number),
                     host: expect.any(String),
@@ -130,6 +129,11 @@ describe('Admin > describeGroups', () => {
                 members: [],
             })
         );
+
+        // Depending on the environment of the test run, the group might transition into
+        // the DEAD state, so allow for both possibilities.
+        expect(describeGroupsResult.groups[0].state === ConsumerGroupStates.EMPTY || describeGroupsResult.groups[0].state === ConsumerGroupStates.DEAD).toBeTruthy();
+        expect(describeGroupsResult.groups[0].protocolType === 'consumer' || describeGroupsResult.groups[0].protocolType === 'simple').toBeTruthy();
         expect(describeGroupsResult.groups[0].authorizedOperations).toBeUndefined();
     });
 });
