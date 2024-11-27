@@ -1,3 +1,13 @@
+# confluent-kafka-javascript v0.5.3
+
+v0.5.3 is a limited availability maintenance release. It is supported for all usage.
+
+## Fixes
+
+1. Fixes an issue where `uv_async_init` was being called off the event loop thread,
+   causing the node process to hang (#190).
+
+
 # confluent-kafka-javascript v0.5.2
 
 v0.5.2 is a limited availability maintenance release. It is supported for all usage.
