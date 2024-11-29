@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it} from '@jest/globals';
-import {ClientConfig} from "../../../schemaregistry/rest-service";
-import {SerdeType, SerializationError, Serializer} from "../../../schemaregistry/serde/serde";
+import {ClientConfig} from "../../rest-service";
+import {SerdeType, SerializationError, Serializer} from "../../serde/serde";
 import {
   Client,
   Rule,
@@ -8,14 +8,14 @@ import {
   RuleSet,
   SchemaInfo,
   SchemaRegistryClient
-} from "../../../schemaregistry/schemaregistry-client";
-import {LocalKmsDriver} from "../../../schemaregistry/rules/encryption/localkms/local-driver";
-import {FieldEncryptionExecutor} from "../../../schemaregistry/rules/encryption/encrypt-executor";
+} from "../../schemaregistry-client";
+import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
+import {FieldEncryptionExecutor} from "../../rules/encryption/encrypt-executor";
 import {
   JsonDeserializer, JsonDeserializerConfig,
   JsonSerializer,
   JsonSerializerConfig
-} from "../../../schemaregistry/serde/json";
+} from "../../serde/json";
 import {RuleRegistry} from "@confluentinc/schemaregistry/serde/rule-registry";
 import stringify from "json-stringify-deterministic";
 import {JsonataExecutor} from "@confluentinc/schemaregistry/rules/jsonata/jsonata-executor";
@@ -145,6 +145,38 @@ const complexSchema = `
   }
 }
 `
+const defSchema = `
+{
+	"$schema" : "http://json-schema.org/draft-07/schema#",
+	"additionalProperties" : false,
+	"definitions" : {
+		"Address" : {
+			"additionalProperties" : false,
+			"properties" : {
+				"doornumber" : {
+					"type" : "integer"
+				},
+				"doorpin" : {
+					"confluent:tags" : [ "PII" ],
+					"type" : "string"
+				}
+			},
+			"type" : "object"
+		}
+	},
+	"properties" : {
+		"address" : {
+			"$ref" : "#/definitions/Address"
+		},
+		"name" : {
+			"confluent:tags" : [ "PII" ],
+			"type" : "string"
+		}
+	},
+	"title" : "Sample Event",
+	"type" : "object"
+}
+`
 
 describe('JsonSerializer', () => {
   afterEach(async () => {
@@ -221,12 +253,15 @@ describe('JsonSerializer', () => {
       validate: true
     })
 
-    let obj = {
+    let nested = {
       intField: 123,
       doubleField: 45.67,
       stringField: 'hi',
       boolField: true,
       bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    let obj = {
+      otherField: nested
     }
     let bytes = await ser.serialize(topic, obj)
 
@@ -480,6 +515,77 @@ describe('JsonSerializer', () => {
     // reset encrypted field
     obj.stringField = 'hi'
     obj.bytesField = Buffer.from([0, 0, 0, 1]).toString('base64')
+
+    let deserConfig: JsonDeserializerConfig = {
+      ruleConfig: {
+        secret: 'mysecret'
+      }
+    }
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    fieldEncryptionExecutor.client = dekClient
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+
+    clearKmsClients()
+    let registry = new RuleRegistry()
+    registry.registerExecutor(new FieldEncryptionExecutor())
+    deser = new JsonDeserializer(client, SerdeType.VALUE, {}, registry)
+    obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).not.toEqual(obj);
+  })
+  it('encryption with def', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let serConfig: JsonSerializerConfig = {
+      useLatestVersion: true,
+      ruleConfig: {
+        secret: 'mysecret'
+      }
+    }
+    let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+    let dekClient = fieldEncryptionExecutor.client!
+
+    let encRule: Rule = {
+      name: 'test-encrypt',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITEREAD,
+      type: 'ENCRYPT',
+      tags: ['PII'],
+      params: {
+        'encrypt.kek.name': 'kek1',
+        'encrypt.kms.type': 'local-kms',
+        'encrypt.kms.key.id': 'mykey',
+      },
+      onFailure: 'ERROR,NONE'
+    }
+    let ruleSet: RuleSet = {
+      domainRules: [encRule]
+    }
+
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema: defSchema,
+      ruleSet
+    }
+
+    await client.register(subject, info, false)
+
+    let addr = {
+      doornumber: 123,
+      doorpin: 'hi'
+    }
+    let obj = {
+      address: addr,
+      name: 'bob'
+    }
+    let bytes = await ser.serialize(topic, obj)
+
+    // reset encrypted field
+    obj.name = 'bob'
+    obj.address.doorpin = 'hi'
 
     let deserConfig: JsonDeserializerConfig = {
       ruleConfig: {

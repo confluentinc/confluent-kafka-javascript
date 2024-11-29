@@ -1,5 +1,5 @@
 import { CreateAxiosDefaults } from 'axios';
-import { ClientConfig, BasicAuthCredentials } from '../../schemaregistry/rest-service';
+import { ClientConfig, BasicAuthCredentials } from '../rest-service';
 
 const baseUrls = ['http://localhost:8081'];
 
@@ -32,4 +32,17 @@ const mockClientConfig: ClientConfig = {
   basicAuthCredentials: basicAuthCredentials
 };
 
-export { clientConfig, mockClientConfig };
+const mockTtlClientConfig: ClientConfig = {
+  baseURLs: mockBaseUrls,
+  createAxiosDefaults: createAxiosDefaults,
+  isForward: false,
+  cacheCapacity: 512,
+  cacheLatestTtlSecs: 1,
+  basicAuthCredentials: basicAuthCredentials
+};
+
+const maxRetries = 2;
+const retriesWaitMs = 100;
+const retriesMaxWaitMs = 1000;
+
+export { clientConfig, mockClientConfig, mockTtlClientConfig, maxRetries, retriesWaitMs, retriesMaxWaitMs };
