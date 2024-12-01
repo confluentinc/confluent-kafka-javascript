@@ -134,6 +134,54 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
         );
     });
 
+    it('consume batch of messages with headers', async () => {
+        await consumer.connect();
+        await producer.connect();
+        await consumer.subscribe({ topic: topicName });
+
+        const messagesConsumed = [];
+        consumer.run({
+            partitionsConsumedConcurrently,
+            eachBatch: async event => messagesConsumed.push(event)
+        });
+
+        const messages = [{
+            value: `value-${secureRandom}`,
+            headers: {
+                'header-1': 'value-1',
+                'header-2': 'value-2',
+                'header-3': ['value-3-1', 'value-3-2', Buffer.from([1, 0, 1, 0, 1])],
+                'header-4': Buffer.from([1, 0, 1, 0, 1]),
+            },
+            partition: 0,
+        }];
+
+        await producer.send({ topic: topicName, messages });
+        await waitForMessages(messagesConsumed, { number: messages.length });
+
+        expect(messagesConsumed[0]).toEqual(
+            expect.objectContaining({
+                batch: expect.objectContaining({
+                    topic: topicName,
+                    partition: 0,
+                    messages: [
+                        expect.objectContaining({
+                            value: Buffer.from(messages[0].value),
+                            offset: '0',
+                            headers: {
+                                // Headers are always returned as Buffers from the broker.
+                                'header-1': Buffer.from('value-1'),
+                                'header-2': Buffer.from('value-2'),
+                                'header-3': [Buffer.from('value-3-1'), Buffer.from('value-3-2'), Buffer.from([1, 0, 1, 0, 1])],
+                                'header-4': Buffer.from([1, 0, 1, 0, 1]),
+                            }
+                        }),
+                    ]
+                }),
+            })
+        );
+    });
+
     it.each([[true], [false]])('consumes messages using eachBatch - isAutoResolve: %s', async (isAutoResolve) => {
         await consumer.connect();
         await producer.connect();
@@ -472,8 +520,10 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
 
         let calls = 0;
         let failedSeek = false;
+        let eachMessageStarted = false;
         consumer.run({
             eachMessage: async ({ message }) => {
+                eachMessageStarted = true;
                 /* Take a long time to process the message. */
                 await sleep(7000);
                 try {
@@ -492,7 +542,7 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
 
         /* Waiting for assignment and then a bit more means that the first eachMessage starts running. */
         await waitFor(() => consumer.assignment().length > 0, () => { }, { delay: 50 });
-        await sleep(200);
+        await waitFor(() => eachMessageStarted, () => { }, { delay: 50 });
         await consumer.disconnect();
 
         /* Even without explicitly waiting for it, a pending call to eachMessage must complete before disconnect does. */
