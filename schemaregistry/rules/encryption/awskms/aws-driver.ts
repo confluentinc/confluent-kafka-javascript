@@ -27,9 +27,18 @@ export class AwsKmsDriver implements KmsDriver {
     const uriPrefix = keyUrl != null ? keyUrl : AwsKmsDriver.PREFIX
     const key = config.get(AwsKmsDriver.ACCESS_KEY_ID)
     const secret = config.get(AwsKmsDriver.SECRET_ACCESS_KEY)
-    const roleArn = config.get(AwsKmsDriver.ROLE_ARN)
-    const roleSessionName = config.get(AwsKmsDriver.ROLE_SESSION_NAME)
-    const roleExternalId = config.get(AwsKmsDriver.ROLE_EXTERNAL_ID)
+    let roleArn = config.get(AwsKmsDriver.ROLE_ARN)
+    if (roleArn == null) {
+      roleArn = process.env['AWS_ROLE_ARN']
+    }
+    let roleSessionName = config.get(AwsKmsDriver.ROLE_SESSION_NAME)
+    if (roleSessionName == null) {
+      roleSessionName = process.env['AWS_ROLE_SESSION_NAME']
+    }
+    let roleExternalId = config.get(AwsKmsDriver.ROLE_EXTERNAL_ID)
+    if (roleExternalId == null) {
+      roleExternalId = process.env['AWS_ROLE_EXTERNAL_ID']
+    }
     let creds: AwsCredentialIdentity | AwsCredentialIdentityProvider | undefined
     if (key != null && secret != null) {
       creds = {accessKeyId: key, secretAccessKey: secret}
@@ -42,11 +51,11 @@ export class AwsKmsDriver implements KmsDriver {
       }
       const regionName = tokens[3]
       creds = fromTemporaryCredentials({
-        masterCredentials: creds,
+        ...creds && {masterCredentials: creds},
         params: {
           RoleArn: roleArn,
           RoleSessionName: roleSessionName ?? "confluent-encrypt",
-          ExternalId: roleExternalId,
+          ...roleExternalId && {ExternalId: roleExternalId},
         },
         clientConfig: { region: regionName },
       })
