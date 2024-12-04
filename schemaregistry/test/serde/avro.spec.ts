@@ -1,12 +1,12 @@
 import {afterEach, describe, expect, it} from '@jest/globals';
-import {ClientConfig} from "../../../schemaregistry/rest-service";
+import {ClientConfig} from "../../rest-service";
 import {
   AvroDeserializer,
   AvroDeserializerConfig,
   AvroSerializer,
   AvroSerializerConfig
-} from "../../../schemaregistry/serde/avro";
-import {SerdeType, Serializer} from "../../../schemaregistry/serde/serde";
+} from "../../serde/avro";
+import {SerdeType, Serializer} from "../../serde/serde";
 import {
   Client,
   Rule,
@@ -14,16 +14,16 @@ import {
   RuleSet,
   SchemaInfo,
   SchemaRegistryClient
-} from "../../../schemaregistry/schemaregistry-client";
-import {LocalKmsDriver} from "../../../schemaregistry/rules/encryption/localkms/local-driver";
+} from "../../schemaregistry-client";
+import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
 import {
   Clock,
   FieldEncryptionExecutor
-} from "../../../schemaregistry/rules/encryption/encrypt-executor";
-import {GcpKmsDriver} from "../../../schemaregistry/rules/encryption/gcpkms/gcp-driver";
-import {AwsKmsDriver} from "../../../schemaregistry/rules/encryption/awskms/aws-driver";
-import {AzureKmsDriver} from "../../../schemaregistry/rules/encryption/azurekms/azure-driver";
-import {HcVaultDriver} from "../../../schemaregistry/rules/encryption/hcvault/hcvault-driver";
+} from "../../rules/encryption/encrypt-executor";
+import {GcpKmsDriver} from "../../rules/encryption/gcpkms/gcp-driver";
+import {AwsKmsDriver} from "../../rules/encryption/awskms/aws-driver";
+import {AzureKmsDriver} from "../../rules/encryption/azurekms/azure-driver";
+import {HcVaultDriver} from "../../rules/encryption/hcvault/hcvault-driver";
 import {JsonataExecutor} from "@confluentinc/schemaregistry/rules/jsonata/jsonata-executor";
 import stringify from "json-stringify-deterministic";
 import {RuleRegistry} from "@confluentinc/schemaregistry/serde/rule-registry";
@@ -244,6 +244,31 @@ const complexSchema = `
   ]
 }
 `
+const unionFieldSchema = `
+{
+  "type": "record",
+    "name": "UnionTest",
+    "namespace": "test",
+    "fields": [
+    {
+      "name": "color",
+      "type": [
+        "string",
+        {
+          "type": "enum",
+          "name": "Color",
+          "symbols": [
+            "RED",
+            "BLUE"
+          ]
+        }
+      ],
+      "default": "BLUE"
+
+    }
+  ],
+  "version": "1"
+}`;
 
 class FakeClock extends Clock {
   fixedNow: number = 0
@@ -341,7 +366,7 @@ describe('AvroSerializer', () => {
       schemaType: 'AVRO',
       schema: demoSchema,
     }
-    await client.register('demo-value', info , false)
+    await client.register('demo-value', info, false)
 
     info = {
       schemaType: 'AVRO',
@@ -352,7 +377,7 @@ describe('AvroSerializer', () => {
         version: 1
       }]
     }
-    await client.register(subject, info , false)
+    await client.register(subject, info, false)
 
     let nested = {
       intField: 123,
@@ -373,6 +398,166 @@ describe('AvroSerializer', () => {
     expect(obj2.otherField.stringField).toEqual(nested.stringField);
     expect(obj2.otherField.boolField).toEqual(nested.boolField);
     expect(obj2.otherField.bytesField).toEqual(nested.bytesField);
+  })
+  it('field with union with non-applicable rule', async () => {
+    const conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    };
+    const client = SchemaRegistryClient.newClient(conf)
+    const serConfig: AvroSerializerConfig = {
+      useLatestVersion: true,
+      ruleConfig: {
+        secret: 'mysecret'
+      }
+    };
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig);
+    const dekClient = fieldEncryptionExecutor.client!;
+
+    const encRule: Rule = {
+      name: 'test-encrypt',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITEREAD,
+      type: 'ENCRYPT',
+      tags: ['PII'],
+      params: {
+        'encrypt.kek.name': 'kek1',
+        'encrypt.kms.type': 'local-kms',
+        'encrypt.kms.key.id': 'mykey',
+      },
+      onFailure: 'ERROR,ERROR'
+    };
+    const ruleSet: RuleSet = {
+      domainRules: [encRule]
+    };
+
+    const info = {
+      schemaType: 'AVRO',
+      schema: unionFieldSchema,
+      ruleSet
+    };
+
+    await client.register(subject, info, false);
+
+    const obj = {
+      color: {"test.Color": "BLUE"}
+    };
+    const bytes = await ser.serialize(topic, obj);
+
+    const deserConfig: AvroDeserializerConfig = {
+      ruleConfig: {
+        secret: 'mysecret'
+      }
+    };
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig);
+    fieldEncryptionExecutor.client = dekClient;
+    const obj2 = await deser.deserialize(topic, bytes);
+    expect(obj2.color).toEqual(obj.color);
+  })
+  it('serialize reference', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new AvroSerializer(client, SerdeType.VALUE, {useLatestVersion: true})
+
+    let info: SchemaInfo = {
+      schemaType: 'AVRO',
+      schema: demoSchema,
+    }
+    await client.register('demo-value', info, false)
+
+    info = {
+      schemaType: 'AVRO',
+      schema: rootPointerSchema,
+      references: [{
+        name: 'DemoSchema',
+        subject: 'demo-value',
+        version: 1
+      }]
+    }
+    await client.register(subject, info, false)
+
+    let nested = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    let obj = {
+      otherField: nested
+    }
+    let bytes = await ser.serialize(topic, obj)
+
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.otherField.intField).toEqual(nested.intField);
+    expect(obj2.otherField.doubleField).toBeCloseTo(nested.doubleField, 0.001);
+    expect(obj2.otherField.stringField).toEqual(nested.stringField);
+    expect(obj2.otherField.boolField).toEqual(nested.boolField);
+    expect(obj2.otherField.bytesField).toEqual(nested.bytesField);
+  })
+  it('serialize union with references', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new AvroSerializer(client, SerdeType.VALUE, {useLatestVersion: true})
+
+    let info: SchemaInfo = {
+      schemaType: 'AVRO',
+      schema: demoSchema,
+    }
+    await client.register('demo-value', info, false)
+
+    info = {
+      schemaType: 'AVRO',
+      schema: complexSchema,
+    }
+    await client.register('complex-value', info, false)
+
+    info = {
+      schemaType: 'AVRO',
+      schema: '[ "DemoSchema", "ComplexSchema" ]',
+      references: [
+        {
+          name: 'DemoSchema',
+          subject: 'demo-value',
+          version: 1
+        },
+        {
+          name: 'ComplexSchema',
+          subject: 'complex-value',
+          version: 1
+        }]
+    }
+    await client.register(subject, info, false)
+
+    let obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    // need to wrap union
+    let union = { DemoSchema: obj }
+    let bytes = await ser.serialize(topic, union)
+
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let union2 = await deser.deserialize(topic, bytes)
+
+    // need to unwrap union
+    let obj2 = union2.DemoSchema
+
+    expect(obj2.intField).toEqual(obj.intField);
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
+    expect(obj2.stringField).toEqual(obj.stringField);
+    expect(obj2.boolField).toEqual(obj.boolField);
+    expect(obj2.bytesField).toEqual(obj.bytesField);
   })
   it('schema evolution', async () => {
     let conf: ClientConfig = {
