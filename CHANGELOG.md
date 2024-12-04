@@ -1,4 +1,4 @@
-# confluent-kafka-javascript v0.5.2
+# confluent-kafka-javascript v0.6.0
 
 v0.5.2 is a limited availability maintenance release. It is supported for all usage.
 
