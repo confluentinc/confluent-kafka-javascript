@@ -659,6 +659,13 @@ describe('AvroSerializer', () => {
     expect(obj2.boolField).toEqual(obj.boolField);
     expect(obj2.bytesField).toEqual(obj.bytesField);
 
+    RuleRegistry.registerRuleOverride({type: 'ENCRYPT', disabled: true})
+    deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+    obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.stringField).not.toEqual(obj.stringField);
+    expect(obj2.bytesField).not.toEqual(obj.bytesField);
+    RuleRegistry.registerRuleOverride({type: 'ENCRYPT'})
+
     clearKmsClients()
     let registry = new RuleRegistry()
     registry.registerExecutor(new FieldEncryptionExecutor())
