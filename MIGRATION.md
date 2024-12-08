@@ -331,6 +331,12 @@ The admin-client only has support for a limited subset of methods, with more to 
   * The `describeGroups` method is supported with additional `timeout` and `includeAuthorizedOperations` options.
     A number of additional properties have been added to the returned groups.
   * The `deleteGroups` method is supported with an additional `timeout` option.
+  * The `fetchOffsets` method is supported with additional `timeout` and 
+  `requireStableOffsets` option but `resolveOffsets` option is not yet supported.
+  * The `deleteTopicRecords` method is supported with additional `timeout`
+  and `operationTimeout` option.
+  * The `fetchTopicMetadata` method is supported with additional `timeout`
+  and `includeAuthorizedOperations` option. Fetching for all topics is not advisable.
 
 ### Using the Schema Registry
 
