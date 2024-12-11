@@ -1534,28 +1534,16 @@ NAN_METHOD(AdminClient::NodeListOffsets) {
    * Workers::AdminClientListOffsets and freeing it is also handled
    * by that class.
    */
-  rd_kafka_topic_partition_list_t *partitions =
-      Conversion::TopicPartition::TopicPartitionv8ArrayToTopicPartitionList(
-          listOffsets, true);
+  rd_kafka_topic_partition_list_t *partitions = Conversion::TopicPartition::
+      TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(listOffsets);
 
   // Now process the second argument: options (timeout and isolationLevel)
   v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
   rd_kafka_IsolationLevel_t isolation_level =
-      RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED;
-
-  int32_t isolationLevelInt =
-      GetParameter<int32_t>(options, "isolationLevel", -1);
-  if (isolationLevelInt == 0) {
-    isolation_level = RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED;
-  } else if (isolationLevelInt == 1) {
-    isolation_level = RD_KAFKA_ISOLATION_LEVEL_READ_COMMITTED;
-  } else {
-    Nan::ThrowError(
-        "Invalid isolationLevel value. Expected 0 (READ_UNCOMMITTED) or 1 "
-        "(READ_COMMITTED).");
-    return;
-  }
+      static_cast<rd_kafka_IsolationLevel_t>(GetParameter<int32_t>(
+          options, "isolationLevel",
+          static_cast<int32_t>(RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED)));
 
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 

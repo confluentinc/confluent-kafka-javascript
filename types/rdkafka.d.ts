@@ -455,6 +455,19 @@ export type TopicDescription = {
     authorizedOperations?: AclOperationTypes[]
 }
 
+export class OffsetSpec {
+    constructor(timestamp: number);
+    static EARLIEST: OffsetSpec;
+    static LATEST: OffsetSpec;
+    static MAX_TIMESTAMP: OffsetSpec;
+}
+
+export type TopicPartitionOffsetSpec = {
+    topic: string
+    partition: number
+    offset: OffsetSpec
+}
+
 export enum IsolationLevel {
     READ_UNCOMMITTED = 0,
     READ_COMMITTED = 1,
@@ -463,8 +476,9 @@ export enum IsolationLevel {
 export interface ListOffsetsResult {
     topic: string;
     partition: number;
-    offset: string;
-    error: LibrdKafkaError;
+    offset: number;
+    error?: LibrdKafkaError;
+    leaderEpoch?: number;
     timestamp: number;
 }
 
@@ -507,7 +521,7 @@ export interface IAdminClient {
         options?: { includeAuthorizedOperations?: boolean, timeout?: number },
         cb?: (err: LibrdKafkaError, result: TopicDescription[]) => any): void;
 
-    listOffsets(partitions: TopicPartitionOffset[],
+    listOffsets(partitions: TopicPartitionOffsetSpec[],
         options?: { timeout?: number, isolationLevel?: IsolationLevel },
         cb?: (err: LibrdKafkaError, result: ListOffsetsResult[]) => any): void;
 

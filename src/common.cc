@@ -496,9 +496,50 @@ rd_kafka_topic_partition_list_t* TopicPartitionv8ArrayToTopicPartitionList(
         rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
 
     if (include_offset) {
-      int offset = GetParameter<int>(item, "offset", 0);
+      int64_t offset = GetParameter<int64_t>(item, "offset", 0);
       toppar->offset = offset;
     }
+  }
+  return newList;
+}
+
+/**
+ * @brief v8 Array of Topic Partitions with offsetspec to
+ *        rd_kafka_topic_partition_list_t
+ * 
+ * @note Converts a v8 array of type [{topic: string, partition: number,
+ *      offset: {timestamp: number}}] to a rd_kafka_topic_partition_list_t
+ */
+rd_kafka_topic_partition_list_t*
+TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(
+    v8::Local<v8::Array> parameter) {
+  rd_kafka_topic_partition_list_t* newList =
+      rd_kafka_topic_partition_list_new(parameter->Length());
+
+  for (unsigned int i = 0; i < parameter->Length(); i++) {
+    v8::Local<v8::Value> v;
+    if (!Nan::Get(parameter, i).ToLocal(&v)) {
+      continue;
+    }
+
+    if (!v->IsObject()) {
+      return NULL;  // Return NULL to indicate an error
+    }
+
+    v8::Local<v8::Object> item = v.As<v8::Object>();
+
+    std::string topic = GetParameter<std::string>(item, "topic", "");
+    int partition = GetParameter<int>(item, "partition", -1);
+
+    rd_kafka_topic_partition_t* toppar =
+        rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
+
+    v8::Local<v8::Value> offsetValue =
+        Nan::Get(item, Nan::New("offset").ToLocalChecked()).ToLocalChecked();
+    v8::Local<v8::Object> offsetObject = offsetValue.As<v8::Object>();
+    int64_t offset = GetParameter<int64_t>(offsetObject, "timestamp", 0);
+
+    toppar->offset = offset;
   }
   return newList;
 }
@@ -1446,14 +1487,14 @@ v8::Local<v8::Array> FromListOffsetsResult(
    }]
   */
 
-  size_t result_cnt;
+  size_t result_cnt, i;
   const rd_kafka_ListOffsetsResultInfo_t** results =
       rd_kafka_ListOffsets_result_infos(result, &result_cnt);
 
   v8::Local<v8::Array> resultArray = Nan::New<v8::Array>();
   int partitionIndex = 0;
 
-  for (int i = 0; i < result_cnt; i++) {
+  for (i = 0; i < result_cnt; i++) {
     const rd_kafka_topic_partition_t* partition =
         rd_kafka_ListOffsetsResultInfo_topic_partition(results[i]);
     int64_t timestamp = rd_kafka_ListOffsetsResultInfo_timestamp(results[i]);
@@ -1468,9 +1509,18 @@ v8::Local<v8::Array> FromListOffsetsResult(
              Nan::New<v8::Number>(partition->partition));
     Nan::Set(partition_object, Nan::New("offset").ToLocalChecked(),
              Nan::New<v8::Number>(partition->offset));
-    RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
-    Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
-             RdKafkaError(code, rd_kafka_err2str(partition->err)));
+    if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+      RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
+      Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
+               RdKafkaError(code, rd_kafka_err2str(partition->err)));
+    }
+    // Set leaderEpoch (if available)
+    int32_t leader_epoch =
+        rd_kafka_topic_partition_get_leader_epoch(partition);
+    if (leader_epoch >= 0) {
+      Nan::Set(partition_object, Nan::New("leaderEpoch").ToLocalChecked(),
+                Nan::New<v8::Number>(leader_epoch));
+    }
     Nan::Set(partition_object, Nan::New("timestamp").ToLocalChecked(),
              Nan::New<v8::Number>(timestamp));
 
