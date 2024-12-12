@@ -126,11 +126,13 @@ blocks:
           value: "0.02"
       prologue:
         commands:
+          - export DEBIAN_FRONTEND=noninteractive
+          - export NEEDRESTART_MODE=a
           - wget -qO - https://packages.confluent.io/deb/7.7/archive.key | sudo apt-key add -
-          - sudo add-apt-repository -y "deb https://packages.confluent.io/clients/deb $(lsb_release -cs) main"
-          - sudo apt-get update
-          - sudo apt-get install -y build-essential gcc g++ make python3
-          - sudo apt-get install -y librdkafka-dev bc
+          - sudo -E add-apt-repository -y "deb https://packages.confluent.io/clients/deb $(lsb_release -cs) main"
+          - sudo -E apt-get update
+          - sudo -E apt-get install -y build-essential gcc g++ make python3
+          - sudo -E apt-get install -y librdkafka-dev bc
           - export CKJS_LINKING=dynamic
           - export BUILD_LIBRDKAFKA=0
           - npm run install-from-source
