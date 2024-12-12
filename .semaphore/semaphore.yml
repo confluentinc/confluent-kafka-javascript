@@ -8,7 +8,7 @@ version: v1.0
 name: build-test-release
 agent:
   machine:
-    type: s1-prod-ubuntu20-04-amd64-1
+    type: s1-prod-ubuntu22-04-amd64-1
 
 auto_cancel:
   running:
@@ -38,14 +38,10 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-amd64-2
+          type: s1-prod-ubuntu22-04-amd64-2
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
-          - sudo apt-get update
-          - sudo apt-get install -y gcc-10 g++-10
-          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
-          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
       jobs:
         - name: "Build from source and test for musl"
           commands:
@@ -56,7 +52,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-arm64-1
+          type: s1-prod-ubuntu22-04-arm64-1
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
@@ -70,14 +66,10 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-arm64-1
+          type: s1-prod-ubuntu22-04-arm64-1
       jobs:
         - name: "Build from source and test"
           commands:
-            - sudo apt-get update
-            - sudo apt-get install -y gcc-10 g++-10
-            - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
-            - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
             - export CKJS_LINKING=dynamic
             - npm run install-from-source
             - make test
@@ -100,13 +92,9 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-amd64-2
+          type: s1-prod-ubuntu22-04-amd64-2
       prologue:
         commands:
-          - sudo apt-get update
-          - sudo apt-get install -y gcc-10 g++-10
-          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
-          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
           - export CKJS_LINKING=dynamic
           - npm run install-from-source
       jobs:
@@ -128,7 +116,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-amd64-4
+          type: s1-prod-ubuntu22-04-amd64-3
       env_vars:
         - name: TARGET_PRODUCE_PERFORMANCE
           value: "35"
@@ -143,9 +131,6 @@ blocks:
           - sudo apt-get update
           - sudo apt-get install -y build-essential gcc g++ make python3
           - sudo apt-get install -y librdkafka-dev bc
-          - sudo apt-get install -y gcc-10 g++-10
-          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
-          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
           - export CKJS_LINKING=dynamic
           - export BUILD_LIBRDKAFKA=0
           - npm run install-from-source
@@ -167,7 +152,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-amd64-2
+          type: s1-prod-ubuntu22-04-amd64-2
       env_vars:
         - name: ARCHITECTURE
           value: "x64"
@@ -178,10 +163,6 @@ blocks:
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
-          - sudo apt-get update
-          - sudo apt-get install -y gcc-10 g++-10
-          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
-          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
       jobs:
         - name: "Release"
           matrix:
@@ -209,7 +190,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-arm64-1
+          type: s1-prod-ubuntu22-04-arm64-1
       env_vars:
         - name: ARCHITECTURE
           value: "arm64"
@@ -220,10 +201,6 @@ blocks:
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
-          - sudo apt-get update
-          - sudo apt-get install -y gcc-10 g++-10
-          - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
-          - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 60
       jobs:
         - name: "Release"
           matrix:
@@ -251,7 +228,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-amd64-1
+          type: s1-prod-ubuntu22-04-amd64-1
       env_vars:
         - name: ARCHITECTURE
           value: "x64"
@@ -287,7 +264,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-arm64-1
+          type: s1-prod-ubuntu22-04-arm64-1
       env_vars:
         - name: ARCHITECTURE
           value: "arm64"
@@ -459,7 +436,7 @@ blocks:
     task:
       agent:
         machine:
-          type: s1-prod-ubuntu20-04-amd64-2
+          type: s1-prod-ubuntu22-04-amd64-2
       jobs:
         - name: "Tarball"
           commands:
