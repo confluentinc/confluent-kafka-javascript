@@ -4,7 +4,8 @@ v1.0.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
 
-1. Add support for an Admin API to fetch topic offsets(#156).
+1. Add support for an Admin API to fetch topic offsets (#156).
+2. Add support for Node v23 pre-built binaries (#158).
 
 
 # confluent-kafka-javascript v0.6.1
@@ -29,7 +30,7 @@ v0.6.0 is a limited availability maintenance release. It is supported for all us
 
 ### Schema Registry
 
-1. Add AWS AssumeRole support to AWS KMS. You can now specify a role arn, and optional 
+1. Add AWS AssumeRole support to AWS KMS. You can now specify a role arn, and optional
 role session name and optional role external id.
 
 2. Ensure different key ids use different client instances.
