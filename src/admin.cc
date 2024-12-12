@@ -23,17 +23,16 @@ namespace NodeKafka {
 /**
  * @brief AdminClient v8 wrapped object.
  *
- * Specializes the connection to wrap a consumer object through compositional
+ * Specializes the connection to wrap a producer object through compositional
  * inheritence. Establishes its prototype in node through `Init`
  *
  * @sa RdKafka::Handle
  * @sa NodeKafka::Client
  */
 
-AdminClient::AdminClient(Conf* gconfig):
-  Connection(gconfig, NULL) {
-    rkqu = NULL;
-}
+AdminClient::AdminClient(Conf *gconfig) : Connection(gconfig, NULL) {}
+
+AdminClient::AdminClient(Connection *connection) : Connection(connection) {}
 
 AdminClient::~AdminClient() {
   Disconnect();
@@ -42,6 +41,14 @@ AdminClient::~AdminClient() {
 Baton AdminClient::Connect() {
   if (IsConnected()) {
     return Baton(RdKafka::ERR_NO_ERROR);
+  }
+
+  /* We should never fail the IsConnected check when we have an underlying
+   * client, as it should always be connected. */
+  if (m_has_underlying) {
+    return Baton(RdKafka::ERR__STATE,
+                 "Existing client is not connected, and dependent client "
+                 "cannot initiate connection.");
   }
 
   Baton baton = setupSaslOAuthBearerConfig();
@@ -68,10 +75,6 @@ Baton AdminClient::Connect() {
   /* Set the client name at the first possible opportunity for logging. */
   m_event_cb.dispatcher.SetClientName(m_client->name());
 
-  if (rkqu == NULL) {
-    rkqu = rd_kafka_queue_new(m_client->c_ptr());
-  }
-
   baton = setupSaslOAuthBearerBackgroundQueue();
   if (baton.err() != RdKafka::ERR_NO_ERROR) {
     DeactivateDispatchers();
@@ -81,13 +84,15 @@ Baton AdminClient::Connect() {
 }
 
 Baton AdminClient::Disconnect() {
+  /* Dependent AdminClients don't need to do anything. We block the call to
+   * disconnect in JavaScript, but the destructor of AdminClient might trigger
+   * this call. */
+  if (m_has_underlying) {
+    return Baton(RdKafka::ERR_NO_ERROR);
+  }
+
   if (IsConnected()) {
     scoped_shared_write_lock lock(m_connection_lock);
-
-    if (rkqu != NULL) {
-      rd_kafka_queue_destroy(rkqu);
-      rkqu = NULL;
-    }
 
     DeactivateDispatchers();
 
@@ -146,24 +151,38 @@ void AdminClient::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   if (info.Length() < 1) {
-    return Nan::ThrowError("You must supply a global configuration");
+    return Nan::ThrowError("You must supply a global configuration or a preexisting client"); // NOLINT
   }
 
-  if (!info[0]->IsObject()) {
-    return Nan::ThrowError("Global configuration data must be specified");
+  Connection *connection = NULL;
+  Conf *gconfig = NULL;
+  AdminClient *client = NULL;
+
+  if (info.Length() >= 3 && !info[2]->IsNull() && !info[2]->IsUndefined()) {
+    if (!info[2]->IsObject()) {
+      return Nan::ThrowError("Third argument, if provided, must be a client object"); // NOLINT
+    }
+    // We check whether this is a wrapped object within the calling JavaScript
+    // code, so it's safe to unwrap it here. We Unwrap it directly into a
+    // Connection object, since it's OK to unwrap into the parent class.
+    connection = ObjectWrap::Unwrap<Connection>(
+        info[2]->ToObject(Nan::GetCurrentContext()).ToLocalChecked());
+    client = new AdminClient(connection);
+  } else {
+    if (!info[0]->IsObject()) {
+      return Nan::ThrowError("Global configuration data must be specified");
+    }
+
+    std::string errstr;
+    gconfig = Conf::create(
+        RdKafka::Conf::CONF_GLOBAL,
+        (info[0]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
+
+    if (!gconfig) {
+      return Nan::ThrowError(errstr.c_str());
+    }
+    client = new AdminClient(gconfig);
   }
-
-  std::string errstr;
-
-  Conf* gconfig =
-    Conf::create(RdKafka::Conf::CONF_GLOBAL,
-      (info[0]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
-
-  if (!gconfig) {
-    return Nan::ThrowError(errstr.c_str());
-  }
-
-  AdminClient* client = new AdminClient(gconfig);
 
   // Wrap it
   client->Wrap(info.This());
@@ -884,6 +903,7 @@ Baton AdminClient::DescribeTopics(rd_kafka_TopicCollection_t *topics,
   }
 }
 
+
 Baton AdminClient::ListOffsets(rd_kafka_topic_partition_list_t *partitions,
                                int timeout_ms,
                                rd_kafka_IsolationLevel_t isolation_level,
@@ -1466,8 +1486,15 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
     topics[i] = topicNamesVector[i].c_str();
   }
 
+  /**
+   * The ownership of this is taken by
+   * Workers::AdminClientDescribeTopics and freeing it is also handled
+   * by that class.
+   */
   rd_kafka_TopicCollection_t *topic_collection =
       rd_kafka_TopicCollection_of_topic_names(topics, topicNamesVector.size());
+
+  free(topics);
 
   v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
@@ -1481,8 +1508,10 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   Nan::AsyncQueueWorker(new Workers::AdminClientDescribeTopics(
-      callback, client, topic_collection, include_authorised_operations, timeout_ms));
+      callback, client, topic_collection,
+      include_authorised_operations, timeout_ms));
 }
+
 
 /**
  * List Offsets.
@@ -1505,28 +1534,16 @@ NAN_METHOD(AdminClient::NodeListOffsets) {
    * Workers::AdminClientListOffsets and freeing it is also handled
    * by that class.
    */
-  rd_kafka_topic_partition_list_t *partitions =
-      Conversion::TopicPartition::TopicPartitionv8ArrayToTopicPartitionList(
-          listOffsets, true);
+  rd_kafka_topic_partition_list_t *partitions = Conversion::TopicPartition::
+      TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(listOffsets);
 
   // Now process the second argument: options (timeout and isolationLevel)
   v8::Local<v8::Object> options = info[1].As<v8::Object>();
 
   rd_kafka_IsolationLevel_t isolation_level =
-      RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED;
-
-  int32_t isolationLevelInt =
-      GetParameter<int32_t>(options, "isolationLevel", -1);
-  if (isolationLevelInt == 0) {
-    isolation_level = RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED;
-  } else if (isolationLevelInt == 1) {
-    isolation_level = RD_KAFKA_ISOLATION_LEVEL_READ_COMMITTED;
-  } else {
-    Nan::ThrowError(
-        "Invalid isolationLevel value. Expected 0 (READ_UNCOMMITTED) or 1 "
-        "(READ_COMMITTED).");
-    return;
-  }
+      static_cast<rd_kafka_IsolationLevel_t>(GetParameter<int32_t>(
+          options, "isolationLevel",
+          static_cast<int32_t>(RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED)));
 
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 

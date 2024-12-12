@@ -393,8 +393,8 @@ export type Node = {
 }
 
 export type Uuid = {
-    mostSignificantBits: number; // Most significant 64 bits for the UUID
-    leastSignificantBits: number; // Least significant 64 bits for the UUID
+    mostSignificantBits: bigint; // Most significant 64 bits for the UUID
+    leastSignificantBits: bigint; // Least significant 64 bits for the UUID
     base64str: string; // Base64 encoding for the UUID
 }
 
@@ -455,6 +455,19 @@ export type TopicDescription = {
     authorizedOperations?: AclOperationTypes[]
 }
 
+export class OffsetSpec {
+    constructor(timestamp: number);
+    static EARLIEST: OffsetSpec;
+    static LATEST: OffsetSpec;
+    static MAX_TIMESTAMP: OffsetSpec;
+}
+
+export type TopicPartitionOffsetSpec = {
+    topic: string
+    partition: number
+    offset: OffsetSpec
+}
+
 export enum IsolationLevel {
     READ_UNCOMMITTED = 0,
     READ_COMMITTED = 1,
@@ -463,8 +476,9 @@ export enum IsolationLevel {
 export interface ListOffsetsResult {
     topic: string;
     partition: number;
-    offset: string;
-    error: LibrdKafkaError;
+    offset: number;
+    error?: LibrdKafkaError;
+    leaderEpoch?: number;
     timestamp: number;
 }
 
@@ -507,7 +521,7 @@ export interface IAdminClient {
         options?: { includeAuthorizedOperations?: boolean, timeout?: number },
         cb?: (err: LibrdKafkaError, result: TopicDescription[]) => any): void;
 
-    listOffsets(partitions: TopicPartitionOffset[],
+    listOffsets(partitions: TopicPartitionOffsetSpec[],
         options?: { timeout?: number, isolationLevel?: IsolationLevel },
         cb?: (err: LibrdKafkaError, result: ListOffsetsResult[]) => any): void;
 
@@ -520,6 +534,7 @@ export type EventHandlers = {
 
 export abstract class AdminClient {
     static create(conf: GlobalConfig, eventHandlers?: EventHandlers): IAdminClient;
+    static createFrom(existingClient: Producer | KafkaConsumer, eventHandlers?: EventHandlers): IAdminClient;
 }
 
 export type RdKafka = {

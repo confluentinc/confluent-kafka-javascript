@@ -1613,7 +1613,8 @@ void AdminClientDeleteRecords::HandleErrorCallback() {
  */
 AdminClientDescribeTopics::AdminClientDescribeTopics(
     Nan::Callback* callback, NodeKafka::AdminClient* client,
-    rd_kafka_TopicCollection_t* topics,const bool include_authorized_operations,
+    rd_kafka_TopicCollection_t* topics,
+    const bool include_authorized_operations,
     const int& timeout_ms)
     : ErrorAwareWorker(callback),
       m_client(client),

@@ -158,6 +158,9 @@ RdKafka::TopicPartition *FromV8Object(v8::Local<v8::Object>);
 std::vector<RdKafka::TopicPartition *> FromV8Array(const v8::Local<v8::Array> &);  // NOLINT
 rd_kafka_topic_partition_list_t *TopicPartitionv8ArrayToTopicPartitionList(
     v8::Local<v8::Array> parameter, bool include_offset);
+rd_kafka_topic_partition_list_t *
+TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(
+    v8::Local<v8::Array> parameter);
 
 }  // namespace TopicPartition
 
