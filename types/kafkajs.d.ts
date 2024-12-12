@@ -426,4 +426,10 @@ export type Admin = {
       timeout?: number,
       isolationLevel: IsolationLevel
     }): Promise<Array<SeekEntry & { high: string; low: string }>>
+  fetchTopicOffsetsByTimestamp(topic: string,
+    timestamp?: number,
+    options?: {
+      timeout?: number,
+      isolationLevel: IsolationLevel
+    }): Promise<Array<SeekEntry>>
 }
