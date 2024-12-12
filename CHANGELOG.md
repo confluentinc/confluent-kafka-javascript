@@ -1,3 +1,13 @@
+# confluent-kafka-javascript v1.0.0
+
+v1.0.0 is a feature release. It is supported for all usage.
+
+## Fixes
+
+1. Fixes an issue where `uv_async_init` was being called off the event loop thread,
+   causing the node process to hang (#190).
+
+
 # confluent-kafka-javascript v0.6.1
 
 v0.6.1 is a limited availability maintenance release. It is supported for all usage.
@@ -20,7 +30,7 @@ v0.6.0 is a limited availability maintenance release. It is supported for all us
 
 ### Schema Registry
 
-1. Add AWS AssumeRole support to AWS KMS. You can now specify a role arn, and optional 
+1. Add AWS AssumeRole support to AWS KMS. You can now specify a role arn, and optional
 role session name and optional role external id.
 
 2. Ensure different key ids use different client instances.
