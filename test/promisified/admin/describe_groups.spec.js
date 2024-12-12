@@ -2,6 +2,7 @@ jest.setTimeout(30000);
 
 const {
     createConsumer,
+    createProducer,
     secureRandom,
     createTopic,
     waitFor,
@@ -11,12 +12,14 @@ const {
 const { ConsumerGroupStates, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
 
 describe('Admin > describeGroups', () => {
-    let topicName, groupId, consumer, admin, groupInstanceId;
+    let topicName, groupId, consumer, admin, groupInstanceId, producer;
 
     beforeEach(async () => {
         topicName = `test-topic-${secureRandom()}`;
         groupId = `consumer-group-id-${secureRandom()}`;
         groupInstanceId = `consumer-group-instance-id-${secureRandom()}`;
+
+        producer = createProducer({});
 
         consumer = createConsumer({
             groupId,
@@ -34,6 +37,7 @@ describe('Admin > describeGroups', () => {
     });
 
     afterEach(async () => {
+        producer && (await producer.disconnect());
         consumer && (await consumer.disconnect());
         admin && (await admin.disconnect());
     });
@@ -62,9 +66,11 @@ describe('Admin > describeGroups', () => {
     });
 
     it('should describe consumer groups', async () => {
+        let messagesConsumed = 0;
+
         await consumer.connect();
         await consumer.subscribe({ topic: topicName });
-        await consumer.run({ eachMessage: async () => { } });
+        await consumer.run({ eachMessage: async () => { messagesConsumed++; } });
 
         await waitFor(() => consumer.assignment().length > 0, () => null, 1000);
 
@@ -105,7 +111,17 @@ describe('Admin > describeGroups', () => {
             })
         );
 
-        // Disconnect the consumer to make the group EMPTY.
+        // Produce some messages so that the consumer can commit them, and hence
+        // the group doesn't become DEAD.
+        await producer.connect();
+        await producer.send({
+            topic: topicName,
+            messages: [{ key: 'key', value: 'value' }],
+        });
+
+        await waitFor(() => messagesConsumed > 0, () => null, 1000);
+
+        // Disconnect the consumer to make the group EMPTY and commit offsets.
         await consumer.disconnect();
         consumer = null;
 
@@ -120,7 +136,9 @@ describe('Admin > describeGroups', () => {
                 groupId,
                 protocol: '',
                 partitionAssignor: '',
-                isSimpleConsumerGroup: expect.any(Boolean),
+                state: ConsumerGroupStates.EMPTY,
+                protocolType: 'consumer',
+                isSimpleConsumerGroup: false,
                 coordinator: expect.objectContaining({
                     id: expect.any(Number),
                     host: expect.any(String),
@@ -130,10 +148,6 @@ describe('Admin > describeGroups', () => {
             })
         );
 
-        // Depending on the environment of the test run, the group might transition into
-        // the DEAD state, so allow for both possibilities.
-        expect(describeGroupsResult.groups[0].state === ConsumerGroupStates.EMPTY || describeGroupsResult.groups[0].state === ConsumerGroupStates.DEAD).toBeTruthy();
-        expect(describeGroupsResult.groups[0].protocolType === 'consumer' || describeGroupsResult.groups[0].protocolType === 'simple').toBeTruthy();
         expect(describeGroupsResult.groups[0].authorizedOperations).toBeUndefined();
     });
 });

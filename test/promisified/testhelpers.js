@@ -19,8 +19,8 @@ function makeConfig(config, common) {
     const kafkaJS =  Object.assign(config, clusterInformation.kafkaJS);
     if (debug) {
         common['debug'] = debug;
-    } else { /* Turn off info logging unless specifically asked for, otherwise stdout gets very crowded. */
-        common['log_level'] = 1;
+    } else { /* Turn off excessive logging unless specifically asked for, otherwise stdout gets very crowded. */
+        common['log_level'] = 5;
     }
 
     return Object.assign(common, { kafkaJS });
@@ -140,5 +140,6 @@ module.exports = {
     sleep,
     generateMessages,
     clusterInformation,
-    SequentialPromises
+    SequentialPromises,
+    DeferredPromise,
 };
