@@ -1,6 +1,8 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults } from 'axios';
 import { OAuthClient } from './oauth/oauth-client';
 import { RestError } from './rest-error';
+import axiosRetry from "axios-retry";
+import { fullJitter, isRetriable } from './retry-helper';
 /*
  * Confluent-Schema-Registry-TypeScript - Node.js wrapper for Confluent Schema Registry
  *
@@ -33,7 +35,6 @@ export interface BearerAuthCredentials {
   identityPoolId?: string,
 }
 
-//TODO: Consider retry policy, may need additional libraries on top of Axios
 export interface ClientConfig {
   baseURLs: string[],
   cacheCapacity?: number,
@@ -42,6 +43,9 @@ export interface ClientConfig {
   createAxiosDefaults?: CreateAxiosDefaults,
   basicAuthCredentials?: BasicAuthCredentials,
   bearerAuthCredentials?: BearerAuthCredentials,
+  maxRetries?: number,
+  retriesWaitMs?: number,
+  retriesMaxWaitMs?: number,
 }
 
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
@@ -53,17 +57,27 @@ export class RestService {
   private oauthBearer: boolean = false;
 
   constructor(baseURLs: string[], isForward?: boolean, axiosDefaults?: CreateAxiosDefaults,
-    basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials) {
+              basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
+              maxRetries?: number, retriesWaitMs?: number, retriesMaxWaitMs?: number) {
     this.client = axios.create(axiosDefaults);
+    axiosRetry(this.client, {
+      retries: maxRetries ?? 3,
+      retryDelay: (retryCount) => {
+        return fullJitter(retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, retryCount - 1)
+      },
+      retryCondition: (error) => {
+        return isRetriable(error.response?.status ?? 0);
+      }
+    });
     this.baseURLs = baseURLs;
 
     if (isForward) {
       this.setHeaders({ 'X-Forward': 'true' });
     }
     this.setHeaders({ 'Content-Type': 'application/vnd.schemaregistry.v1+json' });
-    
+
     this.handleBasicAuth(basicAuthCredentials);
-    this.handleBearerAuth(bearerAuthCredentials);
+    this.handleBearerAuth(maxRetries ?? 2, retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, bearerAuthCredentials);
   }
 
   handleBasicAuth(basicAuthCredentials?: BasicAuthCredentials): void {
@@ -97,7 +111,8 @@ export class RestService {
     }
   }
 
-  handleBearerAuth(bearerAuthCredentials?: BearerAuthCredentials): void {
+  handleBearerAuth(maxRetries: number,
+    retriesWaitMs: number, retriesMaxWaitMs: number, bearerAuthCredentials?: BearerAuthCredentials): void {
     if (bearerAuthCredentials) {
       delete this.client.defaults.auth;
 
@@ -135,7 +150,8 @@ export class RestService {
           }
           const issuerEndPointUrl = new URL(bearerAuthCredentials.issuerEndpointUrl!);
           this.oauthClient = new OAuthClient(bearerAuthCredentials.clientId!, bearerAuthCredentials.clientSecret!,
-            issuerEndPointUrl.origin, issuerEndPointUrl.pathname, bearerAuthCredentials.scope!);
+            issuerEndPointUrl.origin, issuerEndPointUrl.pathname, bearerAuthCredentials.scope!,
+            maxRetries, retriesWaitMs, retriesMaxWaitMs);
           break;
         default:
           throw new Error('Invalid bearer auth credentials source');
