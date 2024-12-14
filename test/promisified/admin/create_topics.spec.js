@@ -5,7 +5,7 @@ const {
     createAdmin,
     sleep,
 } = require('../testhelpers');
-const { KafkaJSAggregateError, KafkaJSCreateTopicError } = require('../../../lib').KafkaJS;
+const { KafkaJSAggregateError, KafkaJSCreateTopicError, ErrorCodes } = require('../../../lib').KafkaJS;
 
 describe('Admin > createTopics', () => {
     let topicNames, admin;
@@ -90,11 +90,11 @@ describe('Admin > createTopics', () => {
 
         const replicationErr = storedErr.errors.find(e => e.topic === topicNames[0] + '-invalid');
         expect(replicationErr).toBeInstanceOf(KafkaJSCreateTopicError);
-        expect(replicationErr.message).toMatch(/The target replication factor/);
+        expect(replicationErr.code).toEqual(ErrorCodes.ERR_INVALID_REPLICATION_FACTOR);
 
         const partitionsErr = storedErr.errors.find(e => e.topic === topicNames[1]+ '-invalid');
         expect(partitionsErr).toBeInstanceOf(KafkaJSCreateTopicError);
-        expect(partitionsErr.message).toMatch(/Number of partitions was set to an invalid non-positive value/);
+        expect(partitionsErr.code).toEqual(ErrorCodes.ERR_INVALID_PARTITIONS);
 
         /* Despite errors the valid topic should still be created. */
         await expect(admin.listTopics()).resolves.toEqual(expect.arrayContaining([topicNames[0]]));
