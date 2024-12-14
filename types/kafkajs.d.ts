@@ -5,7 +5,11 @@ import {
   LibrdKafkaError,
   GroupDescriptions,
   DeleteGroupsResult,
-  DeleteRecordsResult
+  DeleteRecordsResult,
+  Node,
+  AclOperationTypes,
+  Uuid,
+  IsolationLevel
 } from './rdkafka'
 
 // Admin API related interfaces, types etc; and Error types are common, so
@@ -16,7 +20,11 @@ export {
   LibrdKafkaError,
   GroupDescriptions,
   DeleteGroupsResult,
-  DeleteRecordsResult
+  DeleteRecordsResult,
+  Node,
+  AclOperationTypes,
+  Uuid,
+  IsolationLevel
 } from './rdkafka'
 
 export interface OauthbearerProviderResponse {
@@ -93,6 +101,7 @@ type Client = {
   disconnect(): Promise<void>
   logger(): Logger
   setSaslCredentialProvider(authInfo: { username: string, password: string }): void
+  dependentAdmin(): Admin
 }
 
 export enum CompressionTypes {
@@ -157,6 +166,18 @@ export type RecordMetadata = {
   baseOffset?: string
   logAppendTime?: string
   logStartOffset?: string
+}
+
+export type PartitionMetadata = {
+  partitionErrorCode: number
+  partitionId: number
+  leader: number
+  leaderNode?: Node
+  replicas: number[]
+  replicaNodes?: Node[]
+  isr: number[]
+  isrNodes?: Node[]
+  offlineReplicas?: number[]
 }
 
 export type Transaction = Producer;
@@ -313,11 +334,19 @@ export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
 
-export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };  
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };
 
 export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
 export type SeekEntry = PartitionOffset
+
+export type ITopicMetadata = {
+  name: string
+  topicId?: Uuid
+  isInternal?: boolean
+  partitions: PartitionMetadata[]
+  authorizedOperations?: AclOperationTypes[]
+}
 
 export type Consumer = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
@@ -377,14 +406,24 @@ export type Admin = {
     groups: string[],
     options?: { timeout?: number, includeAuthorizedOperations?: boolean }): Promise<GroupDescriptions>
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
-  fetchOffsets(options: { 
+  fetchOffsets(options: {
     groupId: string,
     topics?: TopicInput,
     timeout?: number,
-    requireStableOffsets?: boolean }): 
+    requireStableOffsets?: boolean }):
     Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
   deleteTopicRecords(options: {
     topic: string; partitions: SeekEntry[];
     timeout?: number; operationTimeout?: number
   }): Promise<DeleteRecordsResult[]>
+  fetchTopicMetadata(options?: {
+    topics?: string[],
+    includeAuthorizedOperations?: boolean,
+    timeout?: number
+  }): Promise<{ topics: Array<ITopicMetadata> }>
+  fetchTopicOffsets(topic: string,
+    options?: {
+      timeout?: number,
+      isolationLevel: IsolationLevel
+    }): Promise<Array<SeekEntry & { high: string; low: string }>>
 }

@@ -23,17 +23,16 @@ namespace NodeKafka {
 /**
  * @brief AdminClient v8 wrapped object.
  *
- * Specializes the connection to wrap a consumer object through compositional
+ * Specializes the connection to wrap a producer object through compositional
  * inheritence. Establishes its prototype in node through `Init`
  *
  * @sa RdKafka::Handle
  * @sa NodeKafka::Client
  */
 
-AdminClient::AdminClient(Conf* gconfig):
-  Connection(gconfig, NULL) {
-    rkqu = NULL;
-}
+AdminClient::AdminClient(Conf *gconfig) : Connection(gconfig, NULL) {}
+
+AdminClient::AdminClient(Connection *connection) : Connection(connection) {}
 
 AdminClient::~AdminClient() {
   Disconnect();
@@ -44,15 +43,18 @@ Baton AdminClient::Connect() {
     return Baton(RdKafka::ERR_NO_ERROR);
   }
 
+  /* We should never fail the IsConnected check when we have an underlying
+   * client, as it should always be connected. */
+  if (m_has_underlying) {
+    return Baton(RdKafka::ERR__STATE,
+                 "Existing client is not connected, and dependent client "
+                 "cannot initiate connection.");
+  }
+
   Baton baton = setupSaslOAuthBearerConfig();
   if (baton.err() != RdKafka::ERR_NO_ERROR) {
     return baton;
   }
-
-  // Activate the dispatchers before the connection, as some callbacks may run
-  // on the background thread.
-  // We will deactivate them if the connection fails.
-  ActivateDispatchers();
 
   std::string errstr;
   {
@@ -68,10 +70,6 @@ Baton AdminClient::Connect() {
   /* Set the client name at the first possible opportunity for logging. */
   m_event_cb.dispatcher.SetClientName(m_client->name());
 
-  if (rkqu == NULL) {
-    rkqu = rd_kafka_queue_new(m_client->c_ptr());
-  }
-
   baton = setupSaslOAuthBearerBackgroundQueue();
   if (baton.err() != RdKafka::ERR_NO_ERROR) {
     DeactivateDispatchers();
@@ -81,13 +79,15 @@ Baton AdminClient::Connect() {
 }
 
 Baton AdminClient::Disconnect() {
+  /* Dependent AdminClients don't need to do anything. We block the call to
+   * disconnect in JavaScript, but the destructor of AdminClient might trigger
+   * this call. */
+  if (m_has_underlying) {
+    return Baton(RdKafka::ERR_NO_ERROR);
+  }
+
   if (IsConnected()) {
     scoped_shared_write_lock lock(m_connection_lock);
-
-    if (rkqu != NULL) {
-      rd_kafka_queue_destroy(rkqu);
-      rkqu = NULL;
-    }
 
     DeactivateDispatchers();
 
@@ -116,6 +116,8 @@ void AdminClient::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "deleteTopic", NodeDeleteTopic);
   Nan::SetPrototypeMethod(tpl, "createPartitions", NodeCreatePartitions);
   Nan::SetPrototypeMethod(tpl, "deleteRecords", NodeDeleteRecords);
+  Nan::SetPrototypeMethod(tpl, "describeTopics", NodeDescribeTopics);
+  Nan::SetPrototypeMethod(tpl, "listOffsets", NodeListOffsets);
 
   // Consumer group related operations
   Nan::SetPrototypeMethod(tpl, "listGroups", NodeListGroups);
@@ -144,24 +146,38 @@ void AdminClient::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   if (info.Length() < 1) {
-    return Nan::ThrowError("You must supply a global configuration");
+    return Nan::ThrowError("You must supply a global configuration or a preexisting client"); // NOLINT
   }
 
-  if (!info[0]->IsObject()) {
-    return Nan::ThrowError("Global configuration data must be specified");
+  Connection *connection = NULL;
+  Conf *gconfig = NULL;
+  AdminClient *client = NULL;
+
+  if (info.Length() >= 3 && !info[2]->IsNull() && !info[2]->IsUndefined()) {
+    if (!info[2]->IsObject()) {
+      return Nan::ThrowError("Third argument, if provided, must be a client object"); // NOLINT
+    }
+    // We check whether this is a wrapped object within the calling JavaScript
+    // code, so it's safe to unwrap it here. We Unwrap it directly into a
+    // Connection object, since it's OK to unwrap into the parent class.
+    connection = ObjectWrap::Unwrap<Connection>(
+        info[2]->ToObject(Nan::GetCurrentContext()).ToLocalChecked());
+    client = new AdminClient(connection);
+  } else {
+    if (!info[0]->IsObject()) {
+      return Nan::ThrowError("Global configuration data must be specified");
+    }
+
+    std::string errstr;
+    gconfig = Conf::create(
+        RdKafka::Conf::CONF_GLOBAL,
+        (info[0]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
+
+    if (!gconfig) {
+      return Nan::ThrowError(errstr.c_str());
+    }
+    client = new AdminClient(gconfig);
   }
-
-  std::string errstr;
-
-  Conf* gconfig =
-    Conf::create(RdKafka::Conf::CONF_GLOBAL,
-      (info[0]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
-
-  if (!gconfig) {
-    return Nan::ThrowError(errstr.c_str());
-  }
-
-  AdminClient* client = new AdminClient(gconfig);
 
   // Wrap it
   client->Wrap(info.This());
@@ -812,6 +828,144 @@ Baton AdminClient::DeleteRecords(rd_kafka_DeleteRecords_t **del_records,
   }
 }
 
+Baton AdminClient::DescribeTopics(rd_kafka_TopicCollection_t *topics,
+                                  bool include_authorized_operations,
+                                  int timeout_ms,
+                                  rd_kafka_event_t **event_response) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  {
+    scoped_shared_write_lock lock(m_connection_lock);
+    if (!IsConnected()) {
+      return Baton(RdKafka::ERR__STATE);
+    }
+
+    // Make admin options to establish that we are describing topics
+    rd_kafka_AdminOptions_t *options = rd_kafka_AdminOptions_new(
+        m_client->c_ptr(), RD_KAFKA_ADMIN_OP_DESCRIBETOPICS);
+
+    if (include_authorized_operations) {
+      rd_kafka_error_t *error =
+          rd_kafka_AdminOptions_set_include_authorized_operations(
+              options, include_authorized_operations);
+      if (error) {
+        return Baton::BatonFromErrorAndDestroy(error);
+      }
+    }
+
+    char errstr[512];
+    rd_kafka_resp_err_t err = rd_kafka_AdminOptions_set_request_timeout(
+        options, timeout_ms, errstr, sizeof(errstr));
+    if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+      return Baton(static_cast<RdKafka::ErrorCode>(err), errstr);
+    }
+
+    // Create queue just for this operation.
+    rd_kafka_queue_t *rkqu = rd_kafka_queue_new(m_client->c_ptr());
+
+    rd_kafka_DescribeTopics(m_client->c_ptr(), topics, options, rkqu);
+
+    // Poll for an event by type in that queue
+    // DON'T destroy the event. It is the out parameter, and ownership is
+    // the caller's.
+    *event_response =
+        PollForEvent(rkqu, RD_KAFKA_EVENT_DESCRIBETOPICS_RESULT, timeout_ms);
+
+    // Destroy the queue since we are done with it.
+    rd_kafka_queue_destroy(rkqu);
+
+    // Destroy the options we just made because we polled already
+    rd_kafka_AdminOptions_destroy(options);
+
+    // If we got no response from that operation, this is a failure
+    // likely due to time out
+    if (*event_response == NULL) {
+      return Baton(RdKafka::ERR__TIMED_OUT);
+    }
+
+    // Now we can get the error code from the event
+    if (rd_kafka_event_error(*event_response)) {
+      // If we had a special error code, get out of here with it
+      const rd_kafka_resp_err_t errcode = rd_kafka_event_error(*event_response);
+      return Baton(static_cast<RdKafka::ErrorCode>(errcode));
+    }
+
+    // At this point, event_response contains the result, which needs
+    // to be parsed/converted by the caller.
+    return Baton(RdKafka::ERR_NO_ERROR);
+  }
+}
+
+
+Baton AdminClient::ListOffsets(rd_kafka_topic_partition_list_t *partitions,
+                               int timeout_ms,
+                               rd_kafka_IsolationLevel_t isolation_level,
+                               rd_kafka_event_t **event_response) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  {
+    scoped_shared_write_lock lock(m_connection_lock);
+    if (!IsConnected()) {
+      return Baton(RdKafka::ERR__STATE);
+    }
+
+    // Make admin options to establish that we are fetching offsets
+    rd_kafka_AdminOptions_t *options = rd_kafka_AdminOptions_new(
+        m_client->c_ptr(), RD_KAFKA_ADMIN_OP_LISTOFFSETS);
+
+    char errstr[512];
+    rd_kafka_resp_err_t err = rd_kafka_AdminOptions_set_request_timeout(
+        options, timeout_ms, errstr, sizeof(errstr));
+    if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+      return Baton(static_cast<RdKafka::ErrorCode>(err), errstr);
+    }
+
+    rd_kafka_error_t *error =
+        rd_kafka_AdminOptions_set_isolation_level(options, isolation_level);
+    if (error) {
+      return Baton::BatonFromErrorAndDestroy(error);
+    }
+
+    // Create queue just for this operation.
+    rd_kafka_queue_t *rkqu = rd_kafka_queue_new(m_client->c_ptr());
+
+    rd_kafka_ListOffsets(m_client->c_ptr(), partitions, options, rkqu);
+
+    // Poll for an event by type in that queue
+    // DON'T destroy the event. It is the out parameter, and ownership is
+    // the caller's.
+    *event_response =
+        PollForEvent(rkqu, RD_KAFKA_EVENT_LISTOFFSETS_RESULT, timeout_ms);
+
+    // Destroy the queue since we are done with it.
+    rd_kafka_queue_destroy(rkqu);
+
+    // Destroy the options we just made because we polled already
+    rd_kafka_AdminOptions_destroy(options);
+
+    // If we got no response from that operation, this is a failure
+    // likely due to time out
+    if (*event_response == NULL) {
+      return Baton(RdKafka::ERR__TIMED_OUT);
+    }
+
+    // Now we can get the error code from the event
+    if (rd_kafka_event_error(*event_response)) {
+      // If we had a special error code, get out of here with it
+      const rd_kafka_resp_err_t errcode = rd_kafka_event_error(*event_response);
+      return Baton(static_cast<RdKafka::ErrorCode>(errcode));
+    }
+
+    // At this point, event_response contains the result, which needs
+    // to be parsed/converted by the caller.
+    return Baton(RdKafka::ERR_NO_ERROR);
+  }
+}
+
 void AdminClient::ActivateDispatchers() {
   // Listen to global config
   m_gconfig->listen();
@@ -839,6 +993,14 @@ NAN_METHOD(AdminClient::NodeConnect) {
   Nan::HandleScope scope;
 
   AdminClient* client = ObjectWrap::Unwrap<AdminClient>(info.This());
+
+  // Activate the dispatchers before the connection, as some callbacks may run
+  // on the background thread.
+  // We will deactivate them if the connection fails.
+  // Because the Admin Client connect is synchronous, we can do this within
+  // AdminClient::Connect as well, but we do it here to keep the code similiar to
+  // the Producer and Consumer.
+  client->ActivateDispatchers();
 
   Baton b = client->Connect();
   // Let the JS library throw if we need to so the error can be more rich
@@ -1296,6 +1458,106 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
   // Queue the worker to process the offset fetch request asynchronously
   Nan::AsyncQueueWorker(new Workers::AdminClientDeleteRecords(
       callback, client, delete_records, 1, operation_timeout_ms, timeout_ms));
+}
+
+/**
+ * Describe Topics.
+ */
+NAN_METHOD(AdminClient::NodeDescribeTopics) {
+  Nan::HandleScope scope;
+
+  if (info.Length() < 3 || !info[2]->IsFunction()) {
+    return Nan::ThrowError("Need to specify a callback");
+  }
+
+  if (!info[0]->IsArray()) {
+    return Nan::ThrowError("Must provide an array of 'topicNames'");
+  }
+
+  v8::Local<v8::Array> topicNames = info[0].As<v8::Array>();
+
+  if (topicNames->Length() == 0) {
+    return Nan::ThrowError("'topicNames' cannot be empty");
+  }
+
+  std::vector<std::string> topicNamesVector = v8ArrayToStringVector(topicNames);
+
+  const char **topics = static_cast<const char **>(
+      malloc(sizeof(const char *) * topicNamesVector.size()));
+
+  for (size_t i = 0; i < topicNamesVector.size(); i++) {
+    topics[i] = topicNamesVector[i].c_str();
+  }
+
+  /**
+   * The ownership of this is taken by
+   * Workers::AdminClientDescribeTopics and freeing it is also handled
+   * by that class.
+   */
+  rd_kafka_TopicCollection_t *topic_collection =
+      rd_kafka_TopicCollection_of_topic_names(topics, topicNamesVector.size());
+
+  free(topics);
+
+  v8::Local<v8::Object> options = info[1].As<v8::Object>();
+
+  bool include_authorised_operations =
+      GetParameter<bool>(options, "includeAuthorizedOperations", false);
+
+  int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
+
+  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
+  Nan::Callback *callback = new Nan::Callback(cb);
+  AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
+
+  Nan::AsyncQueueWorker(new Workers::AdminClientDescribeTopics(
+      callback, client, topic_collection,
+      include_authorised_operations, timeout_ms));
+}
+
+
+/**
+ * List Offsets.
+ */
+NAN_METHOD(AdminClient::NodeListOffsets) {
+  Nan::HandleScope scope;
+
+  if (info.Length() < 3 || !info[2]->IsFunction()) {
+    return Nan::ThrowError("Need to specify a callback");
+  }
+
+  if (!info[0]->IsArray()) {
+    return Nan::ThrowError("Must provide an array of 'TopicPartitionOffsets'");
+  }
+
+  v8::Local<v8::Array> listOffsets = info[0].As<v8::Array>();
+
+  /**
+   * The ownership of this is taken by
+   * Workers::AdminClientListOffsets and freeing it is also handled
+   * by that class.
+   */
+  rd_kafka_topic_partition_list_t *partitions = Conversion::TopicPartition::
+      TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(listOffsets);
+
+  // Now process the second argument: options (timeout and isolationLevel)
+  v8::Local<v8::Object> options = info[1].As<v8::Object>();
+
+  rd_kafka_IsolationLevel_t isolation_level =
+      static_cast<rd_kafka_IsolationLevel_t>(GetParameter<int32_t>(
+          options, "isolationLevel",
+          static_cast<int32_t>(RD_KAFKA_ISOLATION_LEVEL_READ_UNCOMMITTED)));
+
+  int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
+
+  // Create the final callback object
+  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
+  Nan::Callback *callback = new Nan::Callback(cb);
+  AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
+
+  // Queue the worker to process the offset fetch request asynchronously
+  Nan::AsyncQueueWorker(new Workers::AdminClientListOffsets(
+      callback, client, partitions, timeout_ms, isolation_level));
 }
 
 }  // namespace NodeKafka

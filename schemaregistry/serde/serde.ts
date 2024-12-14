@@ -111,7 +111,7 @@ export abstract class Serde {
     }
     for (let i = 0; i < rules.length; i++ ) {
       let rule = rules[i]
-      if (rule.disabled) {
+      if (this.isDisabled(rule)) {
         continue
       }
       let mode = rule.mode
@@ -136,7 +136,7 @@ export abstract class Serde {
         this.serdeType === SerdeType.KEY, ruleMode, rule, i, rules, inlineTags, this.fieldTransformer!)
       let ruleExecutor = this.ruleRegistry.getExecutor(rule.type)
       if (ruleExecutor == null) {
-        await this.runAction(ctx, ruleMode, rule, rule.onFailure, msg,
+        await this.runAction(ctx, ruleMode, rule, this.getOnFailure(rule), msg,
           new Error(`could not find rule executor of type ${rule.type}`), 'ERROR')
         return msg
       }
@@ -152,16 +152,41 @@ export abstract class Serde {
             msg = result
             break
         }
-        await this.runAction(ctx, ruleMode, rule, msg != null ? rule.onSuccess : rule.onFailure,
+        await this.runAction(ctx, ruleMode, rule, msg != null
+            ? this.getOnSuccess(rule) : this.getOnFailure(rule),
           msg, null, msg != null ? 'NONE' : 'ERROR')
       } catch (error) {
         if (error instanceof SerializationError) {
           throw error
         }
-        await this.runAction(ctx, ruleMode, rule, rule.onFailure, msg, error as Error, 'ERROR')
+        await this.runAction(ctx, ruleMode, rule, this.getOnFailure(rule), msg, error as Error, 'ERROR')
       }
     }
     return msg
+  }
+
+  getOnSuccess(rule: Rule): string | undefined {
+    let override = this.ruleRegistry.getOverride(rule.type)
+    if (override != null && override.onSuccess != null) {
+      return override.onSuccess
+    }
+    return rule.onSuccess
+  }
+
+  getOnFailure(rule: Rule): string | undefined {
+    let override = this.ruleRegistry.getOverride(rule.type)
+    if (override != null && override.onFailure != null) {
+      return override.onFailure
+    }
+    return rule.onFailure
+  }
+
+  isDisabled(rule: Rule): boolean | undefined {
+    let override = this.ruleRegistry.getOverride(rule.type)
+    if (override != null && override.disabled != null) {
+      return override.disabled
+    }
+    return rule.disabled
   }
 
   async runAction(ctx: RuleContext, ruleMode: RuleMode, rule: Rule, action: string | undefined,
@@ -372,7 +397,7 @@ export abstract class Deserializer extends Serde {
 
   async getMigrations(subject: string, sourceInfo: SchemaInfo,
                 target: SchemaMetadata, format?: string): Promise<Migration[]> {
-    let version = await this.client.getVersion(subject, sourceInfo, false)
+    let version = await this.client.getVersion(subject, sourceInfo, false, true)
     let source: SchemaMetadata = {
       id: 0,
       version:    version,
