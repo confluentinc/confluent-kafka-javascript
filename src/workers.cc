@@ -199,11 +199,6 @@ ProducerConnect::ProducerConnect(Nan::Callback *callback, Producer* producer):
 ProducerConnect::~ProducerConnect() {}
 
 void ProducerConnect::Execute() {
-  // Activate the dispatchers before the connection, as some callbacks may run
-  // on the background thread.
-  // We will deactivate them if the connection fails.
-  producer->ActivateDispatchers();
-
   Baton b = producer->Connect();
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
@@ -558,11 +553,6 @@ KafkaConsumerConnect::KafkaConsumerConnect(Nan::Callback *callback,
 KafkaConsumerConnect::~KafkaConsumerConnect() {}
 
 void KafkaConsumerConnect::Execute() {
-  // Activate the dispatchers before the connection, as some callbacks may run
-  // on the background thread.
-  // We will deactivate them if the connection fails.
-  consumer->ActivateDispatchers();
-
   Baton b = consumer->Connect();
   // consumer->Wait();
 
@@ -1661,6 +1651,59 @@ void AdminClientDescribeTopics::HandleErrorCallback() {
   callback->Call(argc, argv);
 }
 
+/**
+ * @brief ListOffsets in an asynchronous worker
+ * 
+ * This callback will list requested offsets for the specified topic partitions.
+ */
+AdminClientListOffsets::AdminClientListOffsets(
+    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    rd_kafka_topic_partition_list_t* partitions, const int& timeout_ms,
+    rd_kafka_IsolationLevel_t isolation_level)
+    : ErrorAwareWorker(callback),
+      m_client(client),
+      m_partitions(partitions),
+      m_timeout_ms(timeout_ms),
+      m_isolation_level(isolation_level) {}
+
+AdminClientListOffsets::~AdminClientListOffsets() {
+  if (m_partitions) {
+    rd_kafka_topic_partition_list_destroy(m_partitions);
+  }
+
+  if (this->m_event_response) {
+    rd_kafka_event_destroy(this->m_event_response);
+  }
+}
+
+void AdminClientListOffsets::Execute() {
+  Baton b = m_client->ListOffsets(m_partitions, m_timeout_ms, m_isolation_level,
+                                  &m_event_response);
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    SetErrorBaton(b);
+  }
+}
+
+void AdminClientListOffsets::HandleOKCallback() {
+  Nan::HandleScope scope;
+  const unsigned int argc = 2;
+  v8::Local<v8::Value> argv[argc];
+
+  argv[0] = Nan::Null();
+  argv[1] = Conversion::Admin::FromListOffsetsResult(
+      rd_kafka_event_ListOffsets_result(m_event_response));
+
+  callback->Call(argc, argv);
+}
+
+void AdminClientListOffsets::HandleErrorCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 1;
+  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+
+  callback->Call(argc, argv);
+}
 
 }  // namespace Workers
 }  // namespace NodeKafka
