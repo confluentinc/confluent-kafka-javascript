@@ -5,7 +5,7 @@ const {
     createAdmin,
     sleep,
 } = require('../testhelpers');
-const { KafkaJSAggregateError, KafkaJSCreateTopicError } = require('../../../lib').KafkaJS;
+const { KafkaJSAggregateError, KafkaJSCreateTopicError, ErrorCodes } = require('../../../lib').KafkaJS;
 
 describe('Admin > createTopics', () => {
     let topicNames, admin;
@@ -90,7 +90,7 @@ describe('Admin > createTopics', () => {
 
         const replicationErr = storedErr.errors.find(e => e.topic === topicNames[0] + '-invalid');
         expect(replicationErr).toBeInstanceOf(KafkaJSCreateTopicError);
-        expect(replicationErr.message).toMatch(/The target replication factor/);
+        expect(replicationErr.code).toEqual(ErrorCodes.ERR_INVALID_REPLICATION_FACTOR);
 
         const partitionsErr = storedErr.errors.find(e => e.topic === topicNames[1]+ '-invalid');
         expect(partitionsErr).toBeInstanceOf(KafkaJSCreateTopicError);
