@@ -1,3 +1,106 @@
+# confluent-kafka-javascript v1.0.0
+
+v1.0.0 is a feature release. It is supported for all usage.
+
+## Enhancements
+
+1. Add support for an Admin API to fetch topic offsets (#156).
+2. Add support for Node v23 pre-built binaries (#158).
+
+## Fixes
+
+1. Fixes an issue where `uv_async_init` was being called off the event loop thread,
+   causing the node process to hang (#190).
+
+
+# confluent-kafka-javascript v0.6.1
+
+v0.6.1 is a limited availability maintenance release. It is supported for all usage.
+
+## Fixes
+
+### Schema Registry
+
+1. Sync aws-sdk packages to the same versioning.
+
+2. Minor enhancement to allow AWS profile to be specified.
+
+3. Add ability to override disable flag and actions on a rule.
+
+# confluent-kafka-javascript v0.6.0
+
+v0.6.0 is a limited availability maintenance release. It is supported for all usage.
+
+## Fixes
+
+### Schema Registry
+
+1. Add AWS AssumeRole support to AWS KMS. You can now specify a role arn, and optional
+role session name and optional role external id.
+
+2. Ensure different key ids use different client instances.
+
+# confluent-kafka-javascript v0.5.2
+
+v0.5.2 is a limited availability maintenance release. It is supported for all usage.
+
+Note: v0.5.2 has no code changes from v0.5.1, version is bumped to sync with @confluentinc/schemaregistry.
+
+
+# confluent-kafka-javascript v0.5.1
+
+v0.5.1 is a limited availability maintenance release. It is supported for all usage.
+
+## Fixes
+
+1. Fix an issue where `sendOffsets` wasn't working correctly in the transactional
+   producer (#172).
+
+
+# confluent-kafka-javascript v0.5.0
+
+v0.5.0 is a limited availability feature release. It is supported for all usage.
+
+Note: v0.5.0 was not released because of the bug mentioned in v0.5.1 section. Instead,
+      v0.5.1 was released with the fix directly.
+
+## Enhancements
+
+1. Add support for an Admin API to delete records.(#141).
+2. Add support for an Admin API to describe topics.(#155).
+3. Add support for dependent Admin client (#153).
+4. References librdkafka v2.6.1. Refer to the [librdkafka v2.6.1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.6.1) for more information.
+
+## Fixes
+
+1. Fixes an issue with unresolved raced Promises leaking in the consumer (#151).
+2. Removes schemaregistry dependencies from root package.json to prevent issues with Node 18 (#162).
+
+
+# confluent-kafka-javascript v0.4.0
+
+v0.4.0 is a limited availability feature release. It is supported for all usage.
+
+## Enhancements
+
+1. Fixes an issue where headers were not passed correctly to the `eachBatch` callback (#130).
+2. Add support for an Admin API to list a consumer group's offsets (#49).
+3. Reduce consumer poll timeout to nil and add wakeups for new messages. This improves
+   the consumer efficiency, and resolves issues while running multiple consumers within
+   the same node process (#135).
+4. Add pre-built binaries for macOS (Intel).
+
+
+# confluent-kafka-javascript v0.3.0
+
+v0.3.0 is a limited availability feature release. It is supported for all usage.
+
+## Enhancements
+
+1. References librdkafka v2.6.0. Refer to the [librdkafka v2.6.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.6.0) for more information.
+1. Minor optimization to reduce schema ID lookups (#123).
+
+
 # confluent-kafka-javascript v0.2.1
 
 v0.2.1 is a limited availability release. It is supported for all usage.
