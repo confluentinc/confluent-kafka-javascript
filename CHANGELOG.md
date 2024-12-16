@@ -8,6 +8,7 @@ v1.0.0 is a feature release. It is supported for all usage.
 2. Add support for Node v23 pre-built binaries (#158).
 3. Add KafkaJS-compatible errors to promisified Admin API (createTopics, deleteGroups, deleteTopicRecords) (#159).
 4. Include error types within Type definitions for promisified API (#210).
+5. Add support for an Admin API to fetch topic offsets by timestamp (#206).
 
 ## Fixes
 
