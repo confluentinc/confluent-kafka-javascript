@@ -64,7 +64,7 @@ describe("fetchTopicOffsetsByTimestamp function", () => {
             },
         ]);
 
-        const offsetsAtSpecificTimestamp2 = await admin.fetchTopicOffsetsByTimestamp(topicName, now + 150);
+        const offsetsAtSpecificTimestamp2 = await admin.fetchTopicOffsetsByTimestamp(topicName, now + 250);
         expect(offsetsAtSpecificTimestamp2).toEqual([
             {
                 partition: 0,
@@ -131,7 +131,7 @@ describe("fetchTopicOffsetsByTimestamp function", () => {
             { partition: 1, offset: "0" }, // Offset before any message in partition 1
         ]);
 
-        const offsetsBetweenT1AndT2 = await admin.fetchTopicOffsetsByTimestamp(topicName, now + 150);
+        const offsetsBetweenT1AndT2 = await admin.fetchTopicOffsetsByTimestamp(topicName, now + 250);
         expect(offsetsBetweenT1AndT2).toEqual([
             { partition: 0, offset: "1" },
             { partition: 1, offset: "1" },
