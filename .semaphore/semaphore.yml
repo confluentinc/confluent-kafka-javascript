@@ -33,6 +33,22 @@ global_job_config:
       - cache clear
 
 blocks:
+  - name: Test
+    dependencies: [ ]
+    run:
+      # don't run the tests on non-functional changes...
+      when: "change_in('/', {exclude: ['.github/']})"
+    task:
+      jobs:
+        - name: Test
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - sem-version node $NODE_VERSION
+            - make test
+            - make promisified_test
+            - istanbul-merge --out merged-output/merged-coverage.json coverage/*/coverage-final.json
+            - nyc report -t merged-output --report-dir merged-report --reporter=text --reporter=lcov
+            - artifact push workflow merged-report/ --destination "coverage"
   - name: "Linux amd64 (musl): Build and test"
     dependencies: [ ]
     task:
@@ -448,3 +464,17 @@ blocks:
             - artifact pull workflow releases
             - tar -czvf releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz releases
             - artifact push project "releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz"
+
+after_pipeline:
+  task:
+    agent:
+      machine:
+        type: s1-prod-ubuntu20-04-amd64-1
+    jobs:
+      - name: SonarQube
+        commands:
+          - checkout
+          - sem-version java 11
+          - artifact pull workflow coverage
+          - find coverage -name lcov.info
+          - emit-sonarqube-data --run_only_sonar_scan
