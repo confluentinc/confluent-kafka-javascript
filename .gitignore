@@ -17,4 +17,8 @@ deps/*
 .idea
 .vscode
 coverage
+
 .nyc_output/
+*coverage.json
+*lcov.info
+**/lcov-report

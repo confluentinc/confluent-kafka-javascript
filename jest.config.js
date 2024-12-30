@@ -3,5 +3,6 @@ module.exports = {
       '^.+\\.tsx?$': 'ts-jest',
     },
     "collectCoverage": true,
-    "coverageReporters": ["lcov"],
+    "coverageReporters": ['json', 'text', 'html'],
+    "coverageDirectory": 'coverage/jest/',
   };
