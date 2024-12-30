@@ -114,7 +114,7 @@ blocks:
         - name: "Install"
           matrix:
             - env_var: DOCKER_IMAGE
-              values: ["quay.io/centos/centos:stream9", "quay.io/centos/centos:stream8", "almalinux:9", "almalinux:8", "rockylinux:9", "rockylinux:8"]
+              values: ["quay.io/centos/centos:stream9", "almalinux:9", "almalinux:8", "rockylinux:9", "rockylinux:8"]
             - env_var: NODE_VERSION
               values: ["18", "20", "21", "22", "23"]
           commands:
@@ -133,8 +133,44 @@ blocks:
         - name: "Install"
           matrix:
             - env_var: DOCKER_IMAGE
-              values: ["quay.io/centos/centos:stream9", "quay.io/centos/centos:stream8", "almalinux:9", "almalinux:8", "rockylinux:9", "rockylinux:8"]
+              values: ["quay.io/centos/centos:stream9", "almalinux:9", "almalinux:8", "rockylinux:9", "rockylinux:8"]
             - env_var: NODE_VERSION
               values: ["18", "20", "21", "22", "23"]
           commands:
             - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-rhel.sh "$NODE_VERSION" "$LIBRARY_VERSION"
+
+  - name: "Mac (Intel)"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-macos-13-5-amd64
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Install"
+          matrix:
+            - env_var: NODE_VERSION
+              values: ["18", "20", "21", "22", "23"]
+          commands:
+            - sem-version node $NODE_VERSION
+            - bash ci/post-install/install-mac.sh "$NODE_VERSION" "$LIBRARY_VERSION"
+
+  - name: "Mac (M1)"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-macos-13-5-arm64
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Install"
+          matrix:
+            - env_var: NODE_VERSION
+              values: ["18", "20", "21", "22", "23"]
+          commands:
+            - sem-version node $NODE_VERSION
+            - bash ci/post-install/install-mac.sh "$NODE_VERSION" "$LIBRARY_VERSION"
