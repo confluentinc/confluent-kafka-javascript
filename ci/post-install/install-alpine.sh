@@ -1,11 +1,7 @@
 #!/bin/sh
 set -e
 
-export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a
-
-apt update
-apt install -y bash curl
+apk add -U bash curl
 
 node_version="$1"
 library_version="$2"
