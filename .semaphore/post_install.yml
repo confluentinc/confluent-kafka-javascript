@@ -203,5 +203,5 @@ blocks:
             - New-Item -Type Directory -Path ${env:tempFolderPath} | Out-Null
             - cd ${env:tempFolderPath}
             - npm init -y
-            - echo npm install --save @confluentinc/kafka-javascript@${env:LIBRARY_VERSION}
-            # TODO: add the check here
+            - npm install --save @confluentinc/kafka-javascript@${env:LIBRARY_VERSION}
+            - node -e 'console.log(require("@confluentinc/kafka-javascript").librdkafkaVersion);'

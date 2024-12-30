@@ -13,6 +13,5 @@ if [ -z "${library_version}" ]; then
     library_version="latest"
 fi
 
-echo npm install @confluentinc/kafka-javascript@${library_version} --save
-
-# node -e 'console.log(require("@confluentinc/kafka-javascript").librdkafkaVersion);'
+npm install @confluentinc/kafka-javascript@${library_version} --save
+node -e 'console.log(require("@confluentinc/kafka-javascript").librdkafkaVersion);'
