@@ -42,6 +42,7 @@ blocks:
       jobs:
         - name: Test
           commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - sem-version node $NODE_VERSION
             - make test
             - make promisified_test
