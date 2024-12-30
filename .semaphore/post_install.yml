@@ -40,19 +40,9 @@ blocks:
         - name: "Install"
           matrix:
             - env_var: DOCKER_IMAGE
-              values:
-                - debian:bullseye
-                - debian:bookworm
-                - ubuntu:20.04
-                - ubuntu:22.04
-                - ubuntu:24.04
+              values: ["debian:bullseye", "debian:bookworm", "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04"]
             - env_var: NODE_VERSION
-              values:
-                - 18
-                - 20
-                - 21
-                - 22
-                - 23
+              values: ["18", "20", "21", "22", "23"]
           commands:
             - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION"
 
@@ -69,18 +59,8 @@ blocks:
         - name: "Install"
           matrix:
             - env_var: DOCKER_IMAGE
-              values:
-                - debian:bullseye
-                - debian:bookworm
-                - ubuntu:20.04
-                - ubuntu:22.04
-                - ubuntu:24.04
+              values: ["debian:bullseye", "debian:bookworm", "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04"]
             - env_var: NODE_VERSION
-              values:
-                - 18
-                - 20
-                - 21
-                - 22
-                - 23
+              values: ["18", "20", "21", "22", "23"]
           commands:
             - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION"
