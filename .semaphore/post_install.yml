@@ -1,0 +1,86 @@
+# This file is managed by ServiceBot plugin - Semaphore. The content in this file is created using a common
+# template and configurations in service.yml.
+# Any modifications made to version, name, agent, and global_job_config will be overwritten by the generated
+# content in nightly runs. Code changes made to the remaining sections will not be affected.
+# For more information, please refer to the page:
+# https://confluentinc.atlassian.net/wiki/spaces/Foundations/pages/2871296194/Add+SemaphoreCI
+version: v1.0
+name: build-test-release
+agent:
+  machine:
+    type: s1-prod-ubuntu22-04-amd64-1
+
+global_job_config:
+  prologue:
+    commands:
+      - checkout
+
+auto_cancel:
+  running:
+    when: "branch != 'master'"
+
+execution_time_limit:
+  hours: 3
+
+queue:
+  - when: "branch != 'master'"
+    processing: parallel
+
+blocks:
+  - name: "Debian-based OS (amd64)"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu22-04-amd64-2
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Install"
+          matrix:
+            - env_var: DOCKER_IMAGE
+              values:
+                - debian:bullseye
+                - debian:bookworm
+                - ubuntu:20.04
+                - ubuntu:22.04
+                - ubuntu:24.04
+            - env_var: NODE_VERSION
+              values:
+                - 18
+                - 20
+                - 21
+                - 22
+                - 23
+          commands:
+            - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION"
+
+  - name: "Debian-based OS (arm64)"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu22-04-arm64-1
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Install"
+          matrix:
+            - env_var: DOCKER_IMAGE
+              values:
+                - debian:bullseye
+                - debian:bookworm
+                - ubuntu:20.04
+                - ubuntu:22.04
+                - ubuntu:24.04
+            - env_var: NODE_VERSION
+              values:
+                - 18
+                - 20
+                - 21
+                - 22
+                - 23
+          commands:
+            - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION"
