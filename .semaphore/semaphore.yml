@@ -42,7 +42,7 @@ blocks:
       jobs:
         - name: Test
           commands:
-            - sem-version node $NODE_VERSION
+            - npm run install-from-source
             - make test
             - make promisified_test
             - istanbul-merge --out merged-output/merged-coverage.json coverage/*/coverage-final.json
