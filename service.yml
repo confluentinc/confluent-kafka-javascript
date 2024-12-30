@@ -10,3 +10,7 @@ codeowners:
   enable: true
 semaphore:
   enable: true
+sonarqube:
+  enable: true
+  languages:
+    - javascript
