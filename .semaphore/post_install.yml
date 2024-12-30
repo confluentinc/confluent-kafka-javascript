@@ -145,9 +145,6 @@ blocks:
       agent:
         machine:
           type: s1-prod-macos-13-5-amd64
-      prologue:
-        commands:
-          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
       jobs:
         - name: "Install"
           matrix:
@@ -163,9 +160,6 @@ blocks:
       agent:
         machine:
           type: s1-prod-macos-13-5-arm64
-      prologue:
-        commands:
-          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
       jobs:
         - name: "Install"
           matrix:
@@ -174,3 +168,42 @@ blocks:
           commands:
             - sem-version node $NODE_VERSION
             - bash ci/post-install/install-mac.sh "$NODE_VERSION" "$LIBRARY_VERSION"
+
+  - name: "Windows (x64)"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-windows
+      prologue:
+        commands:
+          # The semaphore agent already comes with an installed version of node. We, however, need to use a different
+          # version of node for the release (as many as we need to cover all the different ABIs).
+          # The node installer does not allow us to downgrade, so we need to uninstall the current version.
+          # The method below isn't particularly robust (as it depends on the particular format of the URL), but it
+          # works and can be easily fixed if it breaks (the node --version in the below jobs can be checked if there are
+          # any issues in the build).
+          - $env:InstalledMajor = (Get-Command node).Version.Major
+          - $env:InstalledMinor = (Get-Command node).Version.Minor
+          - $env:InstalledBuild = (Get-Command node).Version.Build
+          - $env:InstalledVersion = "v${env:InstalledMajor}.${env:InstalledMinor}.${env:InstalledBuild}"
+          - echo "https://nodejs.org/dist/${env:InstalledVersion}/node-${env:InstalledVersion}-x64.msi"
+          - Invoke-WebRequest "https://nodejs.org/dist/${env:InstalledVersion}/node-${env:InstalledVersion}-x64.msi" -OutFile node_old.msi
+          - msiexec /qn /l* node-old-log.txt /uninstall node_old.msi
+          - cat .\node-old-log.txt
+      jobs:
+        - name: "Install"
+          matrix:
+            - env_var: NODE_VERSION
+              values: ["18.19.0", "20.11.0", "21.6.1", "22.2.0", "23.2.0"]
+          commands:
+            - Invoke-WebRequest "https://nodejs.org/download/release/v${env:NODE_VERSION}/node-v${env:NODE_VERSION}-x64.msi" -OutFile node.msi
+            - msiexec /qn /l* node-log.txt /i node.msi
+            - cat .\node-log.txt
+            - node --version
+            - $tempFolderPath = Join-Path $Env:Temp $(New-Guid)
+            - New-Item -Type Directory -Path $tempFolderPath | Out-Null
+            - cd $tempFolderPath
+            - npm init -y
+            - echo npm install --save @confluentinc/kafka-javascript@${env:LIBRARY_VERSION}
+            # TODO: add the check here
