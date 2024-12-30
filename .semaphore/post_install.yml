@@ -14,8 +14,6 @@ global_job_config:
   prologue:
     commands:
       - checkout
-      # Set this via Semaphore later.
-      - export LIBRARY_VERSION=1.0.0
 
 auto_cancel:
   running:

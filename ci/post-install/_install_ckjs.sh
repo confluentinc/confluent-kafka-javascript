@@ -8,6 +8,11 @@ npm init -y
 
 # uncomment for one final run.
 library_version="$2"
+
+if [ -z "${library_version}" ]; then
+    library_version="latest"
+fi
+
 echo npm install @confluentinc/kafka-javascript@${library_version} --save
 
 # node -e 'console.log(require("@confluentinc/kafka-javascript").librdkafkaVersion);'
