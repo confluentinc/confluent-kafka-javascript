@@ -199,9 +199,9 @@ blocks:
             - msiexec /qn /l* node-log.txt /i node.msi
             - cat .\node-log.txt
             - node --version
-            - $tempFolderPath = Join-Path $Env:Temp $(New-Guid)
-            - New-Item -Type Directory -Path $tempFolderPath | Out-Null
-            - cd $tempFolderPath
+            - $env:tempFolderPath = Join-Path $Env:Temp $(New-Guid)
+            - New-Item -Type Directory -Path ${env:tempFolderPath} | Out-Null
+            - cd ${env:tempFolderPath}
             - npm init -y
             - echo npm install --save @confluentinc/kafka-javascript@${env:LIBRARY_VERSION}
             # TODO: add the check here
