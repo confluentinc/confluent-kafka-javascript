@@ -5,7 +5,7 @@
 # For more information, please refer to the page:
 # https://confluentinc.atlassian.net/wiki/spaces/Foundations/pages/2871296194/Add+SemaphoreCI
 version: v1.0
-name: build-test-release
+name: post-install
 agent:
   machine:
     type: s1-prod-ubuntu22-04-amd64-1
@@ -79,12 +79,10 @@ blocks:
       jobs:
         - name: "Install"
           matrix:
-            - env_var: DOCKER_IMAGE
-              values: ["alpine"] # The latest version
             - env_var: NODE_VERSION
               values: ["18", "20", "21", "22", "23"]
           commands:
-            - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-alpine.sh "$NODE_VERSION" "$LIBRARY_VERSION"
+            - docker run -v "$(pwd):/v" "node:${NODE_VERSION}-alpine" /v/ci/post-install/install-alpine.sh "$NODE_VERSION" "$LIBRARY_VERSION"
 
   - name: "Alpine-based OS (arm64)"
     dependencies: [ ]
@@ -98,9 +96,7 @@ blocks:
       jobs:
         - name: "Install"
           matrix:
-            - env_var: DOCKER_IMAGE
-              values: ["alpine"] # The latest version
             - env_var: NODE_VERSION
               values: ["18", "20", "21", "22", "23"]
           commands:
-            - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-alpine.sh "$NODE_VERSION" "$LIBRARY_VERSION"
+            - docker run -v "$(pwd):/v" "node:${NODE_VERSION}-alpine" /v/ci/post-install/install-alpine.sh "$NODE_VERSION" "$LIBRARY_VERSION"
