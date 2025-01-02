@@ -4,6 +4,7 @@
     # "BUILD_LIBRDKAFKA%": "<!(echo ${BUILD_LIBRDKAFKA:-1})"
     "BUILD_LIBRDKAFKA%": "<!(node ./util/get-env.js BUILD_LIBRDKAFKA 1)",
     "CKJS_LINKING%": "<!(node ./util/get-env.js CKJS_LINKING static)",
+    "CKJS_CPP_STD%": "<!(node ./util/get-env.js CKJS_CPP_STD c++20)",
   },
   "targets": [
     {
@@ -44,7 +45,7 @@
               }
             ],
             'cflags_cc' : [
-              '-std=c++20'
+              '-std=<(CKJS_CPP_STD)'
             ],
             'msvs_settings': {
               'VCLinkerTool': {
@@ -135,7 +136,7 @@
                 'OS=="linux"',
                 {
                   'cflags_cc' : [
-                    '-std=c++20'
+                    "-std=<(CKJS_CPP_STD)"
                   ],
                   'cflags_cc!': [
                     '-fno-rtti'
@@ -153,7 +154,7 @@
                     ],
                     'OTHER_CPLUSPLUSFLAGS': [
                       '-I/usr/local/opt/openssl/include',
-                      '-std=c++20'
+                      '-std=<(CKJS_CPP_STD)'
                     ],
                   },
                 }
