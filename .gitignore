@@ -18,5 +18,6 @@ deps/*
 .vscode
 coverage
 
+.nyc_output/
 *lcov.info
 **/lcov-report
