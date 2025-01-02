@@ -463,8 +463,6 @@ after_pipeline:
           - sem-version java 11
           - artifact pull workflow mocha-coverage.json
           - artifact pull workflow jest-coverage.json
-          - find . -iname "-coverage.json"
           - npx --yes istanbul-merge --out merged-output/merged-coverage.json *-coverage.json
           - npx nyc report -t merged-output --report-dir coverage --reporter=text --reporter=lcov
-          - tail -n 100 coverage/lcov.info
           - emit-sonarqube-data --run_only_sonar_scan
