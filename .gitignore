@@ -17,3 +17,6 @@ deps/*
 .idea
 .vscode
 coverage
+
+*lcov.info
+**/lcov-report
