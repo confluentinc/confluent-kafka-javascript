@@ -12,5 +12,7 @@ semaphore:
   enable: true
 sonarqube:
   enable: true
+  coverage_reports:
+    - "./coverage/lcov.info"
   languages:
     - javascript
