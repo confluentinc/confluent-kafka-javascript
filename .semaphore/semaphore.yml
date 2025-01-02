@@ -45,7 +45,7 @@ blocks:
       jobs:
         - name: "Build from source and test for musl"
           commands:
-            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
+            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
 
   - name: "Linux arm64 (musl): Build and test"
     dependencies: [ ]
@@ -59,7 +59,7 @@ blocks:
       jobs:
         - name: "Build from source and test for musl"
           commands:
-              - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker.sh
+              - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
 
   - name: "Linux arm64: Build and test"
     dependencies: [ ]
@@ -150,7 +150,7 @@ blocks:
             - bash -c '../../ci/tests/run_perf_test.sh'
             - rm -rf ./node_modules
 
-  - name: "Linux amd64: Release"
+  - name: "Linux amd64: Release - c++17"
     dependencies: [ ]
     run:
       when: "tag =~ '^v[0-9]\\.'"
@@ -165,6 +165,8 @@ blocks:
           value: "linux"
         - name: LIBC
           value: "glibc"
+        - name: "CKJS_CPP_STD"
+          value: "c++17"
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
@@ -177,18 +179,49 @@ blocks:
                 - 20,115
                 - 21,120
                 - 22,127
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - docker run -v "$(pwd):/v" -e CKJS_CPP_STD="$CKJS_CPP_STD" node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+
+  - name: "Linux amd64: Release - c++20"
+    dependencies: [ ]
+    run:
+      when: "tag =~ '^v[0-9]\\.'"
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu22-04-amd64-2
+      env_vars:
+        - name: ARCHITECTURE
+          value: "x64"
+        - name: PLATFORM
+          value: "linux"
+        - name: LIBC
+          value: "glibc"
+        - name: "CKJS_CPP_STD"
+          value: "c++20"
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
                 - 23,131
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
-            - sem-version node $NODE_VERSION
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
+            - docker run -v "$(pwd):/v" -e CKJS_CPP_STD="$CKJS_CPP_STD" node:${NODE_VERSION}-bookworm /v/.semaphore/build-docker-debian.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
-  - name: "Linux arm64: Release"
+  - name: "Linux arm64: Release - c++17"
     dependencies: [ ]
     run:
       when: "tag =~ '^v[0-9]\\.'"
@@ -203,6 +236,8 @@ blocks:
           value: "linux"
         - name: LIBC
           value: "glibc"
+        - name: "CKJS_CPP_STD"
+          value: "c++17"
       prologue:
         commands:
           - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
@@ -215,14 +250,48 @@ blocks:
                 - 20,115
                 - 21,120
                 - 22,127
-                - 23,131
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
-            - sem-version node $NODE_VERSION
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
-            - npx node-pre-gyp package
+            - docker run -v "$(pwd):/v" -e CKJS_CPP_STD="$CKJS_CPP_STD" node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+
+  - name: "Linux arm64: Release - c++20"
+    dependencies: [ ]
+    run:
+      when: "tag =~ '^v[0-9]\\.'"
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu22-04-arm64-1
+      env_vars:
+        - name: ARCHITECTURE
+          value: "arm64"
+        - name: PLATFORM
+          value: "linux"
+        - name: LIBC
+          value: "glibc"
+        - name: "CKJS_CPP_STD"
+          value: "c++20"
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - docker run -v "$(pwd):/v" -e CKJS_CPP_STD="$CKJS_CPP_STD" node:${NODE_VERSION}-bookworm /v/.semaphore/build-docker-debian.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -258,7 +327,7 @@ blocks:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:${NODE_VERSION}-alpine /v/.semaphore/build-docker.sh
+            - docker run -v "$(pwd):/v" node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -294,7 +363,7 @@ blocks:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - docker run -v "$(pwd):/v" node:${NODE_VERSION}-alpine /v/.semaphore/build-docker.sh
+            - docker run -v "$(pwd):/v" node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -429,8 +498,10 @@ blocks:
 
   - name: 'Packaging: tar all release artifacts'
     dependencies:
-      - 'Linux amd64: Release'
-      - 'Linux arm64: Release'
+      - 'Linux amd64: Release - c++17'
+      - 'Linux amd64: Release - c++20'
+      - 'Linux arm64: Release - c++17'
+      - 'Linux arm64: Release - c++20'
       - 'Linux amd64 musl: Release'
       - 'Linux arm64 musl: Release'
       - 'macOS arm64/m1: Release'
