@@ -38,7 +38,7 @@ cpplint:
 	@$(PYTHON) $(CPPLINT) --filter=$(CPPLINT_FILTER) $(CPPLINT_FILES)
 
 eslint: node_modules/.dirstamp
-	@./node_modules/.bin/eslint .
+	@./node_modules/.bin/eslint lib
 
 lib: node_modules/.dirstamp $(CONFIG_OUTPUTS)
 	@PYTHONHTTPSVERIFY=0 $(NODE-GYP) build $(GYPBUILDARGS)
@@ -74,14 +74,7 @@ define release
 endef
 
 docs: node_modules/.dirstamp
-	@rm -rf docs
-	@./node_modules/jsdoc/jsdoc.js --debug --destination docs \
-		--recurse -R ./README.md \
-		-c ./jsdoc.conf \
-		--tutorials examples/ ./lib
-
-gh-pages: node_modules/.dirstamp
-	@./make_docs.sh
+	@./util/generate-docs.sh
 
 release-patch:
 	@$(call release,patch)
