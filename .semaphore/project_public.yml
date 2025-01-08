@@ -22,4 +22,4 @@ spec:
         level: pipeline
     forked_pull_requests:
       allowed_contributors:
-        - "ConfluentSemaphore"
+        - "service-bot-app"
