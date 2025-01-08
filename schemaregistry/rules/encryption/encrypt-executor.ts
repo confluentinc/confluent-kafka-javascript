@@ -97,7 +97,7 @@ export class FieldEncryptionExecutor extends FieldRuleExecutor {
         let v = this.config.get(key)
         if (v != null) {
           if (v !== value) {
-            throw new RuleError('executor already configured')
+            throw new RuleError('rule config key already set: {key}')
           }
         } else {
           this.config.set(key, value)
