@@ -20,7 +20,7 @@ import {AesSivKey, AesSivKeySchema} from "./tink/proto/aes_siv_pb";
 import {create, fromBinary, toBinary} from "@bufbuild/protobuf";
 import {fromRawKey as aesGcmFromRawKey} from "./tink/aes_gcm";
 import {fromRawKey as aesSivFromRawKey} from "./tink/aes_siv";
-import deepEqual from "deep-equal";
+import {deepEqual} from "../../serde/json-util";
 
 // EncryptKekName represents a kek name
 const ENCRYPT_KEK_NAME = 'encrypt.kek.name'
