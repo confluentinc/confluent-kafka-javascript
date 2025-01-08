@@ -176,7 +176,6 @@ class MockClient implements Client {
       throw new RestError("Schema not found", 404, 40400);
     }
 
-
     return {
       id,
       version,
@@ -202,7 +201,6 @@ class MockClient implements Client {
       if (parsedKey.subject === subject && (!value.softDeleted || deleted)) {
         if (parsedKey.schema.metadata && this.isSubset(metadata, parsedKey.schema.metadata.properties)) {
           results.push({
-            id: parsedKey.schema.id,
             version: value.version,
             subject,
             ...parsedKey.schema
@@ -223,6 +221,18 @@ class MockClient implements Client {
       }
     });
 
+    let id: number = -1;
+    for (const [key, value] of this.idToSchemaCache.entries()) {
+      const parsedKey = JSON.parse(key);
+      if (parsedKey.subject === subject && value.info.schema === latest.schema) {
+        id = parsedKey.id;
+      }
+    }
+    if (id === -1) {
+      throw new RestError("Schema not found", 404, 40400);
+    }
+
+    latest.id = id;
     return latest;
   }
 
@@ -288,7 +298,8 @@ class MockClient implements Client {
     }
   }
 
-  async getVersion(subject: string, schema: SchemaInfo, normalize: boolean = false): Promise<number> {
+  async getVersion(subject: string, schema: SchemaInfo,
+                   normalize: boolean = false, deleted: boolean = false): Promise<number> {
     const cacheKey = stringify({ subject, schema: minimize(schema) });
     const cacheEntry = this.schemaToVersionCache.get(cacheKey);
 
