@@ -33,7 +33,7 @@ The following configurations are supported:
 
 | Distribution                              | Supported Node Versions |
 | ----------------------------------------- | ----------------------- |
-| Debian Bullseye/Ubuntu 20.04              | 18, 20, 21, 22          |
+| Debian Bullseye/Ubuntu 20.04              | 18, 20, 21, 22, 23      |
 | Debian Bookworm/Ubuntu 22.04              | 18, 20, 21, 22, 23      |
 | Alpine Linux 3.20+                        | 18, 20, 21, 22, 23      |
 | AlmaLinux 9/Rocky Linux 9/CentOS Stream 9 | 18, 20, 21, 22, 23      |
