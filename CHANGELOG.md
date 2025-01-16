@@ -1,10 +1,24 @@
-# confluent-kafka-javascript v1.1.0
+# confluent-kafka-javascript v1.2.0
 
-v1.1.0 is a feature release. It is supported for all usage.
+v1.2.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
 
 1. Add support for an Admin API to fetch topic offsets by timestamp (#206).
+
+## Fixes
+
+1. Fixes an issue where the `eachBatch` callback was being called for the same partition concurrently (#224).
+
+
+# confluent-kafka-javascript v1.1.0
+
+v1.1.0 is a feature release. It is supported for all usage.
+
+## Fixes
+
+1. Ensure algorithm query param is passed for CSFLE (#230)
+2. Handle records nested in arrays/maps when searching for tags (#231)
 
 
 # confluent-kafka-javascript v1.0.0
