@@ -8,7 +8,7 @@ version: v1.0
 name: build-test-release
 agent:
   machine:
-    type: s1-prod-ubuntu22-04-amd64-1
+    type: s1-prod-ubuntu20-04-amd64-1
 
 auto_cancel:
   running:
@@ -25,16 +25,19 @@ global_job_config:
   prologue:
     commands:
       - checkout
-      - git submodule update --init --recursive
-      - cd deps/librdkafka
-      - git fetch origin
-      - git checkout v2.8.0
-      - cd ../../
-      - cache clear
+      - make show-args
+      - . vault-setup
+      - . vault-sem-get-secret ci-reporting
+      - . vault-sem-get-secret v1/ci/kv/service-foundations/cc-mk-include
+      - make init-ci
+  epilogue:
+    always:
+      commands:
+        - make epilogue-ci
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -48,7 +51,7 @@ blocks:
             - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
 
   - name: "Linux arm64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -59,10 +62,10 @@ blocks:
       jobs:
         - name: "Build from source and test for musl"
           commands:
-              - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
+            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
 
   - name: "Linux arm64: Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -88,7 +91,7 @@ blocks:
             - make test
 
   - name: "Linux amd64: Build, test, lint, docs"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -117,7 +120,7 @@ blocks:
             - make docs
 
   - name: "Linux amd64: Performance"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -153,7 +156,7 @@ blocks:
             - rm -rf ./node_modules
 
   - name: "Linux amd64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -189,7 +192,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -225,7 +228,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux amd64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -261,7 +264,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -297,7 +300,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "macOS arm64/m1: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -332,7 +335,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "macOS Intel: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -367,7 +370,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Windows x64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
