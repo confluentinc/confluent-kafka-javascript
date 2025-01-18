@@ -27,7 +27,7 @@ queue:
     processing: parallel
 
 blocks:
-  - name: "Debian-based OS (amd64) - up to node 23"
+  - name: "Debian-based OS (amd64)"
     dependencies: [ ]
     task:
       agent:
@@ -42,30 +42,11 @@ blocks:
             - env_var: DOCKER_IMAGE
               values: ["debian:bullseye", "debian:bookworm", "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04"]
             - env_var: NODE_VERSION
-              values: ["18", "20", "21", "22"]
+              values: ["18", "20", "21", "22, "23"]
           commands:
             - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION" "$LIBRARY_VERSION"
 
-  - name: "Debian-based OS (amd64) - beyond node 23"
-    dependencies: [ ]
-    task:
-      agent:
-        machine:
-          type: s1-prod-ubuntu22-04-amd64-1
-      prologue:
-        commands:
-          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
-      jobs:
-        - name: "Install"
-          matrix:
-            - env_var: DOCKER_IMAGE
-              values: ["debian:bookworm", "ubuntu:22.04", "ubuntu:24.04"]
-            - env_var: NODE_VERSION
-              values: ["23"]
-          commands:
-            - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION" "$LIBRARY_VERSION"
-
-  - name: "Debian-based OS (arm64) - up to node 23"
+  - name: "Debian-based OS (arm64)"
     dependencies: [ ]
     task:
       agent:
@@ -80,26 +61,7 @@ blocks:
             - env_var: DOCKER_IMAGE
               values: ["debian:bullseye", "debian:bookworm", "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04"]
             - env_var: NODE_VERSION
-              values: ["18", "20", "21", "22"]
-          commands:
-            - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION" "$LIBRARY_VERSION"
-
-  - name: "Debian-based OS (arm64) - beyond node 23"
-    dependencies: [ ]
-    task:
-      agent:
-        machine:
-          type: s1-prod-ubuntu22-04-arm64-1
-      prologue:
-        commands:
-          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
-      jobs:
-        - name: "Install"
-          matrix:
-            - env_var: DOCKER_IMAGE
-              values: ["debian:bookworm", "ubuntu:22.04", "ubuntu:24.04"]
-            - env_var: NODE_VERSION
-              values: ["23"]
+              values: ["18", "20", "21", "22", "23"]
           commands:
             - docker run -v "$(pwd):/v" "$DOCKER_IMAGE" /v/ci/post-install/install-debian.sh "$NODE_VERSION" "$LIBRARY_VERSION"
 
