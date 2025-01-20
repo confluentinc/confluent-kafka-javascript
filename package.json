@@ -1,9 +1,9 @@
 {
   "name": "@confluentinc/kafka-javascript",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Node.js bindings for librdkafka",
-  "librdkafka": "2.6.1",
-  "librdkafka_win": "2.6.1",
+  "librdkafka": "2.8.0",
+  "librdkafka_win": "2.8.0",
   "main": "lib/index.js",
   "types": "types/index.d.ts",
   "scripts": {
@@ -47,6 +47,7 @@
     "jsdoc": "^4.0.2",
     "mocha": "^10.7.0",
     "node-gyp": "^9.3.1",
+    "nyc": "^17.1.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.2.0"
