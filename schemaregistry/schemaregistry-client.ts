@@ -201,7 +201,7 @@ export class SchemaRegistryClient implements Client {
       ...(config.cacheLatestTtlSecs !== undefined && { ttl: config.cacheLatestTtlSecs * 1000 })
     };
 
-    this.restService = new RestService(config.baseURLs, config.isForward, config.createAxiosDefaults,
+    this.restService = RestService.getInstance(config.baseURLs, config.isForward, config.createAxiosDefaults,
       config.basicAuthCredentials, config.bearerAuthCredentials,
       config.maxRetries, config.retriesWaitMs, config.retriesMaxWaitMs);
 
