@@ -331,6 +331,16 @@ The admin-client only has support for a limited subset of methods, with more to 
   * The `describeGroups` method is supported with additional `timeout` and `includeAuthorizedOperations` options.
     A number of additional properties have been added to the returned groups.
   * The `deleteGroups` method is supported with an additional `timeout` option.
+  * The `fetchOffsets` method is supported with additional `timeout` and
+  `requireStableOffsets` options but `resolveOffsets` option is not yet supported.
+  * The `deleteTopicRecords` method is supported with additional `timeout`
+  and `operationTimeout` options.
+  * The `fetchTopicMetadata` method is supported with additional `timeout`
+  and `includeAuthorizedOperations` options. Fetching for all topics is not advisable.
+  * The `fetchTopicOffsets` method is supported with additional `timeout`
+  and `isolationLevel` options.
+  * The `fetchTopicOffsetsByTimestamp` method is supported with additional `timeout`
+  and `isolationLevel` options.
 
 ### Using the Schema Registry
 
@@ -366,8 +376,11 @@ An example is made available [here](./examples/kafkajs/sr.js).
    For compatibility, as many error types as possible have been retained, but it is
    better to switch to checking the `error.code`.
 
+   Note that `KafkaJSAggregateError` remains as before. Check the `.errors` array
+   for the individual errors when checking the error code.
 
    Exhaustive list of error types and error fields removed:
+
    | Error                                     | Change                                                                                                                                                                                                                                                                                                                                             |
    |-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
    | `KafkaJSNonRetriableError`                | Removed. Retriable errors are automatically retried by librdkafka, so there's no need for this type. Note that `error.retriable` still exists, but it's applicable only for transactional producer, where users are expected to retry an action themselves. All error types using this as a superclass now use `KafkaJSError` as their superclass. |
@@ -378,16 +391,13 @@ An example is made available [here](./examples/kafkajs/sr.js).
    | `KafkaJSMetadataNotLoaded`                | Removed. Metadata is automatically reloaded by librdkafka.                                                                                                                                                                                                                                                                                         |
    | `KafkaJSTopicMetadataNotLoaded`           | Removed. Topic metadata is automatically reloaded by librdkafka.                                                                                                                                                                                                                                                                                   |
    | `KafkaJSStaleTopicMetadataAssignment`     | removed as it's automatically refreshed by librdkafka.                                                                                                                                                                                                                                                                                             |
-   | `KafkaJSDeleteGroupsError`                | Removed, as the Admin Client doesn't have this yet. May be added back again, or changed.                                                                                                                                                                                                                                                           |
    | `KafkaJSServerDoesNotSupportApiKey`       | Removed, as this error isn't generally exposed to user in librdkafka. If raised, it is subsumed into `KafkaJSError` where `error.code === Kafka.ErrorCode.ERR_UNSUPPORTED_VERSION`.                                                                                                                                                                |
    | `KafkaJSBrokerNotFound`                   | Removed. This error isn't exposed directly to the user in librdkafka.                                                                                                                                                                                                                                                                              |
    | `KafkaJSLockTimeout`                      | Removed. This error is not applicable while using librdkafka.                                                                                                                                                                                                                                                                                      |
    | `KafkaJSUnsupportedMagicByteInMessageSet` | Removed. It is subsumed into `KafkaJSError` where `error.code === Kafka.ErrorCode.ERR_UNSUPPORTED_VERSION`.                                                                                                                                                                                                                                        |
-   | `KafkaJSDeleteTopicRecordsError`          | Removed, as the Admin Client doesn't have this yet. May be added back again, or changed.                                                                                                                                                                                                                                                           |
    | `KafkaJSInvariantViolation`               | Removed, as it's not applicable to librdkafka. Errors in internal state are subsumed into `KafkaJSError` where `error.code === Kafka.ErrorCode.ERR__STATE`.                                                                                                                                                                                        |
    | `KafkaJSInvalidVarIntError`               | Removed. This error isn't exposed directly to the user in librdkafka.                                                                                                                                                                                                                                                                              |
    | `KafkaJSInvalidLongError`                 | Removed. This error isn't exposed directly to the user in librdkafka.                                                                                                                                                                                                                                                                              |
-   | `KafkaJSCreateTopicError`                 | Removed, as the Admin Client doesn't have this yet. May be added back again, or changed..                                                                                                                                                                                                                                                          |
    | `KafkaJSAlterPartitionReassignmentsError` | removed, as the RPC is not used in librdkafka.                                                                                                                                                                                                                                                                                                     |
    | `KafkaJSFetcherRebalanceError`            | Removed. This error isn't exposed directly to the user in librdkafka.                                                                                                                                                                                                                                                                              |
    | `KafkaJSConnectionError`                  | `broker` is removed from this object.                                                                                                                                                                                                                                                                                                              |
@@ -395,12 +405,18 @@ An example is made available [here](./examples/kafkajs/sr.js).
 
 ## node-rdkafka
 
-Change the import statement, from
+Migration from v2.18.0 and below should only require changing the import statement, from
+
   ```javascript
   const Kafka = require('node-rdkafka');
   ```
+
   to
+
   ```javascript
   const Kafka = require('@confluentinc/kafka-javascript');
   ```
+
 The rest of the functionality should work as usual.
+
+For releases > v2.18.0, the node-rdkafka API diverges from this library. If you encounter any issues migrating, refer to the [INTRODUCTION.md](./INTRODUCTION.md) for a guide to using this library.
