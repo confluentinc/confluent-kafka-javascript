@@ -116,7 +116,7 @@ blocks:
           commands:
             - make docs
   
-    - name: "(SR) Linux amd64: test"
+  - name: "(SR) Linux amd64: test"
     dependencies: [ ]
     task:
       agent:
