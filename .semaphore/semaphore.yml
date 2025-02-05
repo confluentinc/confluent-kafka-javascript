@@ -125,7 +125,7 @@ blocks:
       prologue:
         commands:
           - sem-version node 18.20.5
-          - node -v
+          - npx tsc -v
           - npm install
       jobs:
         - name: "Test"
