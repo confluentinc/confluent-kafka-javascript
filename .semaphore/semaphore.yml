@@ -124,10 +124,7 @@ blocks:
           type: s1-prod-ubuntu22-04-amd64-2
       prologue:
         commands:
-          - sem-version node 18.20.5
           - npm install
-          - npm install -g typescript@4.9.5
-          - npx tsc --version
       jobs:
         - name: "Test"
           commands:

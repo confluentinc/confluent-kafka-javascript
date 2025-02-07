@@ -21,7 +21,7 @@ lint:
 	$(ESLINT) $(SRC_DIR) $(TEST_DIR) $(INTEG_DIR) $(DEK_TEST_DIR)
 
 test:
-	$(JEST) $(SR_TEST_DIR) --runInBand
+	$(JEST) $(SR_TEST_DIR)
 
 integtest:
 	$(DOCKER)
