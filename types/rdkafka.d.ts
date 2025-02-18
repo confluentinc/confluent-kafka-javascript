@@ -11,7 +11,6 @@ import {
 
 export * from './config';
 export * from './errors';
-import { Kafka } from './kafkajs';
 import * as errors from './errors';
 
 export interface LibrdKafkaError {
@@ -64,7 +63,7 @@ export interface Metadata {
     brokers: BrokerMetadata[];
 }
 
-export interface WatermarkOffsets{
+export interface WatermarkOffsets {
     lowOffset: number;
     highOffset: number;
 }
@@ -393,6 +392,12 @@ export type Node = {
     rack?: string
 }
 
+export type Uuid = {
+    mostSignificantBits: bigint; // Most significant 64 bits for the UUID
+    leastSignificantBits: bigint; // Least significant 64 bits for the UUID
+    base64str: string; // Base64 encoding for the UUID
+}
+
 export type GroupDescription = {
     groupId: string
     error?: LibrdKafkaError
@@ -414,6 +419,67 @@ export type DeleteGroupsResult = {
     groupId: string
     errorCode?: number
     error?: LibrdKafkaError
+}
+
+export type ListGroupOffsets = {
+    groupId: string
+    partitions?: TopicPartition[]
+}
+
+export type GroupResults = {
+    groupId: string
+    error?: LibrdKafkaError
+    partitions: TopicPartitionOffsetAndMetadata[]
+}
+
+export type DeleteRecordsResult = {
+    topic: string
+    partition: number
+    lowWatermark: number
+    error?: LibrdKafkaError
+}
+
+export type TopicPartitionInfo = {
+    partition: number
+    leader: Node
+    isr: Node[]
+    replicas: Node[]
+}
+
+export type TopicDescription = {
+    name: string
+    topicId: Uuid
+    isInternal: boolean
+    partitions: TopicPartitionInfo[]
+    error?: LibrdKafkaError
+    authorizedOperations?: AclOperationTypes[]
+}
+
+export class OffsetSpec {
+    constructor(timestamp: number);
+    static EARLIEST: OffsetSpec;
+    static LATEST: OffsetSpec;
+    static MAX_TIMESTAMP: OffsetSpec;
+}
+
+export type TopicPartitionOffsetSpec = {
+    topic: string
+    partition: number
+    offset: OffsetSpec
+}
+
+export enum IsolationLevel {
+    READ_UNCOMMITTED = 0,
+    READ_COMMITTED = 1,
+}
+
+export interface ListOffsetsResult {
+    topic: string;
+    partition: number;
+    offset: number;
+    error?: LibrdKafkaError;
+    leaderEpoch?: number;
+    timestamp: number;
 }
 
 export interface IAdminClient {
@@ -443,6 +509,22 @@ export interface IAdminClient {
         options?: { timeout?: number },
         cb?: (err: LibrdKafkaError, result: DeleteGroupsResult[]) => any): void;
 
+    listConsumerGroupOffsets(listGroupOffsets: ListGroupOffsets[],
+        options?: { timeout?: number, requireStableOffsets?: boolean },
+        cb?: (err: LibrdKafkaError, result: GroupResults[]) => any): void;
+
+    deleteRecords(delRecords: TopicPartitionOffset[],
+        options?: { timeout?: number, operationTimeout?: number },
+        cb?: (err: LibrdKafkaError, result: DeleteRecordsResult[]) => any): void;
+
+    describeTopics(topics: string[],
+        options?: { includeAuthorizedOperations?: boolean, timeout?: number },
+        cb?: (err: LibrdKafkaError, result: TopicDescription[]) => any): void;
+
+    listOffsets(partitions: TopicPartitionOffsetSpec[],
+        options?: { timeout?: number, isolationLevel?: IsolationLevel },
+        cb?: (err: LibrdKafkaError, result: ListOffsetsResult[]) => any): void;
+
     disconnect(): void;
 }
 
@@ -452,6 +534,7 @@ export type EventHandlers = {
 
 export abstract class AdminClient {
     static create(conf: GlobalConfig, eventHandlers?: EventHandlers): IAdminClient;
+    static createFrom(existingClient: Producer | KafkaConsumer, eventHandlers?: EventHandlers): IAdminClient;
 }
 
 export type RdKafka = {

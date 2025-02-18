@@ -19,10 +19,6 @@
 #include "rdkafkacpp.h" // NOLINT
 #include "src/common.h"
 
-typedef Nan::Persistent<v8::Function,
-  Nan::CopyablePersistentTraits<v8::Function> > PersistentCopyableFunction;
-typedef std::vector<PersistentCopyableFunction> CopyableFunctionList;
-
 namespace NodeKafka {
 
 class KafkaConsumer;
@@ -43,7 +39,7 @@ class Dispatcher {
   void Deactivate();
 
  protected:
-  std::vector<v8::Persistent<v8::Function, v8::CopyablePersistentTraits<v8::Function> > > callbacks;  // NOLINT
+  std::vector<Nan::Callback*> callbacks;  // NOLINT
 
   uv_mutex_t async_lock;
 
@@ -277,6 +273,26 @@ class Partitioner : public RdKafka::PartitionerCb {
  private:
   static unsigned int djb_hash(const char*, size_t);
   static unsigned int random(const RdKafka::Topic*, int32_t);
+};
+
+class QueueNotEmptyDispatcher : public Dispatcher {
+ public:
+  QueueNotEmptyDispatcher();
+  ~QueueNotEmptyDispatcher();
+  void Flush();
+};
+
+// This callback does not extend from any class because it's a C callback
+// The only reason we have a class here is to maintain similarity with how
+// callbacks are structured in the rest of the library.
+class QueueNotEmpty {
+ public:
+  QueueNotEmpty();
+  ~QueueNotEmpty();
+  // This is static because it must be passed to C. The `this` reference will be
+  // passde within `self`.
+  static void queue_not_empty_cb(rd_kafka_t *rk, void *self);
+  QueueNotEmptyDispatcher dispatcher;
 };
 
 }  // namespace Callbacks

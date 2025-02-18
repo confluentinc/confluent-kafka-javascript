@@ -47,6 +47,7 @@ interface Dek {
 }
 
 interface DekClient {
+  config(): ClientConfig;
   registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
               kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek>;
   getKek(name: string, deleted: boolean): Promise<Kek>;
@@ -57,6 +58,7 @@ interface DekClient {
 }
 
 class DekRegistryClient implements DekClient {
+  private clientConfig: ClientConfig;
   private restService: RestService;
   private kekCache: LRUCache<string, Kek>;
   private dekCache: LRUCache<string, Dek>;
@@ -64,14 +66,16 @@ class DekRegistryClient implements DekClient {
   private dekMutex: Mutex;
 
   constructor(config: ClientConfig) {
+    this.clientConfig = config;
     const cacheOptions = {
       max: config.cacheCapacity !== undefined ? config.cacheCapacity : 1000,
-      ...(config.cacheLatestTtlSecs !== undefined && { maxAge: config.cacheLatestTtlSecs * 1000 }),
+      ...(config.cacheLatestTtlSecs !== undefined && { ttl: config.cacheLatestTtlSecs * 1000 }),
     };
 
 
     this.restService = new RestService(config.baseURLs, config.isForward, config.createAxiosDefaults,
-      config.basicAuthCredentials, config.bearerAuthCredentials);
+      config.basicAuthCredentials, config.bearerAuthCredentials,
+      config.maxRetries, config.retriesWaitMs, config.retriesMaxWaitMs);
     this.kekCache = new LRUCache<string, Kek>(cacheOptions);
     this.dekCache = new LRUCache<string, Dek>(cacheOptions);
     this.kekMutex = new Mutex();
@@ -81,7 +85,7 @@ class DekRegistryClient implements DekClient {
   static newClient(config: ClientConfig): DekClient {
     const url = config.baseURLs[0];
     if (url.startsWith("mock://")) {
-      return new MockDekRegistryClient()
+      return new MockDekRegistryClient(config)
     }
     return new DekRegistryClient(config)
   }
@@ -131,6 +135,10 @@ class DekRegistryClient implements DekClient {
       const str = keyMaterialBytes.toString('base64');
       dek.keyMaterial = str;
     }
+  }
+
+  config(): ClientConfig {
+    return this.clientConfig;
   }
 
   async registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
@@ -223,7 +231,7 @@ class DekRegistryClient implements DekClient {
       subject = encodeURIComponent(subject);
 
       const response = await this.restService.handleRequest<Dek>(
-        `/dek-registry/v1/keks/${kekName}/deks/${subject}/versions/${version}?deleted=${deleted}`,
+        `/dek-registry/v1/keks/${kekName}/deks/${subject}/versions/${version}?algorithm=${algorithm}&deleted=${deleted}`,
         'GET');
       this.dekCache.set(cacheKey, response.data);
       return response.data;

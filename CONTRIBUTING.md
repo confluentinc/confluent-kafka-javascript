@@ -220,22 +220,38 @@ Steps to update:
     node ci/librdkafka-defs-generator.js
     ```
 
-1. Run `npm install --lockfile-version 2` to build with the new version and fix any build errors that occur.
+1. Run `npm install` to build with the new version and fix any build errors that occur.
 
 1. Run unit tests: `npm run test`
+
+1. Change the librdkafka version in `semaphore.yml`
 
 1. Update the version numbers referenced in the [`README.md`](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/README.md) file to the new version.
 
 ## Releasing
 
-1. Increment the `version` in `package.json`. Change the version in `client.js` and `README.md`. Change the librdkafka version in `semaphore.yml` and in `package.json`.
+1. Increment the `version` in `package.json`. Change the version in `util.js` too.
+If it's needed to change librdkafka version, see the **Updating librdkafka version** section.
+
+1. Run `npm run prepack` to verify package version.
 
 1. Run `npm install` to update the `package-lock.json` file.
 
-1. Create a PR and merge the above changes, and tag the merged commit with the new version, e.g. `git tag vx.y.z && git push origin vx.y.z`.
-   This should be the same string as `version` in `package.json`.
+1. Create a PR and merge the above changes, and tag the merged commit with the new version. This should be the same string as `version` in `package.json`.
 
 1. The CI will run on the tag, which will create the release artifacts in Semaphore CI.
 
 1. Create a new GitHub release with the tag, and upload the release artifacts from Semaphore CI.
    The release title should be the same string as `version` in `package.json`.
+
+1. build schemaregistry project to prepare for the release:
+   `(cd schemaregistry && npm run build)`
+
+1. Clear any file that isn't ignored by `.npmignore`
+
+1. In case it's a release candidate add `--tag rc` to the following commands,
+   to avoid setting it as latest one
+
+1. Publish Kafka client, with `--dry-run` first: `npm publish --dry-run --workspace=. --otp=<otp_here>`
+
+1. Publish Schema Registry client, with `--dry-run` first: `npm publish --dry-run --workspace=schemaregistry --otp=<otp_here>`

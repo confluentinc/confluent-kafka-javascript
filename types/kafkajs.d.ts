@@ -4,8 +4,17 @@ import {
   GroupOverview,
   LibrdKafkaError,
   GroupDescriptions,
-  DeleteGroupsResult
+  DeleteGroupsResult,
+  DeleteRecordsResult,
+  Node,
+  AclOperationTypes,
+  Uuid,
+  IsolationLevel
 } from './rdkafka'
+
+import {
+  CODES
+} from './errors';
 
 // Admin API related interfaces, types etc; and Error types are common, so
 // just re-export them from here too.
@@ -14,7 +23,12 @@ export {
   GroupOverview,
   LibrdKafkaError,
   GroupDescriptions,
-  DeleteGroupsResult
+  DeleteGroupsResult,
+  DeleteRecordsResult,
+  Node,
+  AclOperationTypes,
+  Uuid,
+  IsolationLevel,
 } from './rdkafka'
 
 export interface OauthbearerProviderResponse {
@@ -91,6 +105,7 @@ type Client = {
   disconnect(): Promise<void>
   logger(): Logger
   setSaslCredentialProvider(authInfo: { username: string, password: string }): void
+  dependentAdmin(): Admin
 }
 
 export enum CompressionTypes {
@@ -155,6 +170,18 @@ export type RecordMetadata = {
   baseOffset?: string
   logAppendTime?: string
   logStartOffset?: string
+}
+
+export type PartitionMetadata = {
+  partitionErrorCode: number
+  partitionId: number
+  leader: number
+  leaderNode?: Node
+  replicas: number[]
+  replicaNodes?: Node[]
+  isr: number[]
+  isrNodes?: Node[]
+  offlineReplicas?: number[]
 }
 
 export type Transaction = Producer;
@@ -311,6 +338,20 @@ export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
 
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };
+
+export type TopicInput = string[] | { topic: string; partitions: number[] }[]
+
+export type SeekEntry = PartitionOffset
+
+export type ITopicMetadata = {
+  name: string
+  topicId?: Uuid
+  isInternal?: boolean
+  partitions: PartitionMetadata[]
+  authorizedOperations?: AclOperationTypes[]
+}
+
 export type Consumer = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
   stop(): Promise<void>
@@ -369,4 +410,128 @@ export type Admin = {
     groups: string[],
     options?: { timeout?: number, includeAuthorizedOperations?: boolean }): Promise<GroupDescriptions>
   deleteGroups(groupIds: string[], options?: { timeout?: number }): Promise<DeleteGroupsResult[]>
+  fetchOffsets(options: {
+    groupId: string,
+    topics?: TopicInput,
+    timeout?: number,
+    requireStableOffsets?: boolean }):
+    Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
+  deleteTopicRecords(options: {
+    topic: string; partitions: SeekEntry[];
+    timeout?: number; operationTimeout?: number
+  }): Promise<DeleteRecordsResult[]>
+  fetchTopicMetadata(options?: {
+    topics?: string[],
+    includeAuthorizedOperations?: boolean,
+    timeout?: number
+  }): Promise<{ topics: Array<ITopicMetadata> }>
+  fetchTopicOffsets(topic: string,
+    options?: {
+      timeout?: number,
+      isolationLevel: IsolationLevel
+    }): Promise<Array<SeekEntry & { high: string; low: string }>>
+  fetchTopicOffsetsByTimestamp(topic: string,
+    timestamp?: number,
+    options?: {
+      timeout?: number,
+      isolationLevel: IsolationLevel
+    }): Promise<Array<SeekEntry>>
+}
+
+
+export function isKafkaJSError(error: Error): boolean;
+
+export const ErrorCodes: typeof CODES.ERRORS;
+
+export class KafkaJSError extends Error {
+  readonly message: Error['message']
+  readonly name: string
+  readonly retriable: boolean
+  readonly fatal: boolean
+  readonly abortable: boolean
+  readonly code: number
+  constructor(e: Error | string, metadata?: KafkaJSErrorMetadata)
+}
+
+export class KafkaJSProtocolError extends KafkaJSError {
+  constructor(e: Error | string)
+}
+
+export class KafkaJSCreateTopicError extends KafkaJSError {
+  readonly topic: string
+  constructor(e: Error | string, topicName: string, metadata?: KafkaJSErrorMetadata)
+}
+
+export class KafkaJSDeleteGroupsError extends KafkaJSError {
+  readonly groups: DeleteGroupsResult[]
+  constructor(e: Error | string, groups?: KafkaJSDeleteGroupsErrorGroups[])
+}
+
+export class KafkaJSDeleteTopicRecordsError extends KafkaJSError {
+  readonly partitions: KafkaJSDeleteTopicRecordsErrorPartition[]
+  constructor(metadata: KafkaJSDeleteTopicRecordsErrorTopic)
+}
+
+export interface KafkaJSDeleteGroupsErrorGroups {
+  groupId: string
+  errorCode: number
+  error: KafkaJSError
+}
+
+export interface KafkaJSDeleteTopicRecordsErrorTopic {
+  topic: string
+  partitions: KafkaJSDeleteTopicRecordsErrorPartition[]
+}
+
+export interface KafkaJSDeleteTopicRecordsErrorPartition {
+  partition: number
+  offset: string
+  error: KafkaJSError
+}
+
+export class KafkaJSAggregateError extends Error {
+  readonly errors: (Error | string)[]
+  constructor(message: Error | string, errors: (Error | string)[])
+}
+
+export class KafkaJSOffsetOutOfRange extends KafkaJSProtocolError {
+  readonly topic: string
+  readonly partition: number
+  constructor(e: Error | string, metadata?: KafkaJSErrorMetadata)
+}
+
+export class KafkaJSConnectionError extends KafkaJSError {
+  constructor(e: Error | string, metadata?: KafkaJSErrorMetadata)
+}
+
+export class KafkaJSRequestTimeoutError extends KafkaJSError {
+  constructor(e: Error | string, metadata?: KafkaJSErrorMetadata)
+}
+
+export class KafkaJSPartialMessageError extends KafkaJSError {
+  constructor()
+}
+
+export class KafkaJSSASLAuthenticationError extends KafkaJSError {
+  constructor()
+}
+
+export class KafkaJSGroupCoordinatorNotFound extends KafkaJSError {
+  constructor()
+}
+
+export class KafkaJSNotImplemented extends KafkaJSError {
+  constructor()
+}
+
+export class KafkaJSTimeout extends KafkaJSError {
+  constructor()
+}
+
+export interface KafkaJSErrorMetadata {
+  retriable?: boolean
+  fatal?: boolean
+  abortable?: boolean
+  stack?: string
+  code?: number
 }
