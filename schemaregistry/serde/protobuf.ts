@@ -32,7 +32,10 @@ import {
   file_google_protobuf_field_mask,
   file_google_protobuf_source_context,
   file_google_protobuf_struct,
-  file_google_protobuf_timestamp, file_google_protobuf_type, file_google_protobuf_wrappers,
+  file_google_protobuf_timestamp,
+  file_google_protobuf_type,
+  file_google_protobuf_wrappers,
+  FileDescriptorProto,
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
 import { BufferWrapper, MAX_VARINT_LEN_64 } from "./buffer-wrapper";
@@ -100,6 +103,7 @@ export type ProtobufSerializerConfig = SerializerConfig & {
  */
 export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   registry: MutableRegistry
+  fileRegistry: FileRegistry
   schemaToDescCache: LRUCache<string, DescFile>
   descToSchemaCache: LRUCache<string, SchemaInfo>
 
@@ -113,6 +117,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   constructor(client: Client, serdeType: SerdeType, conf: ProtobufSerializerConfig, ruleRegistry?: RuleRegistry) {
     super(client, serdeType, conf, ruleRegistry)
     this.registry = conf.registry ?? createMutableRegistry()
+    this.fileRegistry = createFileRegistry()
     this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
     this.descToSchemaCache = new LRUCache<string, SchemaInfo>({ max: this.config().cacheCapacity ?? 1000 } )
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
@@ -144,8 +149,15 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     if (messageDesc == null) {
       throw new SerializationError('message descriptor not in registry')
     }
-    const fileDesc = messageDesc.file
-    const schema = await this.getSchemaInfo(fileDesc)
+
+    let schema: SchemaInfo | undefined = undefined
+    // Don't derive the schema if it is being looked up in the following ways
+    if (this.config().useSchemaId == null &&
+      !this.config().useLatestVersion &&
+      this.config().useLatestWithMetadata == null) {
+      const fileDesc = messageDesc.file
+      schema = await this.getSchemaInfo(fileDesc)
+    }
     const [id, info] = await this.getId(topic, msg, schema, 'serialized')
     const subject = this.subjectName(topic, info)
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
@@ -219,7 +231,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
         id = await this.client.getId(subject, info, normalize)
 
       }
-      version = await this.client.getVersion(subject, info, normalize)
+      version = await this.client.getVersion(subject, info, normalize, false)
     }
     return {
       id: id,
@@ -281,15 +293,41 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
+    const fileDesc = await this.toFileDesc(this.client, ctx.target)
     const typeName = msg.$typeName
-    if (typeName == null) {
-      throw new SerializationError('message type name is empty')
-    }
-    const messageDesc = this.registry.getMessage(typeName)
-    if (messageDesc == null) {
-      throw new SerializationError('message descriptor not in registry')
-    }
+    const messageDesc = this.toMessageDescFromName(fileDesc, typeName)
     return await transform(ctx, messageDesc, msg, fieldTransform)
+  }
+
+  async toFileDesc(client: Client, info: SchemaInfo): Promise<DescFile> {
+    const value = this.schemaToDescCache.get(stringify(info.schema))
+    if (value != null) {
+      return value
+    }
+    const fileDesc = await this.parseFileDesc(client, info)
+    if (fileDesc == null) {
+      throw new SerializationError('file descriptor not found')
+    }
+    this.schemaToDescCache.set(stringify(info.schema), fileDesc)
+    return fileDesc
+  }
+
+  async parseFileDesc(client: Client, info: SchemaInfo): Promise<DescFile | undefined> {
+    const deps = new Map<string, string>()
+    await this.resolveReferences(client, info, deps, 'serialized')
+    const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(info.schema, 'base64'))
+    const fileRegistry = newFileRegistry(fileDesc, deps)
+    this.fileRegistry = createFileRegistry(this.fileRegistry, fileRegistry)
+    return this.fileRegistry.getFile(fileDesc.name)
+  }
+
+  toMessageDescFromName(fd: DescFile, msgName: string): DescMessage {
+    for (let i = 0; i < fd.messages.length; i++) {
+      if (fd.messages[i].typeName === msgName) {
+        return fd.messages[i]
+      }
+    }
+    throw new SerializationError('message descriptor not found')
   }
 }
 
@@ -302,7 +340,7 @@ export type ProtobufDeserializerConfig = DeserializerConfig
  * ProtobufDeserializer is a deserializer for Protobuf messages.
  */
 export class ProtobufDeserializer extends Deserializer implements ProtobufSerde {
-  registry: FileRegistry
+  fileRegistry: FileRegistry
   schemaToDescCache: LRUCache<string, DescFile>
 
   /**
@@ -314,7 +352,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
    */
   constructor(client: Client, serdeType: SerdeType, conf: ProtobufDeserializerConfig, ruleRegistry?: RuleRegistry) {
     super(client, serdeType, conf, ruleRegistry)
-    this.registry = createFileRegistry()
+    this.fileRegistry = createFileRegistry()
     this.schemaToDescCache = new LRUCache<string, DescFile>({ max: this.config().cacheCapacity ?? 1000 } )
     this.fieldTransformer = async (ctx: RuleContext, fieldTransform: FieldTransform, msg: any) => {
       return await this.fieldTransform(ctx, fieldTransform, msg)
@@ -340,7 +378,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const info = await this.getSchema(topic, payload, 'serialized')
     const fd = await this.toFileDesc(this.client, info)
     const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(5))
-    const messageDesc = this.toMessageDesc(fd, msgIndexes)
+    const messageDesc = this.toMessageDescFromIndexes(fd, msgIndexes)
 
     const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject, 'serialized')
@@ -361,14 +399,9 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
+    const fileDesc = await this.toFileDesc(this.client, ctx.target)
     const typeName = msg.$typeName
-    if (typeName == null) {
-      throw new SerializationError('message type name is empty')
-    }
-    const messageDesc = this.registry.getMessage(typeName)
-    if (messageDesc == null) {
-      throw new SerializationError('message descriptor not in registry')
-    }
+    const messageDesc = this.toMessageDescFromName(fileDesc, typeName)
     return await transform(ctx, messageDesc, msg, fieldTransform)
   }
 
@@ -389,26 +422,18 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const deps = new Map<string, string>()
     await this.resolveReferences(client, info, deps, 'serialized')
     const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(info.schema, 'base64'))
-    const resolve = (depName: string) => {
-      if (isBuiltin(depName)) {
-        const dep = builtinDeps.get(depName)
-        if (dep == null) {
-          throw new SerializationError(`dependency ${depName} not found`)
-        }
-        return dep
-      } else {
-        const dep = deps.get(depName)
-        if (dep == null) {
-          throw new SerializationError(`dependency ${depName} not found`)
-        }
-        const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
-        fileDesc.name = depName
-        return fileDesc
+    const fileRegistry = newFileRegistry(fileDesc, deps)
+    this.fileRegistry = createFileRegistry(this.fileRegistry, fileRegistry)
+    return this.fileRegistry.getFile(fileDesc.name)
+  }
+
+  toMessageDescFromName(fd: DescFile, msgName: string): DescMessage {
+    for (let i = 0; i < fd.messages.length; i++) {
+      if (fd.messages[i].typeName === msgName) {
+        return fd.messages[i]
       }
     }
-    const fileRegistry = createFileRegistry(fileDesc, resolve)
-    this.registry = createFileRegistry(this.registry, fileRegistry)
-    return this.registry.getFile(fileDesc.name)
+    throw new SerializationError('message descriptor not found')
   }
 
   readMessageIndexes(payload: Buffer): [number, number[]] {
@@ -421,7 +446,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     return [bw.pos, msgIndexes]
   }
 
-  toMessageDesc(fd: DescFile, msgIndexes: number[]): DescMessage {
+  toMessageDescFromIndexes(fd: DescFile, msgIndexes: number[]): DescMessage {
     let index = msgIndexes[0]
     if (msgIndexes.length === 1) {
       return fd.messages[index]
@@ -436,6 +461,27 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     }
     return this.toNestedMessageDesc(parent.nestedMessages[index], msgIndexes.slice(1))
   }
+}
+
+function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
+  const resolve = (depName: string) => {
+    if (isBuiltin(depName)) {
+      const dep = builtinDeps.get(depName)
+      if (dep == null) {
+        throw new SerializationError(`dependency ${depName} not found`)
+      }
+      return dep
+    } else {
+      const dep = deps.get(depName)
+      if (dep == null) {
+        throw new SerializationError(`dependency ${depName} not found`)
+      }
+      const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
+      fileDesc.name = depName
+      return fileDesc
+    }
+  }
+  return createFileRegistry(fileDesc, resolve)
 }
 
 async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fieldTransform: FieldTransform): Promise<any> {
@@ -470,23 +516,38 @@ async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fi
 }
 
 async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage,
-                        msg: any, fieldTransform: FieldTransform) {
+                              msg: any, fieldTransform: FieldTransform) {
   try {
     ctx.enterField(
       msg,
-      desc.name + '.' + fd.name,
+      desc.typeName + '.' + fd.name,
       fd.name,
       getType(fd),
       getInlineTags(fd)
     )
-    const value = msg[fd.name]
+    let value = null;
+    if (fd.oneof != null) {
+      let oneof = msg[fd.oneof.localName]
+      if (oneof != null && oneof.case === fd.localName) {
+        value = oneof.value
+      } else {
+        // skip oneof fields that are not set
+        return
+      }
+    } else {
+      value = msg[fd.localName]
+    }
     const newValue = await transform(ctx, desc, value, fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
       if (newValue === false) {
         throw new RuleConditionError(ctx.rule)
       }
     } else {
-      msg[fd.name] = newValue
+      if (fd.oneof != null) {
+        msg[fd.oneof.localName] = { case: fd.localName, value: newValue }
+      } else {
+        msg[fd.localName] = newValue
+      }
     }
   } finally {
     ctx.leaveField()
@@ -494,11 +555,13 @@ async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage
 }
 
 function getType(fd: DescField): FieldType {
-  switch (fd.fieldKind) {
+  let kind = fd.fieldKind
+  if (fd.fieldKind === 'list') {
+    kind = fd.listKind
+  }
+  switch (kind) {
     case 'map':
       return FieldType.MAP
-    case 'list':
-      return FieldType.ARRAY
     case 'message':
       return FieldType.RECORD
     case 'enum':
@@ -522,10 +585,13 @@ function getType(fd: DescField): FieldType {
         case ScalarType.SFIXED64:
           return FieldType.LONG
         case ScalarType.FLOAT:
+          return FieldType.FLOAT
         case ScalarType.DOUBLE:
           return FieldType.DOUBLE
         case ScalarType.BOOL:
           return FieldType.BOOLEAN
+        default:
+          return FieldType.NULL
       }
     default:
       return FieldType.NULL
