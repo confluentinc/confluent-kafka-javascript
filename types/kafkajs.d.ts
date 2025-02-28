@@ -191,6 +191,9 @@ export type Producer = Client & {
   sendBatch(batch: ProducerBatch): Promise<RecordMetadata[]>
   flush(args?: { timeout?: number }): Promise<void>
 
+  on(name: 'ready', cb: () => void): void;
+  on(name: 'event.error', cb: (err: unknown) => void): void;
+
   // Transactional producer-only methods.
   transaction(): Promise<Transaction>
   commit(): Promise<void>
@@ -414,8 +417,9 @@ export type Admin = {
     groupId: string,
     topics?: TopicInput,
     timeout?: number,
-    requireStableOffsets?: boolean }):
-    Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
+    requireStableOffsets?: boolean
+  }):
+    Promise<Array<{ topic: string; partitions: FetchOffsetsPartition[] }>>
   deleteTopicRecords(options: {
     topic: string; partitions: SeekEntry[];
     timeout?: number; operationTimeout?: number
