@@ -417,9 +417,8 @@ export type Admin = {
     groupId: string,
     topics?: TopicInput,
     timeout?: number,
-    requireStableOffsets?: boolean
-  }):
-    Promise<Array<{ topic: string; partitions: FetchOffsetsPartition[] }>>
+    requireStableOffsets?: boolean }):
+    Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
   deleteTopicRecords(options: {
     topic: string; partitions: SeekEntry[];
     timeout?: number; operationTimeout?: number
