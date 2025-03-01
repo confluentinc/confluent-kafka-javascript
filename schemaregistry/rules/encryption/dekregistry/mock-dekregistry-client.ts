@@ -97,7 +97,7 @@ class MockDekRegistryClient implements DekClient {
     throw new RestError(`Dek not found: ${subject}`, 404, 40400);
   }
 
-  async getEncryptedKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
+  async getDekEncryptedKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
     if (!dek.encryptedKeyMaterial) {
       return null;
     }
@@ -117,7 +117,7 @@ class MockDekRegistryClient implements DekClient {
     return dek.encryptedKeyMaterialBytes!;
   }
 
-  async getKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
+  async getDekKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
     if (!dek.keyMaterial) {
       return null;
     }
@@ -137,7 +137,7 @@ class MockDekRegistryClient implements DekClient {
     return dek.keyMaterialBytes!;
   }
 
-  async setKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): Promise<void> {
+  async setDekKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): Promise<void> {
     if (keyMaterialBytes) {
       const str = keyMaterialBytes.toString('base64');
       dek.keyMaterial = str;

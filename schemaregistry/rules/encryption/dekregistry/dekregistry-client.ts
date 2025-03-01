@@ -54,9 +54,9 @@ interface DekClient {
   registerDek(kekName: string, subject: string, algorithm: string, version: number,
               encryptedKeyMaterial?: string): Promise<Dek>;
   getDek(kekName: string, subject: string, algorithm: string, version: number, deleted: boolean): Promise<Dek>;
-  getEncryptedKeyMaterialBytes(dek: Dek): Promise<Buffer | null>;
-  getKeyMaterialBytes(dek: Dek): Promise<Buffer | null>;
-  setKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): Promise<void>;
+  getDekEncryptedKeyMaterialBytes(dek: Dek): Promise<Buffer | null>;
+  getDekKeyMaterialBytes(dek: Dek): Promise<Buffer | null>;
+  setDekKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -194,7 +194,7 @@ class DekRegistryClient implements DekClient {
     });
   }
 
-  async getEncryptedKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
+  async getDekEncryptedKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
     if (!dek.encryptedKeyMaterial) {
       return null;
     }
@@ -218,7 +218,7 @@ class DekRegistryClient implements DekClient {
     return dek.encryptedKeyMaterialBytes!;
   }
 
-  async getKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
+  async getDekKeyMaterialBytes(dek: Dek): Promise<Buffer | null> {
     if (!dek.keyMaterial) {
       return null;
     }
@@ -242,7 +242,7 @@ class DekRegistryClient implements DekClient {
     return dek.keyMaterialBytes!;
   }
 
-  async setKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): Promise<void> {
+  async setDekKeyMaterial(dek: Dek, keyMaterialBytes: Buffer): Promise<void> {
     await this.dekMutex.runExclusive(async () => {
       if (keyMaterialBytes) {
         const str = keyMaterialBytes.toString('base64');

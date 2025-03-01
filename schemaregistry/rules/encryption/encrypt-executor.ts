@@ -406,14 +406,14 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
       }
     }
 
-    const keyMaterialBytes = await this.executor.client!.getKeyMaterialBytes(dek)
+    const keyMaterialBytes = await this.executor.client!.getDekKeyMaterialBytes(dek)
     if (keyMaterialBytes == null) {
       if (kmsClient == null) {
         kmsClient = getKmsClient(this.executor.config!, kek)
       }
-      const encryptedKeyMaterialBytes = await this.executor.client!.getEncryptedKeyMaterialBytes(dek)
+      const encryptedKeyMaterialBytes = await this.executor.client!.getDekEncryptedKeyMaterialBytes(dek)
       const rawDek = await kmsClient.decrypt(encryptedKeyMaterialBytes!)
-      await this.executor.client!.setKeyMaterial(dek, rawDek)
+      await this.executor.client!.setDekKeyMaterial(dek, rawDek)
     }
 
     return dek
@@ -480,7 +480,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
           version = -1
         }
         let dek = await this.getOrCreateDek(ctx, version)
-        let keyMaterialBytes = await this.executor.client!.getKeyMaterialBytes(dek)
+        let keyMaterialBytes = await this.executor.client!.getDekKeyMaterialBytes(dek)
         let ciphertext = await this.cryptor.encrypt(keyMaterialBytes!, plaintext)
         if (this.isDekRotated()) {
           ciphertext = this.prefixVersion(dek.version!, ciphertext)
@@ -510,7 +510,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
           ciphertext = ciphertext.subarray(5)
         }
         let dek = await this.getOrCreateDek(ctx, version)
-        let keyMaterialBytes = await this.executor.client!.getKeyMaterialBytes(dek)
+        let keyMaterialBytes = await this.executor.client!.getDekKeyMaterialBytes(dek)
         let plaintext = await this.cryptor.decrypt(keyMaterialBytes!, ciphertext)
         return this.toObject(fieldCtx.type, plaintext)
       }
