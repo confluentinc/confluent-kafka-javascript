@@ -427,7 +427,7 @@ export class FieldEncryptionExecutorTransform implements FieldTransform {
       dek = await this.retrieveDekFromRegistry(dekId)
     }
     if (dek == null) {
-      throw new RuleError(`no dek found for ${this.kekName} during produce`)
+      throw new RuleError(`no dek found for ${dekId.kekName} during produce`)
     }
 
     return dek
