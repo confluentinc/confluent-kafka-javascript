@@ -36,10 +36,10 @@ namespace NodeKafka {
  * @sa NodeKafka::Client
  */
 
-class KafkaConsumer : public Connection {
+class KafkaConsumer : public Connection<KafkaConsumer> {
   friend class Producer;
  public:
-  static void Init(Napi::Object);
+  static void Init(Napi::Env env, Napi::Object);
   static Napi::Object NewInstance(Napi::Value);
 
   Baton Connect();
@@ -115,32 +115,32 @@ class KafkaConsumer : public Connection {
   RdKafka::KafkaConsumer *m_consumer = nullptr;
 
   // Node methods
-  static Napi::Value NodeConnect(const Napi::CallbackInfo& info);
-  static Napi::Value NodeSubscribe(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
-  static Napi::Value NodeAssign(const Napi::CallbackInfo& info);
-  static Napi::Value NodeUnassign(const Napi::CallbackInfo& info);
-  static Napi::Value NodeIncrementalAssign(const Napi::CallbackInfo& info);
-  static Napi::Value NodeIncrementalUnassign(const Napi::CallbackInfo& info);
-  static Napi::Value NodeAssignments(const Napi::CallbackInfo& info);
-  static Napi::Value NodeAssignmentLost(const Napi::CallbackInfo& info);
-  static Napi::Value NodeRebalanceProtocol(const Napi::CallbackInfo& info);
-  static Napi::Value NodeUnsubscribe(const Napi::CallbackInfo& info);
-  static Napi::Value NodeCommit(const Napi::CallbackInfo& info);
-  static Napi::Value NodeCommitSync(const Napi::CallbackInfo& info);
-  static Napi::Value NodeCommitCb(const Napi::CallbackInfo& info);
-  static Napi::Value NodeOffsetsStore(const Napi::CallbackInfo& info);
-  static Napi::Value NodeOffsetsStoreSingle(const Napi::CallbackInfo& info);
-  static Napi::Value NodeCommitted(const Napi::CallbackInfo& info);
-  static Napi::Value NodePosition(const Napi::CallbackInfo& info);
-  static Napi::Value NodeSubscription(const Napi::CallbackInfo& info);
-  static Napi::Value NodeSeek(const Napi::CallbackInfo& info);
-  static Napi::Value NodeGetWatermarkOffsets(const Napi::CallbackInfo& info);
-  static Napi::Value NodeConsumeLoop(const Napi::CallbackInfo& info);
-  static Napi::Value NodeConsume(const Napi::CallbackInfo& info);
+  Napi::Value NodeConnect(const Napi::CallbackInfo& info);
+  Napi::Value NodeSubscribe(const Napi::CallbackInfo& info);
+  Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
+  Napi::Value NodeAssign(const Napi::CallbackInfo& info);
+  Napi::Value NodeUnassign(const Napi::CallbackInfo& info);
+  Napi::Value NodeIncrementalAssign(const Napi::CallbackInfo& info);
+  Napi::Value NodeIncrementalUnassign(const Napi::CallbackInfo& info);
+  Napi::Value NodeAssignments(const Napi::CallbackInfo& info);
+  Napi::Value NodeAssignmentLost(const Napi::CallbackInfo& info);
+  Napi::Value NodeRebalanceProtocol(const Napi::CallbackInfo& info);
+  Napi::Value NodeUnsubscribe(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommit(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommitSync(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommitCb(const Napi::CallbackInfo& info);
+  Napi::Value NodeOffsetsStore(const Napi::CallbackInfo& info);
+  Napi::Value NodeOffsetsStoreSingle(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommitted(const Napi::CallbackInfo& info);
+  Napi::Value NodePosition(const Napi::CallbackInfo& info);
+  Napi::Value NodeSubscription(const Napi::CallbackInfo& info);
+  Napi::Value NodeSeek(const Napi::CallbackInfo& info);
+  Napi::Value NodeGetWatermarkOffsets(const Napi::CallbackInfo& info);
+  Napi::Value NodeConsumeLoop(const Napi::CallbackInfo& info);
+  Napi::Value NodeConsume(const Napi::CallbackInfo& info);
 
-  static Napi::Value NodePause(const Napi::CallbackInfo& info);
-  static Napi::Value NodeResume(const Napi::CallbackInfo& info);
+  Napi::Value NodePause(const Napi::CallbackInfo& info);
+  Napi::Value NodeResume(const Napi::CallbackInfo& info);
 };
 
 }  // namespace NodeKafka

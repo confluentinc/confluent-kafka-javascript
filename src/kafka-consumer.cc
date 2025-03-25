@@ -15,8 +15,6 @@
 #include "src/kafka-consumer.h"
 #include "src/workers.h"
 
-using Napi::FunctionCallbackInfo;
-
 namespace NodeKafka {
 
 /**
@@ -524,71 +522,74 @@ std::string KafkaConsumer::RebalanceProtocol() {
 
 Napi::FunctionReference KafkaConsumer::constructor;
 
-void KafkaConsumer::Init(Napi::Object exports) {
+void KafkaConsumer::Init(Napi::Env env, Napi::Object exports) {
   Napi::HandleScope scope(env);
 
-  Napi::FunctionReference tpl = Napi::Function::New(env, New);
-  tpl->SetClassName(Napi::String::New(env, "KafkaConsumer"));
+  Napi::Function KafkaConsumer = DefineClass(env, "KafkaConsumer", {
+      /*
+       * Lifecycle events inherited from NodeKafka::Connection
+       *
+       * @sa NodeKafka::Connection
+       */
 
-
-  /*
-   * Lifecycle events inherited from NodeKafka::Connection
-   *
-   * @sa NodeKafka::Connection
-   */
-
-  InstanceMethod("configureCallbacks", &NodeConfigureCallbacks),
-
+      InstanceMethod("configureCallbacks", &KafkaConsumer::NodeConfigureCallbacks),
   /*
    * @brief Methods to do with establishing state
    */
 
-  InstanceMethod("connect", &NodeConnect),
-  InstanceMethod("disconnect", &NodeDisconnect),
-  InstanceMethod("getMetadata", &NodeGetMetadata),
-  InstanceMethod("queryWatermarkOffsets", &NodeQueryWatermarkOffsets),  // NOLINT
-  InstanceMethod("offsetsForTimes", &NodeOffsetsForTimes),
-  InstanceMethod("getWatermarkOffsets", &NodeGetWatermarkOffsets),
-  InstanceMethod("setSaslCredentials", &NodeSetSaslCredentials),
-  InstanceMethod("setOAuthBearerToken", &NodeSetOAuthBearerToken),
-  Napi::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
-                          NodeSetOAuthBearerTokenFailure);
+      InstanceMethod("connect", &KafkaConsumer::NodeConnect),
+      InstanceMethod("disconnect", &KafkaConsumer::NodeDisconnect),
+      InstanceMethod("getMetadata", &KafkaConsumer::NodeGetMetadata),
+      InstanceMethod("queryWatermarkOffsets", &KafkaConsumer::NodeQueryWatermarkOffsets),  // NOLINT
+      InstanceMethod("offsetsForTimes", &KafkaConsumer::NodeOffsetsForTimes),
+      InstanceMethod("getWatermarkOffsets", &KafkaConsumer::NodeGetWatermarkOffsets),
+      InstanceMethod("setSaslCredentials", &KafkaConsumer::NodeSetSaslCredentials),
+      InstanceMethod("setOAuthBearerToken", &KafkaConsumer::NodeSetOAuthBearerToken),
+      StaticMethod("setOAuthBearerTokenFailure", &KafkaConsumer::NodeSetOAuthBearerTokenFailure),
 
-  /*
-   * @brief Methods exposed to do with message retrieval
-   */
-  InstanceMethod("subscription", &NodeSubscription),
-  InstanceMethod("subscribe", &NodeSubscribe),
-  InstanceMethod("unsubscribe", &NodeUnsubscribe),
-  InstanceMethod("consumeLoop", &NodeConsumeLoop),
-  InstanceMethod("consume", &NodeConsume),
-  InstanceMethod("seek", &NodeSeek),
+      /*
+       * @brief Methods exposed to do with message retrieval
+       */
+      InstanceMethod("subscription", &KafkaConsumer::NodeSubscription),
+      InstanceMethod("subscribe", &KafkaConsumer::NodeSubscribe),
+      InstanceMethod("unsubscribe", &KafkaConsumer::NodeUnsubscribe),
+      InstanceMethod("consumeLoop", &KafkaConsumer::NodeConsumeLoop),
+      InstanceMethod("consume", &KafkaConsumer::NodeConsume),
+      InstanceMethod("seek", &KafkaConsumer::NodeSeek),
 
-  /**
-   * @brief Pausing and resuming
-   */
-  InstanceMethod("pause", &NodePause),
-  InstanceMethod("resume", &NodeResume),
 
+      /**
+       * @brief Pausing and resuming
+       */
+      InstanceMethod("pause", &KafkaConsumer::NodePause),
+      InstanceMethod("resume", &KafkaConsumer::NodeResume),
+
+  
   /*
    * @brief Methods to do with partition assignment / rebalancing
    */
 
-  InstanceMethod("committed", &NodeCommitted),
-  InstanceMethod("position", &NodePosition),
-  InstanceMethod("assign", &NodeAssign),
-  InstanceMethod("unassign", &NodeUnassign),
-  InstanceMethod("incrementalAssign", &NodeIncrementalAssign),
-  InstanceMethod("incrementalUnassign", &NodeIncrementalUnassign),
-  InstanceMethod("assignments", &NodeAssignments),
-  InstanceMethod("assignmentLost", &NodeAssignmentLost),
-  InstanceMethod("rebalanceProtocol", &NodeRebalanceProtocol),
+  InstanceMethod("committed", &KafkaConsumer::NodeCommitted),
+  InstanceMethod("position", &KafkaConsumer::NodePosition),
+  InstanceMethod("assign", &KafkaConsumer::NodeAssign),
+  InstanceMethod("unassign", &KafkaConsumer::NodeUnassign),
+  InstanceMethod("incrementalAssign", &KafkaConsumer::NodeIncrementalAssign),
+  InstanceMethod("incrementalUnassign", &KafkaConsumer::NodeIncrementalUnassign),
+  InstanceMethod("assignments", &KafkaConsumer::NodeAssignments),
+  InstanceMethod("assignmentLost", &KafkaConsumer::NodeAssignmentLost),
+  InstanceMethod("rebalanceProtocol", &KafkaConsumer::NodeRebalanceProtocol),
 
-  InstanceMethod("commit", &NodeCommit),
-  InstanceMethod("commitSync", &NodeCommitSync),
-  InstanceMethod("commitCb", &NodeCommitCb),
-  InstanceMethod("offsetsStore", &NodeOffsetsStore),
-  InstanceMethod("offsetsStoreSingle", &NodeOffsetsStoreSingle),
+  InstanceMethod("commit", &KafkaConsumer::NodeCommit),
+  InstanceMethod("commitSync", &KafkaConsumer::NodeCommitSync),
+  InstanceMethod("commitCb", &KafkaConsumer::NodeCommitCb),
+  InstanceMethod("offsetsStore", &KafkaConsumer::NodeOffsetsStore),
+  InstanceMethod("offsetsStoreSingle", &KafkaConsumer::NodeOffsetsStoreSingle),
+    });
+
+
+  // Napi::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
+  //                         NodeSetOAuthBearerTokenFailure);
+
 
   constructor.Reset((tpl->GetFunction(Napi::GetCurrentContext()))
     );

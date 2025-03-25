@@ -17,6 +17,7 @@
 #include "rdkafkacpp.h" // NOLINT
 
 #include "src/config.h"
+#include "src/connection.h"
 
 namespace NodeKafka {
 
@@ -25,7 +26,7 @@ class Topic : public Napi::ObjectWrap<Topic> {
   static void Init(Napi::Object);
   static Napi::Object NewInstance(Napi::Value arg);
 
-  Baton toRDKafkaTopic(Connection *handle);
+  template <class T> Baton toRDKafkaTopic(Connection<T> *handle);
 
  protected:
   static Napi::FunctionReference constructor;

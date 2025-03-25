@@ -49,7 +49,7 @@ class ProducerMessage {
   bool m_is_empty;
 };
 
-class Producer : public Connection {
+class Producer : public Connection<Producer> {
  public:
   static void Init(Napi::Object);
   static Napi::Object NewInstance(Napi::Value);
