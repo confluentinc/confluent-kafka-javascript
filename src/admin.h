@@ -37,7 +37,7 @@ namespace NodeKafka {
  * @sa NodeKafka::Client
  */
 
-class AdminClient : public Connection {
+class AdminClient : public Connection<AdminClient> {
  public:
   static void Init(Napi::Object);
   static Napi::Object NewInstance(Napi::Value);

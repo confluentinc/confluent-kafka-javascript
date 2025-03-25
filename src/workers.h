@@ -30,24 +30,22 @@ namespace Workers {
 class ErrorAwareWorker : public Napi::AsyncWorker {
  public:
   explicit ErrorAwareWorker(Napi::FunctionReference* callback_) :
-    Napi::AsyncWorker(callback_),
+    Napi::AsyncWorker(callback_->Value()),
     m_baton(RdKafka::ERR_NO_ERROR) {}
   virtual ~ErrorAwareWorker() {}
 
   virtual void Execute() = 0;
   virtual void OnOK() = 0;
-  void OnError() {
+  void OnError(const Napi::Error &e) {
+    Napi::Env env = e.Env();
     Napi::HandleScope scope(env);
 
     // Construct error and add code to it.
-    Napi::Value error = Napi::Error::New(env, ErrorMessage());
-    (error.As<Napi::Object>()).Set(Napi::String::New(env, "code"),
-      Napi::New(env, GetErrorCode()));
+    Napi::Error error = Napi::Error::New(env, e.Message());
+    (error.Value().As<Napi::Object>()).Set(Napi::String::New(env, "code"),
+				   Napi::Number::New(env, GetErrorCode()));
 
-    const unsigned int argc = 1;
-    Napi::Value argv[argc] = { error };
-
-    callback->Call(argc, argv);
+    Napi::AsyncWorker::OnError(error);
   }
 
  protected:
@@ -60,7 +58,7 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
   }
   void SetErrorBaton(const NodeKafka::Baton & baton) {
     m_baton = baton;
-    SetErrorMessage(m_baton.errstr().c_str());
+    SetError(m_baton.errstr().c_str());
   }
 
   int GetErrorCode() {
