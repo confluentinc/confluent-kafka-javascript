@@ -533,10 +533,10 @@ void KafkaConsumer::Init(Napi::Env env, Napi::Object exports) {
        */
 
       InstanceMethod("configureCallbacks", &KafkaConsumer::NodeConfigureCallbacks),
-  /*
-   * @brief Methods to do with establishing state
-   */
 
+      /*
+       * @brief Methods to do with establishing state
+       */
       InstanceMethod("connect", &KafkaConsumer::NodeConnect),
       InstanceMethod("disconnect", &KafkaConsumer::NodeDisconnect),
       InstanceMethod("getMetadata", &KafkaConsumer::NodeGetMetadata),
@@ -565,30 +565,27 @@ void KafkaConsumer::Init(Napi::Env env, Napi::Object exports) {
       InstanceMethod("resume", &KafkaConsumer::NodeResume),
 
   
-  /*
-   * @brief Methods to do with partition assignment / rebalancing
-   */
+      /*
+       * @brief Methods to do with partition assignment / rebalancing
+       */
 
-  InstanceMethod("committed", &KafkaConsumer::NodeCommitted),
-  InstanceMethod("position", &KafkaConsumer::NodePosition),
-  InstanceMethod("assign", &KafkaConsumer::NodeAssign),
-  InstanceMethod("unassign", &KafkaConsumer::NodeUnassign),
-  InstanceMethod("incrementalAssign", &KafkaConsumer::NodeIncrementalAssign),
-  InstanceMethod("incrementalUnassign", &KafkaConsumer::NodeIncrementalUnassign),
-  InstanceMethod("assignments", &KafkaConsumer::NodeAssignments),
-  InstanceMethod("assignmentLost", &KafkaConsumer::NodeAssignmentLost),
-  InstanceMethod("rebalanceProtocol", &KafkaConsumer::NodeRebalanceProtocol),
+      InstanceMethod("committed", &KafkaConsumer::NodeCommitted),
+      InstanceMethod("position", &KafkaConsumer::NodePosition),
+      InstanceMethod("assign", &KafkaConsumer::NodeAssign),
+      InstanceMethod("unassign", &KafkaConsumer::NodeUnassign),
+      InstanceMethod("incrementalAssign", &KafkaConsumer::NodeIncrementalAssign),
+      InstanceMethod("incrementalUnassign", &KafkaConsumer::NodeIncrementalUnassign),
+      InstanceMethod("assignments", &KafkaConsumer::NodeAssignments),
+      InstanceMethod("assignmentLost", &KafkaConsumer::NodeAssignmentLost),
+      InstanceMethod("rebalanceProtocol", &KafkaConsumer::NodeRebalanceProtocol),
 
-  InstanceMethod("commit", &KafkaConsumer::NodeCommit),
-  InstanceMethod("commitSync", &KafkaConsumer::NodeCommitSync),
-  InstanceMethod("commitCb", &KafkaConsumer::NodeCommitCb),
-  InstanceMethod("offsetsStore", &KafkaConsumer::NodeOffsetsStore),
-  InstanceMethod("offsetsStoreSingle", &KafkaConsumer::NodeOffsetsStoreSingle),
+      InstanceMethod("commit", &KafkaConsumer::NodeCommit),
+      InstanceMethod("commitSync", &KafkaConsumer::NodeCommitSync),
+      InstanceMethod("commitCb", &KafkaConsumer::NodeCommitCb),
+      InstanceMethod("offsetsStore", &KafkaConsumer::NodeOffsetsStore),
+      InstanceMethod("offsetsStoreSingle", &KafkaConsumer::NodeOffsetsStoreSingle),
     });
 
-
-  // Napi::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
-  //                         NodeSetOAuthBearerTokenFailure);
 
 
   constructor.Reset((tpl->GetFunction(Napi::GetCurrentContext()))

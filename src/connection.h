@@ -697,7 +697,7 @@ protected:
     return env.Null();
   }
 
-  Napi::Value NodeSetOAuthBearerTokenFailure(const Napi::CallbackInfo &info) {
+  static Napi::Value NodeSetOAuthBearerTokenFailure(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!info[0].IsString()) {
       Napi::Error::New(env, "1st parameter must be an error string").ThrowAsJavaScriptException();
