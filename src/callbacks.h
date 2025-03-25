@@ -45,7 +45,7 @@ class Dispatcher {
   uv_mutex_t async_lock;
 
  private:
-  inline static NAUV_WORK_CB(AsyncMessage_) {
+  inline static void func(uv_async_t *async) {
      Dispatcher *dispatcher =
             static_cast<Dispatcher*>(async->data);
      dispatcher->Flush();
@@ -224,8 +224,8 @@ class Rebalance : public RdKafka::RebalanceCb {
     std::vector<RdKafka::TopicPartition*> &);
 
   RebalanceDispatcher dispatcher;
- private:
-  v8::Persistent<v8::Function> m_cb;
+ // private:
+ //  v8::Persistent<v8::Function> m_cb;
 };
 
 class OffsetCommitDispatcher : public Dispatcher {
@@ -243,8 +243,8 @@ class OffsetCommit : public RdKafka::OffsetCommitCb {
   void offset_commit_cb(RdKafka::ErrorCode, std::vector<RdKafka::TopicPartition*> &);  // NOLINT
 
   OffsetCommitDispatcher dispatcher;
- private:
-  v8::Persistent<v8::Function> m_cb;
+ // private:
+ //  v8::Persistent<v8::Function> m_cb;
 };
 
 class OAuthBearerTokenRefreshDispatcher : public Dispatcher {
