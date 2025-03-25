@@ -14,36 +14,36 @@
 
 namespace NodeKafka {
 
-v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &err,
+Napi::Object RdKafkaError(const RdKafka::ErrorCode &err,
                                    const std::string &errstr) {
   int code = static_cast<int>(err);
 
-  v8::Local<v8::Object> ret = Nan::New<v8::Object>();
+  Napi::Object ret = Napi::Object::New(env);
 
-  Nan::Set(ret, Nan::New("message").ToLocalChecked(),
-    Nan::New<v8::String>(errstr).ToLocalChecked());
-  Nan::Set(ret, Nan::New("code").ToLocalChecked(),
-    Nan::New<v8::Number>(code));
+  (ret).Set(Napi::String::New(env, "message"),
+    Napi::String::New(env, errstr));
+  (ret).Set(Napi::String::New(env, "code"),
+    Napi::Number::New(env, code));
 
   return ret;
 }
 
-v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &err) {
+Napi::Object RdKafkaError(const RdKafka::ErrorCode &err) {
   std::string errstr = RdKafka::err2str(err);
   return RdKafkaError(err, errstr);
 }
 
-v8::Local<v8::Object> RdKafkaError(
+Napi::Object RdKafkaError(
   const RdKafka::ErrorCode &err, std::string errstr,
   bool isFatal, bool isRetriable, bool isTxnRequiresAbort) {
-  v8::Local<v8::Object> ret = RdKafkaError(err, errstr);
+  Napi::Object ret = RdKafkaError(err, errstr);
 
-  Nan::Set(ret, Nan::New("isFatal").ToLocalChecked(),
-    Nan::New<v8::Boolean>(isFatal));
-  Nan::Set(ret, Nan::New("isRetriable").ToLocalChecked(),
-    Nan::New<v8::Boolean>(isRetriable));
-  Nan::Set(ret, Nan::New("isTxnRequiresAbort").ToLocalChecked(),
-    Nan::New<v8::Boolean>(isTxnRequiresAbort));
+  (ret).Set(Napi::String::New(env, "isFatal"),
+    Napi::Boolean::New(env, isFatal));
+  (ret).Set(Napi::String::New(env, "isRetriable"),
+    Napi::Boolean::New(env, isRetriable));
+  (ret).Set(Napi::String::New(env, "isTxnRequiresAbort"),
+    Napi::Boolean::New(env, isTxnRequiresAbort));
 
   return ret;
 }
@@ -92,7 +92,7 @@ Baton Baton::BatonFromErrorAndDestroy(RdKafka::Error *error) {
   return Baton(err, errstr);
 }
 
-v8::Local<v8::Object> Baton::ToObject() {
+Napi::Object Baton::ToObject() {
   if (m_errstr.empty()) {
     return RdKafkaError(m_err);
   } else {
@@ -100,7 +100,7 @@ v8::Local<v8::Object> Baton::ToObject() {
   }
 }
 
-v8::Local<v8::Object> Baton::ToTxnObject() {
+Napi::Object Baton::ToTxnObject() {
   return RdKafkaError(m_err, m_errstr, m_isFatal, m_isRetriable, m_isTxnRequiresAbort); // NOLINT
 }
 

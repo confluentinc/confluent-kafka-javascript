@@ -36,7 +36,7 @@ namespace Handle {
  * @see RdKafka::KafkaConsumer::Committed
  */
 
-OffsetsForTimes::OffsetsForTimes(Nan::Callback *callback,
+OffsetsForTimes::OffsetsForTimes(Napi::FunctionReference *callback,
                                  Connection* handle,
                                  std::vector<RdKafka::TopicPartition*> & t,
                                  const int & timeout_ms) :
@@ -57,30 +57,30 @@ void OffsetsForTimes::Execute() {
   }
 }
 
-void OffsetsForTimes::HandleOKCallback() {
-  Nan::HandleScope scope;
+void OffsetsForTimes::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::TopicPartition::ToV8Array(m_topic_partitions);
 
   callback->Call(argc, argv);
 }
 
-void OffsetsForTimes::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void OffsetsForTimes::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
 }  // namespace Handle
 
 ConnectionMetadata::ConnectionMetadata(
-  Nan::Callback *callback, Connection* connection,
+  Napi::FunctionReference *callback, Connection* connection,
   std::string topic, int timeout_ms, bool all_topics) :
   ErrorAwareWorker(callback),
   m_connection(connection),
@@ -104,13 +104,13 @@ void ConnectionMetadata::Execute() {
   }
 }
 
-void ConnectionMetadata::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ConnectionMetadata::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
 
   // This is a big one!
-  v8::Local<v8::Value> argv[argc] = { Nan::Null(),
+  Napi::Value argv[argc] = { env.Null(),
     Conversion::Metadata::ToV8Object(m_metadata)};
 
   callback->Call(argc, argv);
@@ -118,11 +118,11 @@ void ConnectionMetadata::HandleOKCallback() {
   delete m_metadata;
 }
 
-void ConnectionMetadata::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ConnectionMetadata::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -130,14 +130,14 @@ void ConnectionMetadata::HandleErrorCallback() {
 /**
  * @brief Client query watermark offsets worker
  *
- * Easy Nan::AsyncWorker for getting watermark offsets from a broker
+ * Easy Napi::AsyncWorker for getting watermark offsets from a broker
  *
  * @sa RdKafka::Handle::query_watermark_offsets
  * @sa NodeKafka::Connection::QueryWatermarkOffsets
  */
 
 ConnectionQueryWatermarkOffsets::ConnectionQueryWatermarkOffsets(
-  Nan::Callback *callback, Connection* connection,
+  Napi::FunctionReference *callback, Connection* connection,
   std::string topic, int32_t partition, int timeout_ms) :
   ErrorAwareWorker(callback),
   m_connection(connection),
@@ -157,28 +157,28 @@ void ConnectionQueryWatermarkOffsets::Execute() {
   }
 }
 
-void ConnectionQueryWatermarkOffsets::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ConnectionQueryWatermarkOffsets::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
 
-  v8::Local<v8::Object> offsetsObj = Nan::New<v8::Object>();
-  Nan::Set(offsetsObj, Nan::New<v8::String>("lowOffset").ToLocalChecked(),
-  Nan::New<v8::Number>(m_low_offset));
-  Nan::Set(offsetsObj, Nan::New<v8::String>("highOffset").ToLocalChecked(),
-  Nan::New<v8::Number>(m_high_offset));
+  Napi::Object offsetsObj = Napi::Object::New(env);
+  (offsetsObj).Set(Napi::String::New(env, "lowOffset"),
+  Napi::Number::New(env, m_low_offset));
+  (offsetsObj).Set(Napi::String::New(env, "highOffset"),
+  Napi::Number::New(env, m_high_offset));
 
   // This is a big one!
-  v8::Local<v8::Value> argv[argc] = { Nan::Null(), offsetsObj};
+  Napi::Value argv[argc] = { env.Null(), offsetsObj};
 
   callback->Call(argc, argv);
 }
 
-void ConnectionQueryWatermarkOffsets::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ConnectionQueryWatermarkOffsets::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -186,13 +186,13 @@ void ConnectionQueryWatermarkOffsets::HandleErrorCallback() {
 /**
  * @brief Producer connect worker.
  *
- * Easy Nan::AsyncWorker for setting up client connections
+ * Easy Napi::AsyncWorker for setting up client connections
  *
  * @sa RdKafka::Producer::connect
  * @sa NodeKafka::Producer::Connect
  */
 
-ProducerConnect::ProducerConnect(Nan::Callback *callback, Producer* producer):
+ProducerConnect::ProducerConnect(Napi::FunctionReference *callback, Producer* producer):
   ErrorAwareWorker(callback),
   producer(producer) {}
 
@@ -206,27 +206,27 @@ void ProducerConnect::Execute() {
   }
 }
 
-void ProducerConnect::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerConnect::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
 
-  v8::Local<v8::Object> obj = Nan::New<v8::Object>();
-  Nan::Set(obj, Nan::New("name").ToLocalChecked(),
-    Nan::New(producer->Name()).ToLocalChecked());
+  Napi::Object obj = Napi::Object::New(env);
+  (obj).Set(Napi::String::New(env, "name"),
+    Napi::New(env, producer->Name()));
 
-  v8::Local<v8::Value> argv[argc] = { Nan::Null(), obj};
+  Napi::Value argv[argc] = { env.Null(), obj};
 
   callback->Call(argc, argv);
 }
 
-void ProducerConnect::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ProducerConnect::OnError() {
+  Napi::HandleScope scope(env);
 
   producer->DeactivateDispatchers();
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -234,10 +234,10 @@ void ProducerConnect::HandleErrorCallback() {
 /**
  * @brief Producer disconnect worker
  *
- * Easy Nan::AsyncWorker for disconnecting from clients
+ * Easy Napi::AsyncWorker for disconnecting from clients
  */
 
-ProducerDisconnect::ProducerDisconnect(Nan::Callback *callback,
+ProducerDisconnect::ProducerDisconnect(Napi::FunctionReference *callback,
   Producer* producer):
   ErrorAwareWorker(callback),
   producer(producer) {}
@@ -248,11 +248,11 @@ void ProducerDisconnect::Execute() {
   producer->Disconnect();
 }
 
-void ProducerDisconnect::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerDisconnect::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc] = { Nan::Null(), Nan::True()};
+  Napi::Value argv[argc] = { env.Null(), env.True()};
 
   // Deactivate the dispatchers
   producer->DeactivateDispatchers();
@@ -260,7 +260,7 @@ void ProducerDisconnect::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void ProducerDisconnect::HandleErrorCallback() {
+void ProducerDisconnect::OnError() {
   // This should never run
   assert(0);
 }
@@ -268,10 +268,10 @@ void ProducerDisconnect::HandleErrorCallback() {
 /**
  * @brief Producer flush worker
  *
- * Easy Nan::AsyncWorker for flushing a producer.
+ * Easy Napi::AsyncWorker for flushing a producer.
  */
 
-ProducerFlush::ProducerFlush(Nan::Callback *callback,
+ProducerFlush::ProducerFlush(Napi::FunctionReference *callback,
   Producer* producer, int timeout_ms):
   ErrorAwareWorker(callback),
   producer(producer),
@@ -291,11 +291,11 @@ void ProducerFlush::Execute() {
   }
 }
 
-void ProducerFlush::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerFlush::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { Nan::Null() };
+  Napi::Value argv[argc] = { env.Null() };
 
   callback->Call(argc, argv);
 }
@@ -303,13 +303,13 @@ void ProducerFlush::HandleOKCallback() {
 /**
  * @brief Producer init transactions worker.
  *
- * Easy Nan::AsyncWorker for initiating transactions
+ * Easy Napi::AsyncWorker for initiating transactions
  *
  * @sa RdKafka::Producer::init_transactions
  * @sa NodeKafka::Producer::InitTransactions
  */
 
-ProducerInitTransactions::ProducerInitTransactions(Nan::Callback *callback,
+ProducerInitTransactions::ProducerInitTransactions(Napi::FunctionReference *callback,
   Producer* producer, const int & timeout_ms):
   ErrorAwareWorker(callback),
   producer(producer),
@@ -325,11 +325,11 @@ void ProducerInitTransactions::Execute() {
   }
 }
 
-void ProducerInitTransactions::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerInitTransactions::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { Nan::Null() };
+  Napi::Value argv[argc] = { env.Null() };
 
   // Activate the dispatchers
   producer->ActivateDispatchers();
@@ -337,11 +337,11 @@ void ProducerInitTransactions::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void ProducerInitTransactions::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ProducerInitTransactions::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { m_baton.ToTxnObject() };
+  Napi::Value argv[argc] = { m_baton.ToTxnObject() };
 
   callback->Call(argc, argv);
 }
@@ -349,13 +349,13 @@ void ProducerInitTransactions::HandleErrorCallback() {
 /**
  * @brief Producer begin transaction worker.
  *
- * Easy Nan::AsyncWorker for begin transaction
+ * Easy Napi::AsyncWorker for begin transaction
  *
  * @sa RdKafka::Producer::begin_transaction
  * @sa NodeKafka::Producer::BeginTransaction
  */
 
-ProducerBeginTransaction::ProducerBeginTransaction(Nan::Callback* callback,
+ProducerBeginTransaction::ProducerBeginTransaction(Napi::FunctionReference* callback,
                                                    Producer* producer)
     : ErrorAwareWorker(callback), producer(producer) {}
 
@@ -369,12 +369,12 @@ void ProducerBeginTransaction::Execute() {
   }
 }
 
-void ProducerBeginTransaction::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerBeginTransaction::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
 
-  v8::Local<v8::Value> argv[argc] = { Nan::Null() };
+  Napi::Value argv[argc] = { env.Null() };
 
   // Activate the dispatchers
   producer->ActivateDispatchers();
@@ -382,11 +382,11 @@ void ProducerBeginTransaction::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void ProducerBeginTransaction::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ProducerBeginTransaction::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -394,13 +394,13 @@ void ProducerBeginTransaction::HandleErrorCallback() {
 /**
  * @brief Producer commit transaction worker.
  *
- * Easy Nan::AsyncWorker for committing transaction
+ * Easy Napi::AsyncWorker for committing transaction
  *
  * @sa RdKafka::Producer::commit_transaction
  * @sa NodeKafka::Producer::CommitTransaction
  */
 
-ProducerCommitTransaction::ProducerCommitTransaction(Nan::Callback *callback,
+ProducerCommitTransaction::ProducerCommitTransaction(Napi::FunctionReference *callback,
   Producer* producer, const int & timeout_ms):
   ErrorAwareWorker(callback),
   producer(producer),
@@ -416,11 +416,11 @@ void ProducerCommitTransaction::Execute() {
   }
 }
 
-void ProducerCommitTransaction::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerCommitTransaction::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { Nan::Null() };
+  Napi::Value argv[argc] = { env.Null() };
 
   // Activate the dispatchers
   producer->ActivateDispatchers();
@@ -428,11 +428,11 @@ void ProducerCommitTransaction::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void ProducerCommitTransaction::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ProducerCommitTransaction::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { m_baton.ToTxnObject() };
+  Napi::Value argv[argc] = { m_baton.ToTxnObject() };
 
   callback->Call(argc, argv);
 }
@@ -440,13 +440,13 @@ void ProducerCommitTransaction::HandleErrorCallback() {
 /**
  * @brief Producer abort transaction worker.
  *
- * Easy Nan::AsyncWorker for aborting transaction
+ * Easy Napi::AsyncWorker for aborting transaction
  *
  * @sa RdKafka::Producer::abort_transaction
  * @sa NodeKafka::Producer::AbortTransaction
  */
 
-ProducerAbortTransaction::ProducerAbortTransaction(Nan::Callback *callback,
+ProducerAbortTransaction::ProducerAbortTransaction(Napi::FunctionReference *callback,
   Producer* producer, const int & timeout_ms):
   ErrorAwareWorker(callback),
   producer(producer),
@@ -462,11 +462,11 @@ void ProducerAbortTransaction::Execute() {
   }
 }
 
-void ProducerAbortTransaction::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerAbortTransaction::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { Nan::Null() };
+  Napi::Value argv[argc] = { env.Null() };
 
   // Activate the dispatchers
   producer->ActivateDispatchers();
@@ -474,11 +474,11 @@ void ProducerAbortTransaction::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void ProducerAbortTransaction::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ProducerAbortTransaction::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { m_baton.ToTxnObject() };
+  Napi::Value argv[argc] = { m_baton.ToTxnObject() };
 
   callback->Call(argc, argv);
 }
@@ -486,14 +486,14 @@ void ProducerAbortTransaction::HandleErrorCallback() {
 /**
  * @brief Producer SendOffsetsToTransaction worker.
  *
- * Easy Nan::AsyncWorker for SendOffsetsToTransaction
+ * Easy Napi::AsyncWorker for SendOffsetsToTransaction
  *
  * @sa RdKafka::Producer::send_offsets_to_transaction
  * @sa NodeKafka::Producer::SendOffsetsToTransaction
  */
 
 ProducerSendOffsetsToTransaction::ProducerSendOffsetsToTransaction(
-    Nan::Callback *callback,
+    Napi::FunctionReference *callback,
     Producer* producer,
     std::vector<RdKafka::TopicPartition *> & t,
     KafkaConsumer* consumer,
@@ -515,11 +515,11 @@ void ProducerSendOffsetsToTransaction::Execute() {
   }
 }
 
-void ProducerSendOffsetsToTransaction::HandleOKCallback() {
-  Nan::HandleScope scope;
+void ProducerSendOffsetsToTransaction::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { Nan::Null() };
+  Napi::Value argv[argc] = { env.Null() };
 
   // Activate the dispatchers
   producer->ActivateDispatchers();
@@ -527,11 +527,11 @@ void ProducerSendOffsetsToTransaction::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void ProducerSendOffsetsToTransaction::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void ProducerSendOffsetsToTransaction::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { m_baton.ToTxnObject() };
+  Napi::Value argv[argc] = { m_baton.ToTxnObject() };
 
   callback->Call(argc, argv);
 }
@@ -539,13 +539,13 @@ void ProducerSendOffsetsToTransaction::HandleErrorCallback() {
 /**
  * @brief KafkaConsumer connect worker.
  *
- * Easy Nan::AsyncWorker for setting up client connections
+ * Easy Napi::AsyncWorker for setting up client connections
  *
  * @sa RdKafka::KafkaConsumer::connect
  * @sa NodeKafka::KafkaConsumer::Connect
  */
 
-KafkaConsumerConnect::KafkaConsumerConnect(Nan::Callback *callback,
+KafkaConsumerConnect::KafkaConsumerConnect(Napi::FunctionReference *callback,
   KafkaConsumer* consumer):
   ErrorAwareWorker(callback),
   consumer(consumer) {}
@@ -561,28 +561,28 @@ void KafkaConsumerConnect::Execute() {
   }
 }
 
-void KafkaConsumerConnect::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConnect::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
 
   // Create the object
-  v8::Local<v8::Object> obj = Nan::New<v8::Object>();
-  Nan::Set(obj, Nan::New("name").ToLocalChecked(),
-    Nan::New(consumer->Name()).ToLocalChecked());
+  Napi::Object obj = Napi::Object::New(env);
+  (obj).Set(Napi::String::New(env, "name"),
+    Napi::New(env, consumer->Name()));
 
-  v8::Local<v8::Value> argv[argc] = { Nan::Null(), obj };
+  Napi::Value argv[argc] = { env.Null(), obj };
 
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerConnect::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConnect::OnError() {
+  Napi::HandleScope scope(env);
 
   consumer->DeactivateDispatchers();
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { Nan::Error(ErrorMessage()) };
+  Napi::Value argv[argc] = { Napi::Error::New(env, ErrorMessage()) };
 
   callback->Call(argc, argv);
 }
@@ -590,13 +590,13 @@ void KafkaConsumerConnect::HandleErrorCallback() {
 /**
  * @brief KafkaConsumer disconnect worker.
  *
- * Easy Nan::AsyncWorker for disconnecting and cleaning up librdkafka artifacts
+ * Easy Napi::AsyncWorker for disconnecting and cleaning up librdkafka artifacts
  *
  * @sa RdKafka::KafkaConsumer::disconnect
  * @sa NodeKafka::KafkaConsumer::Disconnect
  */
 
-KafkaConsumerDisconnect::KafkaConsumerDisconnect(Nan::Callback *callback,
+KafkaConsumerDisconnect::KafkaConsumerDisconnect(Napi::FunctionReference *callback,
   KafkaConsumer* consumer):
   ErrorAwareWorker(callback),
   consumer(consumer) {}
@@ -611,22 +611,22 @@ void KafkaConsumerDisconnect::Execute() {
   }
 }
 
-void KafkaConsumerDisconnect::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerDisconnect::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc] = { Nan::Null(), Nan::True() };
+  Napi::Value argv[argc] = { env.Null(), env.True() };
 
   consumer->DeactivateDispatchers();
 
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerDisconnect::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerDisconnect::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   consumer->DeactivateDispatchers();
 
@@ -636,7 +636,7 @@ void KafkaConsumerDisconnect::HandleErrorCallback() {
 /**
  * @brief KafkaConsumer get messages worker.
  *
- * A more complex Nan::AsyncProgressWorker. I made a custom superclass to deal
+ * A more complex Napi::AsyncProgressWorker. I made a custom superclass to deal
  * with more real-time progress points. Instead of using ProgressWorker, which
  * is not time sensitive, this custom worker will poll using libuv and send
  * data back to v8 as it comes available without missing any
@@ -654,7 +654,7 @@ void KafkaConsumerDisconnect::HandleErrorCallback() {
  * @sa NodeKafka::KafkaConsumer::GetMessage
  */
 
-KafkaConsumerConsumeLoop::KafkaConsumerConsumeLoop(Nan::Callback *callback,
+KafkaConsumerConsumeLoop::KafkaConsumerConsumeLoop(Napi::FunctionReference *callback,
                                      KafkaConsumer* consumer,
                                      const int & timeout_ms,
                                      const int & timeout_sleep_delay_ms) :
@@ -731,36 +731,36 @@ void KafkaConsumerConsumeLoop::ConsumeLoop(void* arg) {
 
 void KafkaConsumerConsumeLoop::HandleMessageCallback(RdKafka::Message* msg,
                                                      RdKafka::ErrorCode ec) {
-  Nan::HandleScope scope;
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 4;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   if (msg == NULL) {
-    argv[1] = Nan::Null();
-    argv[2] = Nan::Null();
-    argv[3] = Nan::New<v8::Number>(ec);
+    argv[1] = env.Null();
+    argv[2] = env.Null();
+    argv[3] = Napi::Number::New(env, ec);
   } else {
-    argv[3] = Nan::Null();
+    argv[3] = env.Null();
     switch (msg->err()) {
       case RdKafka::ERR__PARTITION_EOF: {
-        argv[1] = Nan::Null();
-        v8::Local<v8::Object> eofEvent = Nan::New<v8::Object>();
+        argv[1] = env.Null();
+        Napi::Object eofEvent = Napi::Object::New(env);
 
-        Nan::Set(eofEvent, Nan::New<v8::String>("topic").ToLocalChecked(),
-          Nan::New<v8::String>(msg->topic_name()).ToLocalChecked());
-        Nan::Set(eofEvent, Nan::New<v8::String>("offset").ToLocalChecked(),
-          Nan::New<v8::Number>(msg->offset()));
-        Nan::Set(eofEvent, Nan::New<v8::String>("partition").ToLocalChecked(),
-          Nan::New<v8::Number>(msg->partition()));
+        (eofEvent).Set(Napi::String::New(env, "topic"),
+          Napi::String::New(env, msg->topic_name()));
+        (eofEvent).Set(Napi::String::New(env, "offset"),
+          Napi::Number::New(env, msg->offset()));
+        (eofEvent).Set(Napi::String::New(env, "partition"),
+          Napi::Number::New(env, msg->partition()));
 
         argv[2] = eofEvent;
         break;
       }
       default:
         argv[1] = Conversion::Message::ToV8Object(msg);
-        argv[2] = Nan::Null();
+        argv[2] = env.Null();
         break;
     }
 
@@ -771,15 +771,15 @@ void KafkaConsumerConsumeLoop::HandleMessageCallback(RdKafka::Message* msg,
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerConsumeLoop::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConsumeLoop::OnOK() {
+  Napi::HandleScope scope(env);
 }
 
-void KafkaConsumerConsumeLoop::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConsumeLoop::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { Nan::Error(ErrorMessage()) };
+  Napi::Value argv[argc] = { Napi::Error::New(env, ErrorMessage()) };
 
   callback->Call(argc, argv);
 }
@@ -795,7 +795,7 @@ void KafkaConsumerConsumeLoop::HandleErrorCallback() {
  * @see NodeKafka::KafkaConsumer::GetMessage
  */
 
-KafkaConsumerConsumeNum::KafkaConsumerConsumeNum(Nan::Callback *callback,
+KafkaConsumerConsumeNum::KafkaConsumerConsumeNum(Napi::FunctionReference *callback,
                                      KafkaConsumer* consumer,
                                      const uint32_t & num_messages,
                                      const int & timeout_ms,
@@ -870,14 +870,14 @@ void KafkaConsumerConsumeNum::Execute() {
   }
 }
 
-void KafkaConsumerConsumeNum::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConsumeNum::OnOK() {
+  Napi::HandleScope scope(env);
   const unsigned int argc = 3;
-  v8::Local<v8::Value> argv[argc];
-  argv[0] = Nan::Null();
+  Napi::Value argv[argc];
+  argv[0] = env.Null();
 
-  v8::Local<v8::Array> returnArray = Nan::New<v8::Array>();
-  v8::Local<v8::Array> eofEventsArray = Nan::New<v8::Array>();
+  Napi::Array returnArray = Napi::Array::New(env);
+  Napi::Array eofEventsArray = Napi::Array::New(env);
 
   if (m_messages.size() > 0) {
     int returnArrayIndex = -1;
@@ -889,30 +889,29 @@ void KafkaConsumerConsumeNum::HandleOKCallback() {
       switch (message->err()) {
         case RdKafka::ERR_NO_ERROR:
           ++returnArrayIndex;
-          Nan::Set(returnArray, returnArrayIndex,
+          (returnArray).Set(returnArrayIndex,
                    Conversion::Message::ToV8Object(message));
           break;
         case RdKafka::ERR__PARTITION_EOF:
           ++eofEventsArrayIndex;
 
           // create EOF event
-          v8::Local<v8::Object> eofEvent = Nan::New<v8::Object>();
+          Napi::Object eofEvent = Napi::Object::New(env);
 
-          Nan::Set(eofEvent, Nan::New<v8::String>("topic").ToLocalChecked(),
-            Nan::New<v8::String>(message->topic_name()).ToLocalChecked());
-          Nan::Set(eofEvent, Nan::New<v8::String>("offset").ToLocalChecked(),
-            Nan::New<v8::Number>(message->offset()));
-          Nan::Set(eofEvent, Nan::New<v8::String>("partition").ToLocalChecked(),
-            Nan::New<v8::Number>(message->partition()));
+          (eofEvent).Set(Napi::String::New(env, "topic"),
+            Napi::String::New(env, message->topic_name()));
+          (eofEvent).Set(Napi::String::New(env, "offset"),
+            Napi::Number::New(env, message->offset()));
+          (eofEvent).Set(Napi::String::New(env, "partition"),
+            Napi::Number::New(env, message->partition()));
 
           // also store index at which position in the message array this event
           // was emitted this way, we can later emit it at the right point in
           // time
-          Nan::Set(eofEvent,
-                   Nan::New<v8::String>("messageIndex").ToLocalChecked(),
-                   Nan::New<v8::Number>(returnArrayIndex));
+          (eofEvent).Set(Napi::String::New(env, "messageIndex"),
+                   Napi::Number::New(env, returnArrayIndex));
 
-          Nan::Set(eofEventsArray, eofEventsArrayIndex, eofEvent);
+          (eofEventsArray).Set(eofEventsArrayIndex, eofEvent);
       }
 
       delete message;
@@ -925,8 +924,8 @@ void KafkaConsumerConsumeNum::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerConsumeNum::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConsumeNum::OnError() {
+  Napi::HandleScope scope(env);
 
   if (m_messages.size() > 0) {
     for (std::vector<RdKafka::Message*>::iterator it = m_messages.begin();
@@ -937,7 +936,7 @@ void KafkaConsumerConsumeNum::HandleErrorCallback() {
   }
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -953,7 +952,7 @@ void KafkaConsumerConsumeNum::HandleErrorCallback() {
  * @see NodeKafka::KafkaConsumer::GetMessage
  */
 
-KafkaConsumerConsume::KafkaConsumerConsume(Nan::Callback *callback,
+KafkaConsumerConsume::KafkaConsumerConsume(Napi::FunctionReference *callback,
                                      KafkaConsumer* consumer,
                                      const int & timeout_ms) :
   ErrorAwareWorker(callback),
@@ -977,13 +976,13 @@ void KafkaConsumerConsume::Execute() {
   }
 }
 
-void KafkaConsumerConsume::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConsume::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::Message::ToV8Object(m_message);
 
   delete m_message;
@@ -991,11 +990,11 @@ void KafkaConsumerConsume::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerConsume::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerConsume::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -1010,7 +1009,7 @@ void KafkaConsumerConsume::HandleErrorCallback() {
  * @see RdKafka::KafkaConsumer::Committed
  */
 
-KafkaConsumerCommitted::KafkaConsumerCommitted(Nan::Callback *callback,
+KafkaConsumerCommitted::KafkaConsumerCommitted(Napi::FunctionReference *callback,
                                      KafkaConsumer* consumer,
                                      std::vector<RdKafka::TopicPartition*> & t,
                                      const int & timeout_ms) :
@@ -1031,23 +1030,23 @@ void KafkaConsumerCommitted::Execute() {
   }
 }
 
-void KafkaConsumerCommitted::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerCommitted::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::TopicPartition::ToV8Array(m_topic_partitions);
 
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerCommitted::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerCommitted::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -1059,7 +1058,7 @@ void KafkaConsumerCommitted::HandleErrorCallback() {
  *
  * @see RdKafka::KafkaConsumer::commitSync
  */
-KafkaConsumerCommitCb::KafkaConsumerCommitCb(Nan::Callback *callback,
+KafkaConsumerCommitCb::KafkaConsumerCommitCb(Napi::FunctionReference *callback,
     KafkaConsumer* consumer,
     std::optional<std::vector<RdKafka::TopicPartition*>> & t) :
   ErrorAwareWorker(callback),
@@ -1084,22 +1083,22 @@ void KafkaConsumerCommitCb::Execute() {
   }
 }
 
-void KafkaConsumerCommitCb::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerCommitCb::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
 
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerCommitCb::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerCommitCb::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -1116,7 +1115,7 @@ void KafkaConsumerCommitCb::HandleErrorCallback() {
  *         seek to work. Use assign() to set the starting offset.
  */
 
-KafkaConsumerSeek::KafkaConsumerSeek(Nan::Callback *callback,
+KafkaConsumerSeek::KafkaConsumerSeek(Napi::FunctionReference *callback,
                                      KafkaConsumer* consumer,
                                      const RdKafka::TopicPartition * toppar,
                                      const int & timeout_ms) :
@@ -1146,22 +1145,22 @@ void KafkaConsumerSeek::Execute() {
   }
 }
 
-void KafkaConsumerSeek::HandleOKCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerSeek::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
 
   callback->Call(argc, argv);
 }
 
-void KafkaConsumerSeek::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void KafkaConsumerSeek::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -1172,7 +1171,7 @@ void KafkaConsumerSeek::HandleErrorCallback() {
  * This callback will create a topic
  *
  */
-AdminClientCreateTopic::AdminClientCreateTopic(Nan::Callback *callback,
+AdminClientCreateTopic::AdminClientCreateTopic(Napi::FunctionReference *callback,
                                                AdminClient* client,
                                                rd_kafka_NewTopic_t* topic,
                                                const int & timeout_ms) :
@@ -1193,22 +1192,22 @@ void AdminClientCreateTopic::Execute() {
   }
 }
 
-void AdminClientCreateTopic::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientCreateTopic::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
 
   callback->Call(argc, argv);
 }
 
-void AdminClientCreateTopic::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientCreateTopic::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -1219,7 +1218,7 @@ void AdminClientCreateTopic::HandleErrorCallback() {
  * This callback will delete a topic
  *
  */
-AdminClientDeleteTopic::AdminClientDeleteTopic(Nan::Callback *callback,
+AdminClientDeleteTopic::AdminClientDeleteTopic(Napi::FunctionReference *callback,
                                                AdminClient* client,
                                                rd_kafka_DeleteTopic_t* topic,
                                                const int & timeout_ms) :
@@ -1240,22 +1239,22 @@ void AdminClientDeleteTopic::Execute() {
   }
 }
 
-void AdminClientDeleteTopic::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientDeleteTopic::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
 
   callback->Call(argc, argv);
 }
 
-void AdminClientDeleteTopic::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientDeleteTopic::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -1267,7 +1266,7 @@ void AdminClientDeleteTopic::HandleErrorCallback() {
  *
  */
 AdminClientCreatePartitions::AdminClientCreatePartitions(
-                                         Nan::Callback *callback,
+                                         Napi::FunctionReference *callback,
                                          AdminClient* client,
                                          rd_kafka_NewPartitions_t* partitions,
                                          const int & timeout_ms) :
@@ -1288,22 +1287,22 @@ void AdminClientCreatePartitions::Execute() {
   }
 }
 
-void AdminClientCreatePartitions::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientCreatePartitions::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
 
   callback->Call(argc, argv);
 }
 
-void AdminClientCreatePartitions::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientCreatePartitions::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+  Napi::Value argv[argc] = { GetErrorObject() };
 
   callback->Call(argc, argv);
 }
@@ -1315,7 +1314,7 @@ void AdminClientCreatePartitions::HandleErrorCallback() {
  *
  */
 AdminClientListGroups::AdminClientListGroups(
-    Nan::Callback* callback, AdminClient* client, bool is_match_states_set,
+    Napi::FunctionReference* callback, AdminClient* client, bool is_match_states_set,
     std::vector<rd_kafka_consumer_group_state_t>& match_states,
     const int& timeout_ms)
     : ErrorAwareWorker(callback),
@@ -1338,13 +1337,13 @@ void AdminClientListGroups::Execute() {
   }
 }
 
-void AdminClientListGroups::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientListGroups::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
 
   const rd_kafka_ListConsumerGroups_result_t* result =
       rd_kafka_event_ListConsumerGroups_result(m_event_response);
@@ -1354,11 +1353,11 @@ void AdminClientListGroups::HandleOKCallback() {
   callback->Call(argc, argv);
 }
 
-void AdminClientListGroups::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientListGroups::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+  Napi::Value argv[argc] = {GetErrorObject()};
 
   callback->Call(argc, argv);
 }
@@ -1370,7 +1369,7 @@ void AdminClientListGroups::HandleErrorCallback() {
  *
  */
 AdminClientDescribeGroups::AdminClientDescribeGroups(
-    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    Napi::FunctionReference* callback, NodeKafka::AdminClient* client,
     std::vector<std::string>& groups, bool include_authorized_operations,
     const int& timeout_ms)
     : ErrorAwareWorker(callback),
@@ -1393,24 +1392,24 @@ void AdminClientDescribeGroups::Execute() {
   }
 }
 
-void AdminClientDescribeGroups::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientDescribeGroups::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDescribeConsumerGroupsResult(
       rd_kafka_event_DescribeConsumerGroups_result(m_event_response));
 
   callback->Call(argc, argv);
 }
 
-void AdminClientDescribeGroups::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientDescribeGroups::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+  Napi::Value argv[argc] = {GetErrorObject()};
 
   callback->Call(argc, argv);
 }
@@ -1422,7 +1421,7 @@ void AdminClientDescribeGroups::HandleErrorCallback() {
  *
  */
 AdminClientDeleteGroups::AdminClientDeleteGroups(
-    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    Napi::FunctionReference* callback, NodeKafka::AdminClient* client,
     rd_kafka_DeleteGroup_t **group_list,
     size_t group_cnt,
     const int& timeout_ms)
@@ -1451,24 +1450,24 @@ void AdminClientDeleteGroups::Execute() {
   }
 }
 
-void AdminClientDeleteGroups::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientDeleteGroups::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDeleteGroupsResult(
       rd_kafka_event_DeleteGroups_result(m_event_response));
 
   callback->Call(argc, argv);
 }
 
-void AdminClientDeleteGroups::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientDeleteGroups::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+  Napi::Value argv[argc] = {GetErrorObject()};
 
   callback->Call(argc, argv);
 }
@@ -1481,7 +1480,7 @@ void AdminClientDeleteGroups::HandleErrorCallback() {
  *
  */
 AdminClientListConsumerGroupOffsets::AdminClientListConsumerGroupOffsets(
-    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    Napi::FunctionReference* callback, NodeKafka::AdminClient* client,
     rd_kafka_ListConsumerGroupOffsets_t **req,
     size_t req_cnt,
     const bool require_stable_offsets,
@@ -1513,23 +1512,23 @@ void AdminClientListConsumerGroupOffsets::Execute() {
   }
 }
 
-void AdminClientListConsumerGroupOffsets::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientListConsumerGroupOffsets::OnOK() {
+  Napi::HandleScope scope(env);
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromListConsumerGroupOffsetsResult(
       rd_kafka_event_ListConsumerGroupOffsets_result(m_event_response));
 
   callback->Call(argc, argv);
 }
 
-void AdminClientListConsumerGroupOffsets::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientListConsumerGroupOffsets::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+  Napi::Value argv[argc] = {GetErrorObject()};
 
   callback->Call(argc, argv);
 }
@@ -1542,7 +1541,7 @@ void AdminClientListConsumerGroupOffsets::HandleErrorCallback() {
  *
  */
 AdminClientDeleteRecords::AdminClientDeleteRecords(
-    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    Napi::FunctionReference* callback, NodeKafka::AdminClient* client,
     rd_kafka_DeleteRecords_t **del_records,
     size_t del_records_cnt,
     const int& operation_timeout_ms,
@@ -1574,24 +1573,24 @@ void AdminClientDeleteRecords::Execute() {
   }
 }
 
-void AdminClientDeleteRecords::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientDeleteRecords::OnOK() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDeleteRecordsResult(
       rd_kafka_event_DeleteRecords_result(m_event_response));
 
   callback->Call(argc, argv);
 }
 
-void AdminClientDeleteRecords::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientDeleteRecords::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+  Napi::Value argv[argc] = {GetErrorObject()};
 
   callback->Call(argc, argv);
 }
@@ -1602,7 +1601,7 @@ void AdminClientDeleteRecords::HandleErrorCallback() {
  * This callback will describe topics.
  */
 AdminClientDescribeTopics::AdminClientDescribeTopics(
-    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    Napi::FunctionReference* callback, NodeKafka::AdminClient* client,
     rd_kafka_TopicCollection_t* topics,
     const bool include_authorized_operations,
     const int& timeout_ms)
@@ -1630,23 +1629,23 @@ void AdminClientDescribeTopics::Execute() {
   }
 }
 
-void AdminClientDescribeTopics::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientDescribeTopics::OnOK() {
+  Napi::HandleScope scope(env);
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDescribeTopicsResult(
       rd_kafka_event_DescribeTopics_result(m_event_response));
 
   callback->Call(argc, argv);
 }
 
-void AdminClientDescribeTopics::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientDescribeTopics::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+  Napi::Value argv[argc] = {GetErrorObject()};
 
   callback->Call(argc, argv);
 }
@@ -1657,7 +1656,7 @@ void AdminClientDescribeTopics::HandleErrorCallback() {
  * This callback will list requested offsets for the specified topic partitions.
  */
 AdminClientListOffsets::AdminClientListOffsets(
-    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    Napi::FunctionReference* callback, NodeKafka::AdminClient* client,
     rd_kafka_topic_partition_list_t* partitions, const int& timeout_ms,
     rd_kafka_IsolationLevel_t isolation_level)
     : ErrorAwareWorker(callback),
@@ -1684,23 +1683,23 @@ void AdminClientListOffsets::Execute() {
   }
 }
 
-void AdminClientListOffsets::HandleOKCallback() {
-  Nan::HandleScope scope;
+void AdminClientListOffsets::OnOK() {
+  Napi::HandleScope scope(env);
   const unsigned int argc = 2;
-  v8::Local<v8::Value> argv[argc];
+  Napi::Value argv[argc];
 
-  argv[0] = Nan::Null();
+  argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromListOffsetsResult(
       rd_kafka_event_ListOffsets_result(m_event_response));
 
   callback->Call(argc, argv);
 }
 
-void AdminClientListOffsets::HandleErrorCallback() {
-  Nan::HandleScope scope;
+void AdminClientListOffsets::OnError() {
+  Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+  Napi::Value argv[argc] = {GetErrorObject()};
 
   callback->Call(argc, argv);
 }

@@ -10,8 +10,10 @@
 #ifndef SRC_PRODUCER_H_
 #define SRC_PRODUCER_H_
 
-#include <nan.h>
-#include <node.h>
+#include <napi.h>
+#include <uv.h>
+#include <napi.h>
+#include <uv.h>
 #include <node_buffer.h>
 #include <string>
 #include <vector>
@@ -27,7 +29,7 @@ namespace NodeKafka {
 
 class ProducerMessage {
  public:
-  explicit ProducerMessage(v8::Local<v8::Object>, NodeKafka::Topic*);
+  explicit ProducerMessage(Napi::Object, NodeKafka::Topic*);
   ~ProducerMessage();
 
   void* Payload();
@@ -49,8 +51,8 @@ class ProducerMessage {
 
 class Producer : public Connection {
  public:
-  static void Init(v8::Local<v8::Object>);
-  static v8::Local<v8::Object> NewInstance(v8::Local<v8::Value>);
+  static void Init(Napi::Object);
+  static Napi::Object NewInstance(Napi::Value);
 
   Baton Connect();
   void Disconnect();
@@ -81,7 +83,7 @@ class Producer : public Connection {
   void DeactivateDispatchers();
 
   void ConfigureCallback(const std::string& string_key,
-                         const v8::Local<v8::Function>& cb, bool add) override;
+                         const Napi::Function& cb, bool add) override;
 
   Baton InitTransactions(int32_t timeout_ms);
   Baton BeginTransaction();
@@ -93,27 +95,27 @@ class Producer : public Connection {
     int timeout_ms);
 
  protected:
-  static Nan::Persistent<v8::Function> constructor;
-  static void New(const Nan::FunctionCallbackInfo<v8::Value>&);
+  static Napi::FunctionReference constructor;
+  static void New(const Napi::CallbackInfo&);
 
   Producer(Conf*, Conf*);
   ~Producer();
 
  private:
-  static NAN_METHOD(NodeProduce);
-  static NAN_METHOD(NodeSetPartitioner);
-  static NAN_METHOD(NodeConnect);
-  static NAN_METHOD(NodeDisconnect);
-  static NAN_METHOD(NodePoll);
-  static NAN_METHOD(NodeSetPollInBackground);
+  static Napi::Value NodeProduce(const Napi::CallbackInfo& info);
+  static Napi::Value NodeSetPartitioner(const Napi::CallbackInfo& info);
+  static Napi::Value NodeConnect(const Napi::CallbackInfo& info);
+  static Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
+  static Napi::Value NodePoll(const Napi::CallbackInfo& info);
+  static Napi::Value NodeSetPollInBackground(const Napi::CallbackInfo& info);
   #if RD_KAFKA_VERSION > 0x00090200
-  static NAN_METHOD(NodeFlush);
+  static Napi::Value NodeFlush(const Napi::CallbackInfo& info);
   #endif
-  static NAN_METHOD(NodeInitTransactions);
-  static NAN_METHOD(NodeBeginTransaction);
-  static NAN_METHOD(NodeCommitTransaction);
-  static NAN_METHOD(NodeAbortTransaction);
-  static NAN_METHOD(NodeSendOffsetsToTransaction);
+  static Napi::Value NodeInitTransactions(const Napi::CallbackInfo& info);
+  static Napi::Value NodeBeginTransaction(const Napi::CallbackInfo& info);
+  static Napi::Value NodeCommitTransaction(const Napi::CallbackInfo& info);
+  static Napi::Value NodeAbortTransaction(const Napi::CallbackInfo& info);
+  static Napi::Value NodeSendOffsetsToTransaction(const Napi::CallbackInfo& info);
 
   Callbacks::Delivery m_dr_cb;
   Callbacks::Partitioner m_partitioner_cb;

@@ -11,7 +11,8 @@
 #define SRC_CALLBACKS_H_
 
 #include <uv.h>
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 
 #include <vector>
 #include <deque>
@@ -29,9 +30,9 @@ class Dispatcher {
  public:
   Dispatcher();
   ~Dispatcher();
-  void Dispatch(const int, v8::Local<v8::Value> []);
-  void AddCallback(const v8::Local<v8::Function>&);
-  void RemoveCallback(const v8::Local<v8::Function>&);
+  void Dispatch(const int, Napi::Value []);
+  void AddCallback(const Napi::Function&);
+  void RemoveCallback(const Napi::Function&);
   bool HasCallbacks();
   virtual void Flush() = 0;
   void Execute();
@@ -39,12 +40,12 @@ class Dispatcher {
   void Deactivate();
 
  protected:
-  std::vector<Nan::Callback*> callbacks;  // NOLINT
+  std::vector<Napi::FunctionReference*> callbacks;  // NOLINT
 
   uv_mutex_t async_lock;
 
  private:
-  NAN_INLINE static NAUV_WORK_CB(AsyncMessage_) {
+  inline static NAUV_WORK_CB(AsyncMessage_) {
      Dispatcher *dispatcher =
             static_cast<Dispatcher*>(async->data);
      dispatcher->Flush();
@@ -268,8 +269,8 @@ class Partitioner : public RdKafka::PartitionerCb {
   Partitioner();
   ~Partitioner();
   int32_t partitioner_cb( const RdKafka::Topic*, const std::string*, int32_t, void*);  // NOLINT
-  Nan::Callback callback;  // NOLINT
-  void SetCallback(v8::Local<v8::Function>);
+  Napi::FunctionReference callback;  // NOLINT
+  void SetCallback(Napi::Function);
  private:
   static unsigned int djb_hash(const char*, size_t);
   static unsigned int random(const RdKafka::Topic*, int32_t);

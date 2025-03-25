@@ -12,7 +12,8 @@
 #define SRC_WORKERS_H_
 
 #include <uv.h>
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <string>
 #include <optional>
 #include <vector>
@@ -26,25 +27,25 @@
 namespace NodeKafka {
 namespace Workers {
 
-class ErrorAwareWorker : public Nan::AsyncWorker {
+class ErrorAwareWorker : public Napi::AsyncWorker {
  public:
-  explicit ErrorAwareWorker(Nan::Callback* callback_) :
-    Nan::AsyncWorker(callback_),
+  explicit ErrorAwareWorker(Napi::FunctionReference* callback_) :
+    Napi::AsyncWorker(callback_),
     m_baton(RdKafka::ERR_NO_ERROR) {}
   virtual ~ErrorAwareWorker() {}
 
   virtual void Execute() = 0;
-  virtual void HandleOKCallback() = 0;
-  void HandleErrorCallback() {
-    Nan::HandleScope scope;
+  virtual void OnOK() = 0;
+  void OnError() {
+    Napi::HandleScope scope(env);
 
     // Construct error and add code to it.
-    v8::Local<v8::Value> error = Nan::Error(ErrorMessage());
-    Nan::Set(error.As<v8::Object>(), Nan::New("code").ToLocalChecked(),
-      Nan::New(GetErrorCode()));
+    Napi::Value error = Napi::Error::New(env, ErrorMessage());
+    (error.As<Napi::Object>()).Set(Napi::String::New(env, "code"),
+      Napi::New(env, GetErrorCode()));
 
     const unsigned int argc = 1;
-    v8::Local<v8::Value> argv[argc] = { error };
+    Napi::Value argv[argc] = { error };
 
     callback->Call(argc, argv);
   }
@@ -66,7 +67,7 @@ class ErrorAwareWorker : public Nan::AsyncWorker {
     return m_baton.err();
   }
 
-  v8::Local<v8::Object> GetErrorObject() {
+  Napi::Object GetErrorObject() {
     return m_baton.ToObject();
   }
 
@@ -75,7 +76,7 @@ class ErrorAwareWorker : public Nan::AsyncWorker {
 
 class MessageWorker : public ErrorAwareWorker {
  public:
-  explicit MessageWorker(Nan::Callback* callback_)
+  explicit MessageWorker(Napi::FunctionReference* callback_)
       : ErrorAwareWorker(callback_), m_asyncdata() {
     m_async = new uv_async_t;
     uv_async_init(
@@ -158,12 +159,12 @@ class MessageWorker : public ErrorAwareWorker {
     uv_async_send(m_async);
   }
 
-  NAN_INLINE static NAUV_WORK_CB(m_async_message) {
+  inline static NAUV_WORK_CB(m_async_message) {
     MessageWorker *worker = static_cast<MessageWorker*>(async->data);
     worker->WorkMessage();
   }
 
-  NAN_INLINE static void AsyncClose_(uv_handle_t* handle) {
+  inline static void AsyncClose_(uv_handle_t* handle) {
     MessageWorker *worker = static_cast<MessageWorker*>(handle->data);
     delete reinterpret_cast<uv_async_t*>(handle);
     delete worker;
@@ -178,14 +179,14 @@ class MessageWorker : public ErrorAwareWorker {
 namespace Handle {
 class OffsetsForTimes : public ErrorAwareWorker {
  public:
-  OffsetsForTimes(Nan::Callback*, NodeKafka::Connection*,
+  OffsetsForTimes(Napi::FunctionReference*, NodeKafka::Connection*,
     std::vector<RdKafka::TopicPartition*> &,
     const int &);
   ~OffsetsForTimes();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Connection * m_handle;
@@ -196,13 +197,13 @@ class OffsetsForTimes : public ErrorAwareWorker {
 
 class ConnectionMetadata : public ErrorAwareWorker {
  public:
-  ConnectionMetadata(Nan::Callback*, NodeKafka::Connection*,
+  ConnectionMetadata(Napi::FunctionReference*, NodeKafka::Connection*,
     std::string, int, bool);
   ~ConnectionMetadata();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Connection * m_connection;
@@ -215,13 +216,13 @@ class ConnectionMetadata : public ErrorAwareWorker {
 
 class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {
  public:
-  ConnectionQueryWatermarkOffsets(Nan::Callback*, NodeKafka::Connection*,
+  ConnectionQueryWatermarkOffsets(Napi::FunctionReference*, NodeKafka::Connection*,
     std::string, int32_t, int);
   ~ConnectionQueryWatermarkOffsets();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Connection * m_connection;
@@ -235,12 +236,12 @@ class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {
 
 class ProducerConnect : public ErrorAwareWorker {
  public:
-  ProducerConnect(Nan::Callback*, NodeKafka::Producer*);
+  ProducerConnect(Napi::FunctionReference*, NodeKafka::Producer*);
   ~ProducerConnect();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Producer * producer;
@@ -248,12 +249,12 @@ class ProducerConnect : public ErrorAwareWorker {
 
 class ProducerDisconnect : public ErrorAwareWorker {
  public:
-  ProducerDisconnect(Nan::Callback*, NodeKafka::Producer*);
+  ProducerDisconnect(Napi::FunctionReference*, NodeKafka::Producer*);
   ~ProducerDisconnect();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Producer * producer;
@@ -261,11 +262,11 @@ class ProducerDisconnect : public ErrorAwareWorker {
 
 class ProducerFlush : public ErrorAwareWorker {
  public:
-  ProducerFlush(Nan::Callback*, NodeKafka::Producer*, int);
+  ProducerFlush(Napi::FunctionReference*, NodeKafka::Producer*, int);
   ~ProducerFlush();
 
   void Execute();
-  void HandleOKCallback();
+  void OnOK();
 
  private:
   NodeKafka::Producer * producer;
@@ -274,12 +275,12 @@ class ProducerFlush : public ErrorAwareWorker {
 
 class ProducerInitTransactions : public ErrorAwareWorker {
  public:
-  ProducerInitTransactions(Nan::Callback*, NodeKafka::Producer*, const int &);
+  ProducerInitTransactions(Napi::FunctionReference*, NodeKafka::Producer*, const int &);
   ~ProducerInitTransactions();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Producer * producer;
@@ -288,12 +289,12 @@ class ProducerInitTransactions : public ErrorAwareWorker {
 
 class ProducerBeginTransaction : public ErrorAwareWorker {
  public:
-  ProducerBeginTransaction(Nan::Callback*, NodeKafka::Producer*);
+  ProducerBeginTransaction(Napi::FunctionReference*, NodeKafka::Producer*);
   ~ProducerBeginTransaction();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Producer * producer;
@@ -301,12 +302,12 @@ class ProducerBeginTransaction : public ErrorAwareWorker {
 
 class ProducerCommitTransaction : public ErrorAwareWorker {
  public:
-  ProducerCommitTransaction(Nan::Callback*, NodeKafka::Producer*, const int &);
+  ProducerCommitTransaction(Napi::FunctionReference*, NodeKafka::Producer*, const int &);
   ~ProducerCommitTransaction();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Producer * producer;
@@ -315,12 +316,12 @@ class ProducerCommitTransaction : public ErrorAwareWorker {
 
 class ProducerAbortTransaction : public ErrorAwareWorker {
  public:
-  ProducerAbortTransaction(Nan::Callback*, NodeKafka::Producer*, const int &);
+  ProducerAbortTransaction(Napi::FunctionReference*, NodeKafka::Producer*, const int &);
   ~ProducerAbortTransaction();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Producer * producer;
@@ -330,15 +331,15 @@ class ProducerAbortTransaction : public ErrorAwareWorker {
 class ProducerSendOffsetsToTransaction : public ErrorAwareWorker {
  public:
   ProducerSendOffsetsToTransaction(
-    Nan::Callback*, NodeKafka::Producer*,
+    Napi::FunctionReference*, NodeKafka::Producer*,
     std::vector<RdKafka::TopicPartition*> &,
     KafkaConsumer*,
     const int &);
   ~ProducerSendOffsetsToTransaction();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::Producer * producer;
@@ -349,12 +350,12 @@ class ProducerSendOffsetsToTransaction : public ErrorAwareWorker {
 
 class KafkaConsumerConnect : public ErrorAwareWorker {
  public:
-  KafkaConsumerConnect(Nan::Callback*, NodeKafka::KafkaConsumer*);
+  KafkaConsumerConnect(Napi::FunctionReference*, NodeKafka::KafkaConsumer*);
   ~KafkaConsumerConnect();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::KafkaConsumer * consumer;
@@ -362,12 +363,12 @@ class KafkaConsumerConnect : public ErrorAwareWorker {
 
 class KafkaConsumerDisconnect : public ErrorAwareWorker {
  public:
-  KafkaConsumerDisconnect(Nan::Callback*, NodeKafka::KafkaConsumer*);
+  KafkaConsumerDisconnect(Napi::FunctionReference*, NodeKafka::KafkaConsumer*);
   ~KafkaConsumerDisconnect();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::KafkaConsumer * consumer;
@@ -375,15 +376,15 @@ class KafkaConsumerDisconnect : public ErrorAwareWorker {
 
 class KafkaConsumerConsumeLoop : public MessageWorker {
  public:
-  KafkaConsumerConsumeLoop(Nan::Callback*,
+  KafkaConsumerConsumeLoop(Napi::FunctionReference*,
     NodeKafka::KafkaConsumer*, const int &, const int &);
   ~KafkaConsumerConsumeLoop();
 
   static void ConsumeLoop(void *arg);
   void Close();
   void Execute(const ExecutionMessageBus&);
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
   void HandleMessageCallback(RdKafka::Message*, RdKafka::ErrorCode);
  private:
   uv_thread_t thread_event_loop;
@@ -396,12 +397,12 @@ class KafkaConsumerConsumeLoop : public MessageWorker {
 
 class KafkaConsumerConsume : public ErrorAwareWorker {
  public:
-  KafkaConsumerConsume(Nan::Callback*, NodeKafka::KafkaConsumer*, const int &);
+  KafkaConsumerConsume(Napi::FunctionReference*, NodeKafka::KafkaConsumer*, const int &);
   ~KafkaConsumerConsume();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::KafkaConsumer * consumer;
   const int m_timeout_ms;
@@ -410,14 +411,14 @@ class KafkaConsumerConsume : public ErrorAwareWorker {
 
 class KafkaConsumerCommitted : public ErrorAwareWorker {
  public:
-  KafkaConsumerCommitted(Nan::Callback*,
+  KafkaConsumerCommitted(Napi::FunctionReference*,
     NodeKafka::KafkaConsumer*, std::vector<RdKafka::TopicPartition*> &,
     const int &);
   ~KafkaConsumerCommitted();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   std::vector<RdKafka::TopicPartition*> m_topic_partitions;
@@ -426,14 +427,14 @@ class KafkaConsumerCommitted : public ErrorAwareWorker {
 
 class KafkaConsumerCommitCb : public ErrorAwareWorker {
  public:
-  KafkaConsumerCommitCb(Nan::Callback*,
+  KafkaConsumerCommitCb(Napi::FunctionReference*,
     NodeKafka::KafkaConsumer*,
     std::optional<std::vector<RdKafka::TopicPartition*>> &);
   ~KafkaConsumerCommitCb();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   std::optional<std::vector<RdKafka::TopicPartition*>> m_topic_partitions;
@@ -441,13 +442,13 @@ class KafkaConsumerCommitCb : public ErrorAwareWorker {
 
 class KafkaConsumerSeek : public ErrorAwareWorker {
  public:
-  KafkaConsumerSeek(Nan::Callback*, NodeKafka::KafkaConsumer*,
+  KafkaConsumerSeek(Napi::FunctionReference*, NodeKafka::KafkaConsumer*,
     const RdKafka::TopicPartition *, const int &);
   ~KafkaConsumerSeek();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   const RdKafka::TopicPartition * m_toppar;
@@ -456,13 +457,13 @@ class KafkaConsumerSeek : public ErrorAwareWorker {
 
 class KafkaConsumerConsumeNum : public ErrorAwareWorker {
  public:
-  KafkaConsumerConsumeNum(Nan::Callback*, NodeKafka::KafkaConsumer*,
+  KafkaConsumerConsumeNum(Napi::FunctionReference*, NodeKafka::KafkaConsumer*,
     const uint32_t &, const int &, bool);
   ~KafkaConsumerConsumeNum();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   const uint32_t m_num_messages;
@@ -476,13 +477,13 @@ class KafkaConsumerConsumeNum : public ErrorAwareWorker {
  */
 class AdminClientCreateTopic : public ErrorAwareWorker {
  public:
-  AdminClientCreateTopic(Nan::Callback*, NodeKafka::AdminClient*,
+  AdminClientCreateTopic(Napi::FunctionReference*, NodeKafka::AdminClient*,
     rd_kafka_NewTopic_t*, const int &);
   ~AdminClientCreateTopic();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::AdminClient * m_client;
   rd_kafka_NewTopic_t* m_topic;
@@ -494,13 +495,13 @@ class AdminClientCreateTopic : public ErrorAwareWorker {
  */
 class AdminClientDeleteTopic : public ErrorAwareWorker {
  public:
-  AdminClientDeleteTopic(Nan::Callback*, NodeKafka::AdminClient*,
+  AdminClientDeleteTopic(Napi::FunctionReference*, NodeKafka::AdminClient*,
     rd_kafka_DeleteTopic_t*, const int &);
   ~AdminClientDeleteTopic();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::AdminClient * m_client;
   rd_kafka_DeleteTopic_t* m_topic;
@@ -512,13 +513,13 @@ class AdminClientDeleteTopic : public ErrorAwareWorker {
  */
 class AdminClientCreatePartitions : public ErrorAwareWorker {
  public:
-  AdminClientCreatePartitions(Nan::Callback*, NodeKafka::AdminClient*,
+  AdminClientCreatePartitions(Napi::FunctionReference*, NodeKafka::AdminClient*,
     rd_kafka_NewPartitions_t*, const int &);
   ~AdminClientCreatePartitions();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
  private:
   NodeKafka::AdminClient * m_client;
   rd_kafka_NewPartitions_t* m_partitions;
@@ -530,14 +531,14 @@ class AdminClientCreatePartitions : public ErrorAwareWorker {
  */
 class AdminClientListGroups : public ErrorAwareWorker {
  public:
-  AdminClientListGroups(Nan::Callback *, NodeKafka::AdminClient *, bool,
+  AdminClientListGroups(Napi::FunctionReference *, NodeKafka::AdminClient *, bool,
                         std::vector<rd_kafka_consumer_group_state_t> &,
                         const int &);
   ~AdminClientListGroups();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -552,13 +553,13 @@ class AdminClientListGroups : public ErrorAwareWorker {
  */
 class AdminClientDescribeGroups : public ErrorAwareWorker {
  public:
-  AdminClientDescribeGroups(Nan::Callback *, NodeKafka::AdminClient *,
+  AdminClientDescribeGroups(Napi::FunctionReference *, NodeKafka::AdminClient *,
                             std::vector<std::string> &, bool, const int &);
   ~AdminClientDescribeGroups();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -573,13 +574,13 @@ class AdminClientDescribeGroups : public ErrorAwareWorker {
  */
 class AdminClientDeleteGroups : public ErrorAwareWorker {
  public:
-  AdminClientDeleteGroups(Nan::Callback *, NodeKafka::AdminClient *,
+  AdminClientDeleteGroups(Napi::FunctionReference *, NodeKafka::AdminClient *,
                             rd_kafka_DeleteGroup_t **, size_t, const int &);
   ~AdminClientDeleteGroups();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -594,14 +595,14 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
  */
 class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
  public:
-  AdminClientListConsumerGroupOffsets(Nan::Callback *, NodeKafka::AdminClient *,
+  AdminClientListConsumerGroupOffsets(Napi::FunctionReference *, NodeKafka::AdminClient *,
                           rd_kafka_ListConsumerGroupOffsets_t **, size_t, bool,
                           const int &);
   ~AdminClientListConsumerGroupOffsets();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -617,14 +618,14 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
  */
 class AdminClientDeleteRecords : public ErrorAwareWorker {
  public:
-  AdminClientDeleteRecords(Nan::Callback *, NodeKafka::AdminClient *,
+  AdminClientDeleteRecords(Napi::FunctionReference *, NodeKafka::AdminClient *,
                            rd_kafka_DeleteRecords_t **, size_t, const int &,
                            const int &);
   ~AdminClientDeleteRecords();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -640,14 +641,14 @@ class AdminClientDeleteRecords : public ErrorAwareWorker {
  */
 class AdminClientDescribeTopics : public ErrorAwareWorker {
  public:
-  AdminClientDescribeTopics(Nan::Callback *, NodeKafka::AdminClient *,
+  AdminClientDescribeTopics(Napi::FunctionReference *, NodeKafka::AdminClient *,
                             rd_kafka_TopicCollection_t *, const bool,
                             const int &);
   ~AdminClientDescribeTopics();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -662,14 +663,14 @@ class AdminClientDescribeTopics : public ErrorAwareWorker {
  */
 class AdminClientListOffsets : public ErrorAwareWorker {
  public:
-  AdminClientListOffsets(Nan::Callback *, NodeKafka::AdminClient *,
+  AdminClientListOffsets(Napi::FunctionReference *, NodeKafka::AdminClient *,
                          rd_kafka_topic_partition_list_t *, const int &,
                          rd_kafka_IsolationLevel_t);
   ~AdminClientListOffsets();
 
   void Execute();
-  void HandleOKCallback();
-  void HandleErrorCallback();
+  void OnOK();
+  void OnError();
 
  private:
   NodeKafka::AdminClient *m_client;

@@ -74,57 +74,63 @@ Baton offset_store (int32_t partition, int64_t offset) {
 
 */
 
-Nan::Persistent<v8::Function> Topic::constructor;
+Napi::FunctionReference Topic::constructor;
 
-void Topic::Init(v8::Local<v8::Object> exports) {
-  Nan::HandleScope scope;
+void Topic::Init(Napi::Object exports) {
+  Napi::HandleScope scope(env);
 
-  v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
-  tpl->SetClassName(Nan::New("Topic").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
+  Napi::FunctionReference tpl = Napi::Function::New(env, New);
+  tpl->SetClassName(Napi::String::New(env, "Topic"));
 
-  Nan::SetPrototypeMethod(tpl, "name", NodeGetName);
+
+  InstanceMethod("name", &NodeGetName),
 
   // connect. disconnect. resume. pause. get meta data
-  constructor.Reset((tpl->GetFunction(Nan::GetCurrentContext()))
-    .ToLocalChecked());
+  constructor.Reset((tpl->GetFunction(Napi::GetCurrentContext()))
+    );
 
-  Nan::Set(exports, Nan::New("Topic").ToLocalChecked(),
-    tpl->GetFunction(Nan::GetCurrentContext()).ToLocalChecked());
+  (exports).Set(Napi::String::New(env, "Topic"),
+    tpl->GetFunction(Napi::GetCurrentContext()));
 }
 
-void Topic::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+void Topic::New(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
   if (!info.IsConstructCall()) {
-    return Nan::ThrowError("non-constructor invocation not supported");
+    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   if (info.Length() < 1) {
-    return Nan::ThrowError("topic name is required");
+    Napi::Error::New(env, "topic name is required").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsString()) {
-    return Nan::ThrowError("Topic name must be a string");
+  if (!info[0].IsString()) {
+    Napi::Error::New(env, "Topic name must be a string").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   RdKafka::Conf* config = NULL;
 
-  if (info.Length() >= 2 && !info[1]->IsUndefined() && !info[1]->IsNull()) {
+  if (info.Length() >= 2 && !info[1].IsUndefined() && !info[1].IsNull()) {
     // If they gave us two parameters, or the 3rd parameter is null or
     // undefined, we want to pass null in for the config
 
     std::string errstr;
-    if (!info[1]->IsObject()) {
-      return Nan::ThrowError("Configuration data must be specified");
+    if (!info[1].IsObject()) {
+      Napi::Error::New(env, "Configuration data must be specified").ThrowAsJavaScriptException();
+      return env.Null();
     }
 
-    config = Conf::create(RdKafka::Conf::CONF_TOPIC, (info[1]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);  // NOLINT
+    config = Conf::create(RdKafka::Conf::CONF_TOPIC, (info[1].ToObject(Napi::GetCurrentContext())), errstr);  // NOLINT
 
     if (!config) {
-      return Nan::ThrowError(errstr.c_str());
+      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+      return env.Null();
     }
   }
 
-  Nan::Utf8String parameterValue(Nan::To<v8::String>(info[0]).ToLocalChecked());
+  std::string parameterValue = info[0].As<Napi::String>(.To<Napi::String>());
   std::string topic_name(*parameterValue);
 
   Topic* topic = new Topic(topic_name, config);
@@ -136,37 +142,38 @@ void Topic::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
   // basically it sets the configuration data
   // we don't need to do that because we lazy load it
 
-  info.GetReturnValue().Set(info.This());
+  return info.This();
 }
 
 // handle
 
-v8::Local<v8::Object> Topic::NewInstance(v8::Local<v8::Value> arg) {
-  Nan::EscapableHandleScope scope;
+Napi::Object Topic::NewInstance(Napi::Value arg) {
+  Napi::Env env = arg.Env();
+  Napi::EscapableHandleScope scope(env);
 
   const unsigned argc = 1;
 
-  v8::Local<v8::Value> argv[argc] = { arg };
-  v8::Local<v8::Function> cons = Nan::New<v8::Function>(constructor);
-  v8::Local<v8::Object> instance =
-    Nan::NewInstance(cons, argc, argv).ToLocalChecked();
+  Napi::Value argv[argc] = { arg };
+  Napi::Function cons = Napi::Function::New(env, constructor);
+  Napi::Object instance =
+    Napi::NewInstance(cons, argc, argv);
 
   return scope.Escape(instance);
 }
 
-NAN_METHOD(Topic::NodeGetName) {
-  Nan::HandleScope scope;
+Napi::Value Topic::NodeGetName(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
   Topic* topic = ObjectWrap::Unwrap<Topic>(info.This());
 
-  info.GetReturnValue().Set(Nan::New(topic->name()).ToLocalChecked());
+  return Napi::New(env, topic->name());
 }
 
-NAN_METHOD(Topic::NodePartitionAvailable) {
+Napi::Value Topic::NodePartitionAvailable(const Napi::CallbackInfo& info) {
   // @TODO(sparente)
 }
 
-NAN_METHOD(Topic::NodeOffsetStore) {
+Napi::Value Topic::NodeOffsetStore(const Napi::CallbackInfo& info) {
   // @TODO(sparente)
 }
 

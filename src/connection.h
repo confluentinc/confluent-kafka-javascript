@@ -11,7 +11,8 @@
 #ifndef SRC_CONNECTION_H_
 #define SRC_CONNECTION_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <iostream>
 #include <list>
 #include <string>
@@ -46,7 +47,7 @@ namespace NodeKafka {
  * @sa NodeKafka::Client
  */
 
-class Connection : public Nan::ObjectWrap {
+class Connection : public Napi::ObjectWrap<Connection> {
  public:
   bool IsConnected() const;
   bool IsClosing() const;
@@ -73,7 +74,7 @@ class Connection : public Nan::ObjectWrap {
   virtual void DeactivateDispatchers() = 0;
 
   virtual void ConfigureCallback(
-    const std::string &string_key, const v8::Local<v8::Function> &cb, bool add);
+    const std::string &string_key, const Napi::Function &cb, bool add);
 
   std::string Name() const;
 
@@ -82,8 +83,8 @@ class Connection : public Nan::ObjectWrap {
   explicit Connection(Connection *);
   ~Connection();
 
-  static Nan::Persistent<v8::Function> constructor;
-  static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  static Napi::FunctionReference constructor;
+  static void New(const Napi::CallbackInfo& info);
   static Baton rdkafkaErrorToBaton(RdKafka::Error* error);
 
   Baton setupSaslOAuthBearerConfig();
@@ -100,14 +101,14 @@ class Connection : public Nan::ObjectWrap {
 
   RdKafka::Handle* m_client;
 
-  static NAN_METHOD(NodeConfigureCallbacks);
-  static NAN_METHOD(NodeGetMetadata);
-  static NAN_METHOD(NodeQueryWatermarkOffsets);
-  static NAN_METHOD(NodeOffsetsForTimes);
-  static NAN_METHOD(NodeSetSaslCredentials);
-  static NAN_METHOD(NodeSetOAuthBearerToken);
-  static NAN_METHOD(NodeSetOAuthBearerTokenFailure);
-  static NAN_METHOD(NodeName);
+  static Napi::Value NodeConfigureCallbacks(const Napi::CallbackInfo& info);
+  static Napi::Value NodeGetMetadata(const Napi::CallbackInfo& info);
+  static Napi::Value NodeQueryWatermarkOffsets(const Napi::CallbackInfo& info);
+  static Napi::Value NodeOffsetsForTimes(const Napi::CallbackInfo& info);
+  static Napi::Value NodeSetSaslCredentials(const Napi::CallbackInfo& info);
+  static Napi::Value NodeSetOAuthBearerToken(const Napi::CallbackInfo& info);
+  static Napi::Value NodeSetOAuthBearerTokenFailure(const Napi::CallbackInfo& info);
+  static Napi::Value NodeName(const Napi::CallbackInfo& info);
 };
 
 }  // namespace NodeKafka

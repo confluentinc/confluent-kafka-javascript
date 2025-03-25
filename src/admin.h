@@ -11,7 +11,8 @@
 #ifndef SRC_ADMIN_H_
 #define SRC_ADMIN_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <uv.h>
 #include <iostream>
 #include <string>
@@ -38,8 +39,8 @@ namespace NodeKafka {
 
 class AdminClient : public Connection {
  public:
-  static void Init(v8::Local<v8::Object>);
-  static v8::Local<v8::Object> NewInstance(v8::Local<v8::Value>);
+  static void Init(Napi::Object);
+  static Napi::Object NewInstance(Napi::Value);
 
   void ActivateDispatchers();
   void DeactivateDispatchers();
@@ -76,8 +77,8 @@ class AdminClient : public Connection {
                     rd_kafka_event_t** event_response);
 
  protected:
-  static Nan::Persistent<v8::Function> constructor;
-  static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  static Napi::FunctionReference constructor;
+  static void New(const Napi::CallbackInfo& info);
 
   explicit AdminClient(Conf* globalConfig);
   explicit AdminClient(Connection* existingConnection);
@@ -87,22 +88,22 @@ class AdminClient : public Connection {
 
  private:
   // Node methods
-  // static NAN_METHOD(NodeValidateTopic);
-  static NAN_METHOD(NodeCreateTopic);
-  static NAN_METHOD(NodeDeleteTopic);
-  static NAN_METHOD(NodeCreatePartitions);
+  // static Napi::Value NodeValidateTopic(const Napi::CallbackInfo& info);
+  static Napi::Value NodeCreateTopic(const Napi::CallbackInfo& info);
+  static Napi::Value NodeDeleteTopic(const Napi::CallbackInfo& info);
+  static Napi::Value NodeCreatePartitions(const Napi::CallbackInfo& info);
 
   // Consumer group operations
-  static NAN_METHOD(NodeListGroups);
-  static NAN_METHOD(NodeDescribeGroups);
-  static NAN_METHOD(NodeDeleteGroups);
-  static NAN_METHOD(NodeListConsumerGroupOffsets);
-  static NAN_METHOD(NodeDeleteRecords);
-  static NAN_METHOD(NodeDescribeTopics);
-  static NAN_METHOD(NodeListOffsets);
+  static Napi::Value NodeListGroups(const Napi::CallbackInfo& info);
+  static Napi::Value NodeDescribeGroups(const Napi::CallbackInfo& info);
+  static Napi::Value NodeDeleteGroups(const Napi::CallbackInfo& info);
+  static Napi::Value NodeListConsumerGroupOffsets(const Napi::CallbackInfo& info);
+  static Napi::Value NodeDeleteRecords(const Napi::CallbackInfo& info);
+  static Napi::Value NodeDescribeTopics(const Napi::CallbackInfo& info);
+  static Napi::Value NodeListOffsets(const Napi::CallbackInfo& info);
 
-  static NAN_METHOD(NodeConnect);
-  static NAN_METHOD(NodeDisconnect);
+  static Napi::Value NodeConnect(const Napi::CallbackInfo& info);
+  static Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
 };
 
 }  // namespace NodeKafka

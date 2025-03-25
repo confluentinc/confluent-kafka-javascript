@@ -16,7 +16,7 @@
 
 #include "src/workers.h"
 
-using Nan::FunctionCallbackInfo;
+using Napi::FunctionCallbackInfo;
 
 namespace NodeKafka {
 
@@ -98,83 +98,89 @@ Baton AdminClient::Disconnect() {
   return Baton(RdKafka::ERR_NO_ERROR);
 }
 
-Nan::Persistent<v8::Function> AdminClient::constructor;
+Napi::FunctionReference AdminClient::constructor;
 
-void AdminClient::Init(v8::Local<v8::Object> exports) {
-  Nan::HandleScope scope;
+void AdminClient::Init(Napi::Object exports) {
+  Napi::HandleScope scope(env);
 
-  v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
-  tpl->SetClassName(Nan::New("AdminClient").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
+  Napi::FunctionReference tpl = Napi::Function::New(env, New);
+  tpl->SetClassName(Napi::String::New(env, "AdminClient"));
+
 
   // Inherited from NodeKafka::Connection
-  Nan::SetPrototypeMethod(tpl, "configureCallbacks", NodeConfigureCallbacks);
-  Nan::SetPrototypeMethod(tpl, "name", NodeName);
+  InstanceMethod("configureCallbacks", &NodeConfigureCallbacks),
+  InstanceMethod("name", &NodeName),
 
   // Admin client operations
-  Nan::SetPrototypeMethod(tpl, "createTopic", NodeCreateTopic);
-  Nan::SetPrototypeMethod(tpl, "deleteTopic", NodeDeleteTopic);
-  Nan::SetPrototypeMethod(tpl, "createPartitions", NodeCreatePartitions);
-  Nan::SetPrototypeMethod(tpl, "deleteRecords", NodeDeleteRecords);
-  Nan::SetPrototypeMethod(tpl, "describeTopics", NodeDescribeTopics);
-  Nan::SetPrototypeMethod(tpl, "listOffsets", NodeListOffsets);
+  InstanceMethod("createTopic", &NodeCreateTopic),
+  InstanceMethod("deleteTopic", &NodeDeleteTopic),
+  InstanceMethod("createPartitions", &NodeCreatePartitions),
+  InstanceMethod("deleteRecords", &NodeDeleteRecords),
+  InstanceMethod("describeTopics", &NodeDescribeTopics),
+  InstanceMethod("listOffsets", &NodeListOffsets),
 
   // Consumer group related operations
-  Nan::SetPrototypeMethod(tpl, "listGroups", NodeListGroups);
-  Nan::SetPrototypeMethod(tpl, "describeGroups", NodeDescribeGroups);
-  Nan::SetPrototypeMethod(tpl, "deleteGroups", NodeDeleteGroups);
-  Nan::SetPrototypeMethod(tpl, "listConsumerGroupOffsets",
+  InstanceMethod("listGroups", &NodeListGroups),
+  InstanceMethod("describeGroups", &NodeDescribeGroups),
+  InstanceMethod("deleteGroups", &NodeDeleteGroups),
+  Napi::SetPrototypeMethod(tpl, "listConsumerGroupOffsets",
                           NodeListConsumerGroupOffsets);
 
-  Nan::SetPrototypeMethod(tpl, "connect", NodeConnect);
-  Nan::SetPrototypeMethod(tpl, "disconnect", NodeDisconnect);
-  Nan::SetPrototypeMethod(tpl, "setSaslCredentials", NodeSetSaslCredentials);
-  Nan::SetPrototypeMethod(tpl, "getMetadata", NodeGetMetadata);
-  Nan::SetPrototypeMethod(tpl, "setOAuthBearerToken", NodeSetOAuthBearerToken);
-  Nan::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
+  InstanceMethod("connect", &NodeConnect),
+  InstanceMethod("disconnect", &NodeDisconnect),
+  InstanceMethod("setSaslCredentials", &NodeSetSaslCredentials),
+  InstanceMethod("getMetadata", &NodeGetMetadata),
+  InstanceMethod("setOAuthBearerToken", &NodeSetOAuthBearerToken),
+  Napi::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
                           NodeSetOAuthBearerTokenFailure);
 
   constructor.Reset(
-    (tpl->GetFunction(Nan::GetCurrentContext())).ToLocalChecked());
-  Nan::Set(exports, Nan::New("AdminClient").ToLocalChecked(),
-    tpl->GetFunction(Nan::GetCurrentContext()).ToLocalChecked());
+    (tpl->GetFunction(Napi::GetCurrentContext())));
+  (exports).Set(Napi::String::New(env, "AdminClient"),
+    tpl->GetFunction(Napi::GetCurrentContext()));
 }
 
-void AdminClient::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+void AdminClient::New(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
   if (!info.IsConstructCall()) {
-    return Nan::ThrowError("non-constructor invocation not supported");
+    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   if (info.Length() < 1) {
-    return Nan::ThrowError("You must supply a global configuration or a preexisting client"); // NOLINT
+    Napi::Error::New(env, "You must supply a global configuration or a preexisting client").ThrowAsJavaScriptException();
+    return env.Null(); // NOLINT
   }
 
   Connection *connection = NULL;
   Conf *gconfig = NULL;
   AdminClient *client = NULL;
 
-  if (info.Length() >= 3 && !info[2]->IsNull() && !info[2]->IsUndefined()) {
-    if (!info[2]->IsObject()) {
-      return Nan::ThrowError("Third argument, if provided, must be a client object"); // NOLINT
+  if (info.Length() >= 3 && !info[2].IsNull() && !info[2].IsUndefined()) {
+    if (!info[2].IsObject()) {
+      Napi::Error::New(env, "Third argument, if provided, must be a client object").ThrowAsJavaScriptException();
+      return env.Null(); // NOLINT
     }
     // We check whether this is a wrapped object within the calling JavaScript
     // code, so it's safe to unwrap it here. We Unwrap it directly into a
     // Connection object, since it's OK to unwrap into the parent class.
     connection = ObjectWrap::Unwrap<Connection>(
-        info[2]->ToObject(Nan::GetCurrentContext()).ToLocalChecked());
+        info[2].ToObject(Napi::GetCurrentContext()));
     client = new AdminClient(connection);
   } else {
-    if (!info[0]->IsObject()) {
-      return Nan::ThrowError("Global configuration data must be specified");
+    if (!info[0].IsObject()) {
+      Napi::Error::New(env, "Global configuration data must be specified").ThrowAsJavaScriptException();
+      return env.Null();
     }
 
     std::string errstr;
     gconfig = Conf::create(
         RdKafka::Conf::CONF_GLOBAL,
-        (info[0]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);
+        (info[0].ToObject(Napi::GetCurrentContext())), errstr);
 
     if (!gconfig) {
-      return Nan::ThrowError(errstr.c_str());
+      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+      return env.Null();
     }
     client = new AdminClient(gconfig);
   }
@@ -186,18 +192,19 @@ void AdminClient::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
   // basically it sets the configuration data
   // we don't need to do that because we lazy load it
 
-  info.GetReturnValue().Set(info.This());
+  return info.This();
 }
 
-v8::Local<v8::Object> AdminClient::NewInstance(v8::Local<v8::Value> arg) {
-  Nan::EscapableHandleScope scope;
+Napi::Object AdminClient::NewInstance(Napi::Value arg) {
+  Napi::Env env = arg.Env();
+  Napi::EscapableHandleScope scope(env);
 
   const unsigned argc = 1;
 
-  v8::Local<v8::Value> argv[argc] = { arg };
-  v8::Local<v8::Function> cons = Nan::New<v8::Function>(constructor);
-  v8::Local<v8::Object> instance =
-    Nan::NewInstance(cons, argc, argv).ToLocalChecked();
+  Napi::Value argv[argc] = { arg };
+  Napi::Function cons = Napi::Function::New(env, constructor);
+  Napi::Object instance =
+    Napi::NewInstance(cons, argc, argv);
 
   return scope.Escape(instance);
 }
@@ -989,8 +996,8 @@ void AdminClient::DeactivateDispatchers() {
  * C++ Exported prototype functions
  */
 
-NAN_METHOD(AdminClient::NodeConnect) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeConnect(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
   AdminClient* client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
@@ -1005,133 +1012,139 @@ NAN_METHOD(AdminClient::NodeConnect) {
   Baton b = client->Connect();
   // Let the JS library throw if we need to so the error can be more rich
   int error_code = static_cast<int>(b.err());
-  return info.GetReturnValue().Set(Nan::New<v8::Number>(error_code));
+  return return Napi::Number::New(env, error_code);
 }
 
-NAN_METHOD(AdminClient::NodeDisconnect) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeDisconnect(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
   AdminClient* client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   Baton b = client->Disconnect();
   // Let the JS library throw if we need to so the error can be more rich
   int error_code = static_cast<int>(b.err());
-  return info.GetReturnValue().Set(Nan::New<v8::Number>(error_code));
+  return return Napi::Number::New(env, error_code);
 }
 
 /**
  * Create topic
  */
-NAN_METHOD(AdminClient::NodeCreateTopic) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeCreateTopic(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
+  if (info.Length() < 3 || !info[2].IsFunction()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callback");
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[1]->IsNumber()) {
-    return Nan::ThrowError("Must provide 'timeout'");
+  if (!info[1].IsNumber()) {
+    Napi::Error::New(env, "Must provide 'timeout'").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient* client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Get the timeout
-  int timeout = Nan::To<int32_t>(info[1]).FromJust();
+  int timeout = info[1].As<Napi::Number>().Int32Value();
 
   std::string errstr;
   // Get that topic we want to create
   rd_kafka_NewTopic_t* topic = Conversion::Admin::FromV8TopicObject(
-    info[0].As<v8::Object>(), errstr);
+    info[0].As<Napi::Object>(), errstr);
 
   if (topic == NULL) {
-    Nan::ThrowError(errstr.c_str());
-    return;
+    Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Queue up dat work
-  Nan::AsyncQueueWorker(
+  Napi::AsyncQueueWorker(
     new Workers::AdminClientCreateTopic(callback, client, topic, timeout));
 
-  return info.GetReturnValue().Set(Nan::Null());
+  return return env.Null();
 }
 
 /**
  * Delete topic
  */
-NAN_METHOD(AdminClient::NodeDeleteTopic) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeDeleteTopic(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
+  if (info.Length() < 3 || !info[2].IsFunction()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callback");
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[1]->IsNumber() || !info[0]->IsString()) {
-    return Nan::ThrowError("Must provide 'timeout', and 'topicName'");
+  if (!info[1].IsNumber() || !info[0].IsString()) {
+    Napi::Error::New(env, "Must provide 'timeout', and 'topicName'").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient* client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Get the topic name from the string
   std::string topic_name = Util::FromV8String(
-    Nan::To<v8::String>(info[0]).ToLocalChecked());
+    info[0].To<Napi::String>());
 
   // Get the timeout
-  int timeout = Nan::To<int32_t>(info[1]).FromJust();
+  int timeout = info[1].As<Napi::Number>().Int32Value();
 
   // Get that topic we want to create
   rd_kafka_DeleteTopic_t* topic = rd_kafka_DeleteTopic_new(
     topic_name.c_str());
 
   // Queue up dat work
-  Nan::AsyncQueueWorker(
+  Napi::AsyncQueueWorker(
     new Workers::AdminClientDeleteTopic(callback, client, topic, timeout));
 
-  return info.GetReturnValue().Set(Nan::Null());
+  return return env.Null();
 }
 
 /**
  * Delete topic
  */
-NAN_METHOD(AdminClient::NodeCreatePartitions) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeCreatePartitions(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
   if (info.Length() < 4) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callback");
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[3]->IsFunction()) {
+  if (!info[3].IsFunction()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callback 2");
+    Napi::Error::New(env, "Need to specify a callback 2").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[2]->IsNumber() || !info[1]->IsNumber() || !info[0]->IsString()) {
-    return Nan::ThrowError(
+  if (!info[2].IsNumber() || !info[1].IsNumber() || !info[0].IsString()) {
+    return Napi::ThrowError(
       "Must provide 'totalPartitions', 'timeout', and 'topicName'");
   }
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[3].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[3].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient* client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Get the timeout
-  int timeout = Nan::To<int32_t>(info[2]).FromJust();
+  int timeout = info[2].As<Napi::Number>().Int32Value();
 
   // Get the total number of desired partitions
-  int partition_total_count = Nan::To<int32_t>(info[1]).FromJust();
+  int partition_total_count = info[1].As<Napi::Number>().Int32Value();
 
   // Get the topic name from the string
   std::string topic_name = Util::FromV8String(
-    Nan::To<v8::String>(info[0]).ToLocalChecked());
+    info[0].To<Napi::String>());
 
   // Create an error buffer we can throw
   char* errbuf = reinterpret_cast<char*>(malloc(100));
@@ -1143,36 +1156,39 @@ NAN_METHOD(AdminClient::NodeCreatePartitions) {
   // If we got a failure on the create new partitions request,
   // fail here
   if (new_partitions == NULL) {
-    return Nan::ThrowError(errbuf);
+    Napi::Error::New(env, errbuf).ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Queue up dat work
-  Nan::AsyncQueueWorker(new Workers::AdminClientCreatePartitions(
+  Napi::AsyncQueueWorker(new Workers::AdminClientCreatePartitions(
     callback, client, new_partitions, timeout));
 
-  return info.GetReturnValue().Set(Nan::Null());
+  return return env.Null();
 }
 
 /**
  * List Consumer Groups.
  */
-NAN_METHOD(AdminClient::NodeListGroups) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeListGroups(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 2 || !info[1]->IsFunction()) {
+  if (info.Length() < 2 || !info[1].IsFunction()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callback");
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsObject()) {
-    return Nan::ThrowError("Must provide options object");
+  if (!info[0].IsObject()) {
+    Napi::Error::New(env, "Must provide options object").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  v8::Local<v8::Object> config = info[0].As<v8::Object>();
+  Napi::Object config = info[0].As<Napi::Object>();
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[1].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[1].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Get the timeout - default 5000.
@@ -1180,14 +1196,14 @@ NAN_METHOD(AdminClient::NodeListGroups) {
 
   // Get the match states, or not if they are unset.
   std::vector<rd_kafka_consumer_group_state_t> match_states;
-  v8::Local<v8::String> match_consumer_group_states_key =
-      Nan::New("matchConsumerGroupStates").ToLocalChecked();
+  Napi::String match_consumer_group_states_key =
+      Napi::String::New(env, "matchConsumerGroupStates");
   bool is_match_states_set =
-      Nan::Has(config, match_consumer_group_states_key).FromMaybe(false);
-  v8::Local<v8::Array> match_states_array = Nan::New<v8::Array>();
+      (config).Has(match_consumer_group_states_key).FromMaybe(false);
+  Napi::Array match_states_array = Napi::Array::New(env);
 
   if (is_match_states_set) {
-    match_states_array = GetParameter<v8::Local<v8::Array>>(
+    match_states_array = GetParameter<Napi::Array>(
         config, "matchConsumerGroupStates", match_states_array);
     if (match_states_array->Length()) {
       match_states = Conversion::Admin::FromV8GroupStateArray(
@@ -1196,38 +1212,42 @@ NAN_METHOD(AdminClient::NodeListGroups) {
   }
 
   // Queue the work.
-  Nan::AsyncQueueWorker(new Workers::AdminClientListGroups(
+  Napi::AsyncQueueWorker(new Workers::AdminClientListGroups(
       callback, client, is_match_states_set, match_states, timeout_ms));
 }
 
 /**
  * Describe Consumer Groups.
  */
-NAN_METHOD(AdminClient::NodeDescribeGroups) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeDescribeGroups(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
+  if (info.Length() < 3 || !info[2].IsFunction()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callback");
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsArray()) {
-    return Nan::ThrowError("Must provide group name array");
+  if (!info[0].IsArray()) {
+    Napi::Error::New(env, "Must provide group name array").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[1]->IsObject()) {
-    return Nan::ThrowError("Must provide options object");
+  if (!info[1].IsObject()) {
+    Napi::Error::New(env, "Must provide options object").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Get list of group names to describe.
-  v8::Local<v8::Array> group_names = info[0].As<v8::Array>();
+  Napi::Array group_names = info[0].As<Napi::Array>();
   if (group_names->Length() == 0) {
-    return Nan::ThrowError("Must provide at least one group name");
+    Napi::Error::New(env, "Must provide at least one group name").ThrowAsJavaScriptException();
+    return env.Null();
   }
   std::vector<std::string> group_names_vector =
       v8ArrayToStringVector(group_names);
 
-  v8::Local<v8::Object> config = info[1].As<v8::Object>();
+  Napi::Object config = info[1].As<Napi::Object>();
 
   // Get the timeout - default 5000.
   int timeout_ms = GetParameter<int64_t>(config, "timeout", 5000);
@@ -1237,12 +1257,12 @@ NAN_METHOD(AdminClient::NodeDescribeGroups) {
       GetParameter<bool>(config, "includeAuthorizedOperations", false);
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Queue the work.
-  Nan::AsyncQueueWorker(new Workers::AdminClientDescribeGroups(
+  Napi::AsyncQueueWorker(new Workers::AdminClientDescribeGroups(
       callback, client, group_names_vector, include_authorized_operations,
       timeout_ms));
 }
@@ -1250,27 +1270,31 @@ NAN_METHOD(AdminClient::NodeDescribeGroups) {
 /**
  * Delete Consumer Groups.
  */
-NAN_METHOD(AdminClient::NodeDeleteGroups) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeDeleteGroups(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
+  if (info.Length() < 3 || !info[2].IsFunction()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callback");
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsArray()) {
-    return Nan::ThrowError("Must provide group name array");
+  if (!info[0].IsArray()) {
+    Napi::Error::New(env, "Must provide group name array").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[1]->IsObject()) {
-    return Nan::ThrowError("Must provide options object");
+  if (!info[1].IsObject()) {
+    Napi::Error::New(env, "Must provide options object").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Get list of group names to delete, and convert it into an
   // rd_kafka_DeleteGroup_t array.
-  v8::Local<v8::Array> group_names = info[0].As<v8::Array>();
+  Napi::Array group_names = info[0].As<Napi::Array>();
   if (group_names->Length() == 0) {
-    return Nan::ThrowError("Must provide at least one group name");
+    Napi::Error::New(env, "Must provide at least one group name").ThrowAsJavaScriptException();
+    return env.Null();
   }
   std::vector<std::string> group_names_vector =
       v8ArrayToStringVector(group_names);
@@ -1282,39 +1306,42 @@ NAN_METHOD(AdminClient::NodeDeleteGroups) {
     group_list[i] = rd_kafka_DeleteGroup_new(group_names_vector[i].c_str());
   }
 
-  v8::Local<v8::Object> config = info[1].As<v8::Object>();
+  Napi::Object config = info[1].As<Napi::Object>();
 
   // Get the timeout - default 5000.
   int timeout_ms = GetParameter<int64_t>(config, "timeout", 5000);
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Queue the work.
-  Nan::AsyncQueueWorker(new Workers::AdminClientDeleteGroups(
+  Napi::AsyncQueueWorker(new Workers::AdminClientDeleteGroups(
       callback, client, group_list, group_names_vector.size(), timeout_ms));
 }
 
 /**
  * List Consumer Group Offsets.
  */
-NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeListConsumerGroupOffsets(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
-    return Nan::ThrowError("Need to specify a callback");
+  if (info.Length() < 3 || !info[2].IsFunction()) {
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsArray()) {
-    return Nan::ThrowError("Must provide an array of 'listGroupOffsets'");
+  if (!info[0].IsArray()) {
+    Napi::Error::New(env, "Must provide an array of 'listGroupOffsets'").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  v8::Local<v8::Array> listGroupOffsets = info[0].As<v8::Array>();
+  Napi::Array listGroupOffsets = info[0].As<Napi::Array>();
 
   if (listGroupOffsets->Length() == 0) {
-    return Nan::ThrowError("'listGroupOffsets' cannot be empty");
+    Napi::Error::New(env, "'listGroupOffsets' cannot be empty").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   /**
@@ -1328,41 +1355,44 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
                  listGroupOffsets->Length()));
 
   for (uint32_t i = 0; i < listGroupOffsets->Length(); ++i) {
-    v8::Local<v8::Value> listGroupOffsetValue =
-        Nan::Get(listGroupOffsets, i).ToLocalChecked();
-    if (!listGroupOffsetValue->IsObject()) {
-      return Nan::ThrowError("Each entry must be an object");
+    Napi::Value listGroupOffsetValue =
+        (listGroupOffsets).Get(i);
+    if (!listGroupOffsetValue.IsObject()) {
+      Napi::Error::New(env, "Each entry must be an object").ThrowAsJavaScriptException();
+      return env.Null();
     }
-    v8::Local<v8::Object> listGroupOffsetObj =
-        listGroupOffsetValue.As<v8::Object>();
+    Napi::Object listGroupOffsetObj =
+        listGroupOffsetValue.As<Napi::Object>();
 
-    v8::Local<v8::Value> groupIdValue;
-    if (!Nan::Get(listGroupOffsetObj, Nan::New("groupId").ToLocalChecked())
+    Napi::Value groupIdValue;
+    if (!(listGroupOffsetObj).Get(Napi::String::New(env, "groupId"))
              .ToLocal(&groupIdValue)) {
-      return Nan::ThrowError("Each entry must have 'groupId'");
+      Napi::Error::New(env, "Each entry must have 'groupId'").ThrowAsJavaScriptException();
+      return env.Null();
     }
 
-    Nan::MaybeLocal<v8::String> groupIdMaybe =
-        Nan::To<v8::String>(groupIdValue);
+    Napi::MaybeLocal<v8::String> groupIdMaybe =
+        groupIdValue.To<Napi::String>();
     if (groupIdMaybe.IsEmpty()) {
-      return Nan::ThrowError("'groupId' must be a string");
+      Napi::Error::New(env, "'groupId' must be a string").ThrowAsJavaScriptException();
+      return env.Null();
     }
-    Nan::Utf8String groupIdUtf8(groupIdMaybe.ToLocalChecked());
+    std::string groupIdUtf8 = groupIdMaybe.ToLocalChecked(.As<Napi::String>());
     std::string groupIdStr = *groupIdUtf8;
 
-    v8::Local<v8::Value> partitionsValue;
+    Napi::Value partitionsValue;
     rd_kafka_topic_partition_list_t *partitions = NULL;
 
-    if (Nan::Get(listGroupOffsetObj, Nan::New("partitions").ToLocalChecked())
+    if ((listGroupOffsetObj).Get(Napi::String::New(env, "partitions"))
             .ToLocal(&partitionsValue) &&
         partitionsValue->IsArray()) {
-      v8::Local<v8::Array> partitionsArray = partitionsValue.As<v8::Array>();
+      Napi::Array partitionsArray = partitionsValue.As<Napi::Array>();
 
       if (partitionsArray->Length() > 0) {
         partitions = Conversion::TopicPartition::
             TopicPartitionv8ArrayToTopicPartitionList(partitionsArray, false);
         if (partitions == NULL) {
-          return Nan::ThrowError(
+          return Napi::ThrowError(
               "Failed to convert partitions to list, provide proper object in "
               "partitions");
         }
@@ -1378,19 +1408,19 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
   }
 
   // Now process the second argument: options (timeout and requireStableOffsets)
-  v8::Local<v8::Object> options = info[1].As<v8::Object>();
+  Napi::Object options = info[1].As<Napi::Object>();
 
   bool require_stable_offsets =
       GetParameter<bool>(options, "requireStableOffsets", false);
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Queue the worker to process the offset fetch request asynchronously
-  Nan::AsyncQueueWorker(new Workers::AdminClientListConsumerGroupOffsets(
+  Napi::AsyncQueueWorker(new Workers::AdminClientListConsumerGroupOffsets(
       callback, client, requests, listGroupOffsets->Length(),
       require_stable_offsets, timeout_ms));
 }
@@ -1398,28 +1428,31 @@ NAN_METHOD(AdminClient::NodeListConsumerGroupOffsets) {
 /**
  * Delete Records.
  */
-NAN_METHOD(AdminClient::NodeDeleteRecords) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeDeleteRecords(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
-    return Nan::ThrowError("Need to specify a callback");
+  if (info.Length() < 3 || !info[2].IsFunction()) {
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsArray()) {
-    return Nan::ThrowError(
+  if (!info[0].IsArray()) {
+    return Napi::ThrowError(
         "Must provide array containg 'TopicPartitionOffset' objects");
   }
 
-  if (!info[1]->IsObject()) {
-    return Nan::ThrowError("Must provide 'options' object");
+  if (!info[1].IsObject()) {
+    Napi::Error::New(env, "Must provide 'options' object").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Get list of TopicPartitions to delete records from
   // and convert it into rd_kafka_DeleteRecords_t array
-  v8::Local<v8::Array> delete_records_list = info[0].As<v8::Array>();
+  Napi::Array delete_records_list = info[0].As<Napi::Array>();
 
   if (delete_records_list->Length() == 0) {
-    return Nan::ThrowError("Must provide at least one TopicPartitionOffset");
+    Napi::Error::New(env, "Must provide at least one TopicPartitionOffset").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   /**
@@ -1435,7 +1468,7 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
       Conversion::TopicPartition::TopicPartitionv8ArrayToTopicPartitionList(
           delete_records_list, true);
   if (partitions == NULL) {
-    return Nan::ThrowError(
+    return Napi::ThrowError(
         "Failed to convert objects in delete records list, provide proper "
         "TopicPartitionOffset objects");
   }
@@ -1444,40 +1477,43 @@ NAN_METHOD(AdminClient::NodeDeleteRecords) {
   rd_kafka_topic_partition_list_destroy(partitions);
 
   // Now process the second argument: options (timeout and operation_timeout)
-  v8::Local<v8::Object> options = info[1].As<v8::Object>();
+  Napi::Object options = info[1].As<Napi::Object>();
 
   int operation_timeout_ms =
       GetParameter<int64_t>(options, "operation_timeout", 60000);
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Queue the worker to process the offset fetch request asynchronously
-  Nan::AsyncQueueWorker(new Workers::AdminClientDeleteRecords(
+  Napi::AsyncQueueWorker(new Workers::AdminClientDeleteRecords(
       callback, client, delete_records, 1, operation_timeout_ms, timeout_ms));
 }
 
 /**
  * Describe Topics.
  */
-NAN_METHOD(AdminClient::NodeDescribeTopics) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeDescribeTopics(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
-    return Nan::ThrowError("Need to specify a callback");
+  if (info.Length() < 3 || !info[2].IsFunction()) {
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsArray()) {
-    return Nan::ThrowError("Must provide an array of 'topicNames'");
+  if (!info[0].IsArray()) {
+    Napi::Error::New(env, "Must provide an array of 'topicNames'").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  v8::Local<v8::Array> topicNames = info[0].As<v8::Array>();
+  Napi::Array topicNames = info[0].As<Napi::Array>();
 
   if (topicNames->Length() == 0) {
-    return Nan::ThrowError("'topicNames' cannot be empty");
+    Napi::Error::New(env, "'topicNames' cannot be empty").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   std::vector<std::string> topicNamesVector = v8ArrayToStringVector(topicNames);
@@ -1499,18 +1535,18 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
 
   free(topics);
 
-  v8::Local<v8::Object> options = info[1].As<v8::Object>();
+  Napi::Object options = info[1].As<Napi::Object>();
 
   bool include_authorised_operations =
       GetParameter<bool>(options, "includeAuthorizedOperations", false);
 
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
-  Nan::AsyncQueueWorker(new Workers::AdminClientDescribeTopics(
+  Napi::AsyncQueueWorker(new Workers::AdminClientDescribeTopics(
       callback, client, topic_collection,
       include_authorised_operations, timeout_ms));
 }
@@ -1519,18 +1555,20 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
 /**
  * List Offsets.
  */
-NAN_METHOD(AdminClient::NodeListOffsets) {
-  Nan::HandleScope scope;
+Napi::Value AdminClient::NodeListOffsets(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[2]->IsFunction()) {
-    return Nan::ThrowError("Need to specify a callback");
+  if (info.Length() < 3 || !info[2].IsFunction()) {
+    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[0]->IsArray()) {
-    return Nan::ThrowError("Must provide an array of 'TopicPartitionOffsets'");
+  if (!info[0].IsArray()) {
+    Napi::Error::New(env, "Must provide an array of 'TopicPartitionOffsets'").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  v8::Local<v8::Array> listOffsets = info[0].As<v8::Array>();
+  Napi::Array listOffsets = info[0].As<Napi::Array>();
 
   /**
    * The ownership of this is taken by
@@ -1541,7 +1579,7 @@ NAN_METHOD(AdminClient::NodeListOffsets) {
       TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(listOffsets);
 
   // Now process the second argument: options (timeout and isolationLevel)
-  v8::Local<v8::Object> options = info[1].As<v8::Object>();
+  Napi::Object options = info[1].As<Napi::Object>();
 
   rd_kafka_IsolationLevel_t isolation_level =
       static_cast<rd_kafka_IsolationLevel_t>(GetParameter<int32_t>(
@@ -1551,12 +1589,12 @@ NAN_METHOD(AdminClient::NodeListOffsets) {
   int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
 
   // Create the final callback object
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
   AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
 
   // Queue the worker to process the offset fetch request asynchronously
-  Nan::AsyncQueueWorker(new Workers::AdminClientListOffsets(
+  Napi::AsyncQueueWorker(new Workers::AdminClientListOffsets(
       callback, client, partitions, timeout_ms, isolation_level));
 }
 

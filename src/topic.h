@@ -10,7 +10,8 @@
 #ifndef SRC_TOPIC_H_
 #define SRC_TOPIC_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <string>
 
 #include "rdkafkacpp.h" // NOLINT
@@ -19,18 +20,18 @@
 
 namespace NodeKafka {
 
-class Topic : public Nan::ObjectWrap {
+class Topic : public Napi::ObjectWrap<Topic> {
  public:
-  static void Init(v8::Local<v8::Object>);
-  static v8::Local<v8::Object> NewInstance(v8::Local<v8::Value> arg);
+  static void Init(Napi::Object);
+  static Napi::Object NewInstance(Napi::Value arg);
 
   Baton toRDKafkaTopic(Connection *handle);
 
  protected:
-  static Nan::Persistent<v8::Function> constructor;
-  static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  static Napi::FunctionReference constructor;
+  static void New(const Napi::CallbackInfo& info);
 
-  static NAN_METHOD(NodeGetMetadata);
+  static Napi::Value NodeGetMetadata(const Napi::CallbackInfo& info);
 
   // TopicConfig * config_;
 
@@ -44,9 +45,9 @@ class Topic : public Nan::ObjectWrap {
   std::string m_topic_name;
   RdKafka::Conf * m_config;
 
-  static NAN_METHOD(NodeGetName);
-  static NAN_METHOD(NodePartitionAvailable);
-  static NAN_METHOD(NodeOffsetStore);
+  static Napi::Value NodeGetName(const Napi::CallbackInfo& info);
+  static Napi::Value NodePartitionAvailable(const Napi::CallbackInfo& info);
+  static Napi::Value NodeOffsetStore(const Napi::CallbackInfo& info);
 };
 
 }  // namespace NodeKafka

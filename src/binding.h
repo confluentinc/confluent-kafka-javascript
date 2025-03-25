@@ -10,7 +10,8 @@
 #ifndef SRC_BINDING_H_
 #define SRC_BINDING_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <string>
 #include "rdkafkacpp.h" // NOLINT
 #include "src/common.h"

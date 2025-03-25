@@ -30,6 +30,7 @@
     "uuid": "^10.0.0"
   },
   "dependencies": {
+    "node-addon-api": "8.3.1",
     "@aws-sdk/client-kms": "^3.637.0",
     "@aws-sdk/credential-providers": "^3.637.0",
     "@azure/identity": "^4.4.1",

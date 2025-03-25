@@ -352,7 +352,7 @@ Baton Connection::SetOAuthBearerTokenFailure(const std::string& errstr) {
 }
 
 void Connection::ConfigureCallback(
-  const std::string &string_key, const v8::Local<v8::Function> &cb, bool add) {
+  const std::string &string_key, const Napi::Function &cb, bool add) {
   if (string_key.compare("event_cb") == 0) {
     if (add) {
       this->m_event_cb.dispatcher.AddCallback(cb);
@@ -364,134 +364,136 @@ void Connection::ConfigureCallback(
 
 // NAN METHODS
 
-NAN_METHOD(Connection::NodeGetMetadata) {
-  Nan::HandleScope scope;
+Napi::Value Connection::NodeGetMetadata(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
   Connection* obj = ObjectWrap::Unwrap<Connection>(info.This());
 
-  v8::Local<v8::Object> config;
-  if (info[0]->IsObject()) {
-    config = info[0].As<v8::Object>();
+  Napi::Object config;
+  if (info[0].IsObject()) {
+    config = info[0].As<Napi::Object>();
   } else {
-    config = Nan::New<v8::Object>();
+    config = Napi::Object::New(env);
   }
 
-  if (!info[1]->IsFunction()) {
-    Nan::ThrowError("Second parameter must be a callback");
-    return;
+  if (!info[1].IsFunction()) {
+    Napi::Error::New(env, "Second parameter must be a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  v8::Local<v8::Function> cb = info[1].As<v8::Function>();
+  Napi::Function cb = info[1].As<Napi::Function>();
 
   std::string topic = GetParameter<std::string>(config, "topic", "");
   bool allTopics = GetParameter<bool>(config, "allTopics", true);
   int timeout_ms = GetParameter<int64_t>(config, "timeout", 30000);
 
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
 
-  Nan::AsyncQueueWorker(new Workers::ConnectionMetadata(
+  Napi::AsyncQueueWorker(new Workers::ConnectionMetadata(
     callback, obj, topic, timeout_ms, allTopics));
 
-  info.GetReturnValue().Set(Nan::Null());
+  return env.Null();
 }
 
-NAN_METHOD(Connection::NodeOffsetsForTimes) {
-  Nan::HandleScope scope;
+Napi::Value Connection::NodeOffsetsForTimes(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
-  if (info.Length() < 3 || !info[0]->IsArray()) {
+  if (info.Length() < 3 || !info[0].IsArray()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify an array of topic partitions");
+    Napi::Error::New(env, "Need to specify an array of topic partitions").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   std::vector<RdKafka::TopicPartition *> toppars =
-    Conversion::TopicPartition::FromV8Array(info[0].As<v8::Array>());
+    Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
   int timeout_ms;
-  Nan::Maybe<uint32_t> maybeTimeout =
-    Nan::To<uint32_t>(info[1].As<v8::Number>());
+  Napi::Maybe<uint32_t> maybeTimeout =
+    info[1].As<Napi::Number>(.As<Napi::Number>().Uint32Value());
 
   if (maybeTimeout.IsNothing()) {
     timeout_ms = 1000;
   } else {
-    timeout_ms = static_cast<int>(maybeTimeout.FromJust());
+    timeout_ms = static_cast<int>(maybeTimeout);
   }
 
-  v8::Local<v8::Function> cb = info[2].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[2].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
 
   Connection* handle = ObjectWrap::Unwrap<Connection>(info.This());
 
-  Nan::AsyncQueueWorker(
+  Napi::AsyncQueueWorker(
     new Workers::Handle::OffsetsForTimes(callback, handle,
       toppars, timeout_ms));
 
-  info.GetReturnValue().Set(Nan::Null());
+  return env.Null();
 }
 
-NAN_METHOD(Connection::NodeQueryWatermarkOffsets) {
-  Nan::HandleScope scope;
+Napi::Value Connection::NodeQueryWatermarkOffsets(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
   Connection* obj = ObjectWrap::Unwrap<Connection>(info.This());
 
-  if (!info[0]->IsString()) {
-    Nan::ThrowError("1st parameter must be a topic string");;
+  if (!info[0].IsString()) {
+    Napi::Error::New(env, "1st parameter must be a topic string").ThrowAsJavaScriptException();
+;
     return;
   }
 
-  if (!info[1]->IsNumber()) {
-    Nan::ThrowError("2nd parameter must be a partition number");
-    return;
+  if (!info[1].IsNumber()) {
+    Napi::Error::New(env, "2nd parameter must be a partition number").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[2]->IsNumber()) {
-    Nan::ThrowError("3rd parameter must be a number of milliseconds");
-    return;
+  if (!info[2].IsNumber()) {
+    Napi::Error::New(env, "3rd parameter must be a number of milliseconds").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[3]->IsFunction()) {
-    Nan::ThrowError("4th parameter must be a callback");
-    return;
+  if (!info[3].IsFunction()) {
+    Napi::Error::New(env, "4th parameter must be a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Get string pointer for the topic name
-  Nan::Utf8String topicUTF8(Nan::To<v8::String>(info[0]).ToLocalChecked());
+  std::string topicUTF8 = info[0].As<Napi::String>(.To<Napi::String>());
   // The first parameter is the topic
   std::string topic_name(*topicUTF8);
 
   // Second parameter is the partition
-  int32_t partition = Nan::To<int32_t>(info[1]).FromJust();
+  int32_t partition = info[1].As<Napi::Number>().Int32Value();
 
   // Third parameter is the timeout
-  int timeout_ms = Nan::To<int>(info[2]).FromJust();
+  int timeout_ms = info[2].As<Napi::Number>().Int32Value();
 
   // Fourth parameter is the callback
-  v8::Local<v8::Function> cb = info[3].As<v8::Function>();
-  Nan::Callback *callback = new Nan::Callback(cb);
+  Napi::Function cb = info[3].As<Napi::Function>();
+  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
 
-  Nan::AsyncQueueWorker(new Workers::ConnectionQueryWatermarkOffsets(
+  Napi::AsyncQueueWorker(new Workers::ConnectionQueryWatermarkOffsets(
     callback, obj, topic_name, partition, timeout_ms));
 
-  info.GetReturnValue().Set(Nan::Null());
+  return env.Null();
 }
 
-NAN_METHOD(Connection::NodeSetSaslCredentials) {
-  if (!info[0]->IsString()) {
-    Nan::ThrowError("1st parameter must be a username string");
-    return;
+Napi::Value Connection::NodeSetSaslCredentials(const Napi::CallbackInfo& info) {
+  if (!info[0].IsString()) {
+    Napi::Error::New(env, "1st parameter must be a username string").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[1]->IsString()) {
-    Nan::ThrowError("2nd parameter must be a password string");
-    return;
+  if (!info[1].IsString()) {
+    Napi::Error::New(env, "2nd parameter must be a password string").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Get string pointer for the username
-  Nan::Utf8String usernameUTF8(Nan::To<v8::String>(info[0]).ToLocalChecked());
+  std::string usernameUTF8 = info[0].As<Napi::String>(.To<Napi::String>());
   // The first parameter is the username
   std::string username(*usernameUTF8);
 
   // Get string pointer for the password
-  Nan::Utf8String passwordUTF8(Nan::To<v8::String>(info[1]).ToLocalChecked());
+  std::string passwordUTF8 = info[1].As<Napi::String>(.To<Napi::String>());
   // The first parameter is the password
   std::string password(*passwordUTF8);
 
@@ -499,44 +501,46 @@ NAN_METHOD(Connection::NodeSetSaslCredentials) {
   Baton b = obj->SetSaslCredentials(username, password);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
-    v8::Local<v8::Value> errorObject = b.ToObject();
-    return Nan::ThrowError(errorObject);
+    Napi::Value errorObject = b.ToObject();
+    Napi::Error::New(env, errorObject).ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  info.GetReturnValue().Set(Nan::Null());
+  return env.Null();
 }
 
 
 // Node methods
-NAN_METHOD(Connection::NodeConfigureCallbacks) {
-  Nan::HandleScope scope;
+Napi::Value Connection::NodeConfigureCallbacks(const Napi::CallbackInfo& info) {
+  Napi::HandleScope scope(env);
 
   if (info.Length() < 2 ||
-    !info[0]->IsBoolean() ||
-    !info[1]->IsObject()) {
+    !info[0].IsBoolean() ||
+    !info[1].IsObject()) {
     // Just throw an exception
-    return Nan::ThrowError("Need to specify a callbacks object");
+    Napi::Error::New(env, "Need to specify a callbacks object").ThrowAsJavaScriptException();
+    return env.Null();
   }
-  v8::Local<v8::Context> context = Nan::GetCurrentContext();
+  v8::Local<v8::Context> context = Napi::GetCurrentContext();
   Connection* obj = ObjectWrap::Unwrap<Connection>(info.This());
 
-  const bool add = Nan::To<bool>(info[0]).ToChecked();
-  v8::Local<v8::Object> configs_object =
-    info[1]->ToObject(context).ToLocalChecked();
-  v8::Local<v8::Array> configs_property_names =
-    configs_object->GetOwnPropertyNames(context).ToLocalChecked();
+  const bool add = info[0].As<Napi::Boolean>().Value().ToChecked();
+  Napi::Object configs_object =
+    info[1].ToObject(context);
+  Napi::Array configs_property_names =
+    configs_object->GetOwnPropertyNames(context);
 
   for (unsigned int j = 0; j < configs_property_names->Length(); ++j) {
     std::string configs_string_key;
 
-    v8::Local<v8::Value> configs_key =
-      Nan::Get(configs_property_names, j).ToLocalChecked();
-    v8::Local<v8::Value> configs_value =
-      Nan::Get(configs_object, configs_key).ToLocalChecked();
+    Napi::Value configs_key =
+      (configs_property_names).Get(j);
+    Napi::Value configs_value =
+      (configs_object).Get(configs_key);
 
     int config_type = 0;
-    if (configs_value->IsObject() && configs_key->IsString()) {
-      Nan::Utf8String configs_utf8_key(configs_key);
+    if (configs_value.IsObject() && configs_key.IsString()) {
+      std::string configs_utf8_key = configs_key.As<Napi::String>();
       configs_string_key = std::string(*configs_utf8_key);
       if (configs_string_key.compare("global") == 0) {
           config_type = 1;
@@ -551,38 +555,40 @@ NAN_METHOD(Connection::NodeConfigureCallbacks) {
       continue;
     }
 
-    v8::Local<v8::Object> object =
-      configs_value->ToObject(context).ToLocalChecked();
-    v8::Local<v8::Array> property_names =
-      object->GetOwnPropertyNames(context).ToLocalChecked();
+    Napi::Object object =
+      configs_value->ToObject(context);
+    Napi::Array property_names =
+      object->GetOwnPropertyNames(context);
 
     for (unsigned int i = 0; i < property_names->Length(); ++i) {
       std::string errstr;
       std::string string_key;
 
-      v8::Local<v8::Value> key = Nan::Get(property_names, i).ToLocalChecked();
-      v8::Local<v8::Value> value = Nan::Get(object, key).ToLocalChecked();
+      Napi::Value key = (property_names).Get(i);
+      Napi::Value value = (object).Get(key);
 
-      if (key->IsString()) {
-        Nan::Utf8String utf8_key(key);
+      if (key.IsString()) {
+        std::string utf8_key = key.As<Napi::String>();
         string_key = std::string(*utf8_key);
       } else {
         continue;
       }
 
       if (value->IsFunction()) {
-        v8::Local<v8::Function> cb = value.As<v8::Function>();
+        Napi::Function cb = value.As<Napi::Function>();
         switch (config_type) {
           case 1:
             obj->m_gconfig->ConfigureCallback(string_key, cb, add, errstr);
             if (!errstr.empty()) {
-              return Nan::ThrowError(errstr.c_str());
+              Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+              return env.Null();
             }
             break;
           case 2:
             obj->m_tconfig->ConfigureCallback(string_key, cb, add, errstr);
             if (!errstr.empty()) {
-              return Nan::ThrowError(errstr.c_str());
+              Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+              return env.Null();
             }
             break;
           case 3:
@@ -593,46 +599,46 @@ NAN_METHOD(Connection::NodeConfigureCallbacks) {
     }
   }
 
-  info.GetReturnValue().Set(Nan::True());
+  return env.True();
 }
 
-NAN_METHOD(Connection::NodeSetOAuthBearerToken) {
-  if (!info[0]->IsString()) {
-    Nan::ThrowError("1st parameter must be a token string");
-    return;
+Napi::Value Connection::NodeSetOAuthBearerToken(const Napi::CallbackInfo& info) {
+  if (!info[0].IsString()) {
+    Napi::Error::New(env, "1st parameter must be a token string").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[1]->IsNumber()) {
-    Nan::ThrowError("2nd parameter must be a lifetime_ms number");
-    return;
+  if (!info[1].IsNumber()) {
+    Napi::Error::New(env, "2nd parameter must be a lifetime_ms number").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[2]->IsString()) {
-    Nan::ThrowError("3rd parameter must be a principal_name string");
-    return;
+  if (!info[2].IsString()) {
+    Napi::Error::New(env, "3rd parameter must be a principal_name string").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  if (!info[3]->IsNullOrUndefined() && !info[3]->IsArray()) {
-    Nan::ThrowError("4th parameter must be an extensions array or null");
-    return;
+  if (!info[3].IsNullOrUndefined() && !info[3].IsArray()) {
+    Napi::Error::New(env, "4th parameter must be an extensions array or null").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Get string pointer for the token
-  Nan::Utf8String tokenUtf8(Nan::To<v8::String>(info[0]).ToLocalChecked());
+  std::string tokenUtf8 = info[0].As<Napi::String>(.To<Napi::String>());
   std::string token(*tokenUtf8);
 
   // Get the lifetime_ms
-  int64_t lifetime_ms = Nan::To<int64_t>(info[1]).FromJust();
+  int64_t lifetime_ms = info[1].As<Napi::Number>().Int64Value();
 
   // Get string pointer for the principal_name
-  Nan::Utf8String principal_nameUtf8(
-      Nan::To<v8::String>(info[2]).ToLocalChecked());
+  std::string principal_nameUtf8 = 
+      info[2].As<Napi::String>(.To<Napi::String>());
   std::string principal_name(*principal_nameUtf8);
 
   // Get the extensions (if any)
   std::list<std::string> extensions;
-  if (!info[3]->IsNullOrUndefined()) {
-    v8::Local<v8::Array> extensionsArray = info[3].As<v8::Array>();
+  if (!info[3].IsNullOrUndefined()) {
+    Napi::Array extensionsArray = info[3].As<Napi::Array>();
     extensions = v8ArrayToStringList(extensionsArray);
   }
 
@@ -641,38 +647,40 @@ NAN_METHOD(Connection::NodeSetOAuthBearerToken) {
       obj->SetOAuthBearerToken(token, lifetime_ms, principal_name, extensions);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
-    v8::Local<v8::Value> errorObject = b.ToObject();
-    return Nan::ThrowError(errorObject);
+    Napi::Value errorObject = b.ToObject();
+    Napi::Error::New(env, errorObject).ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  info.GetReturnValue().Set(Nan::Null());
+  return env.Null();
 }
 
-NAN_METHOD(Connection::NodeSetOAuthBearerTokenFailure) {
-  if (!info[0]->IsString()) {
-    Nan::ThrowError("1st parameter must be an error string");
-    return;
+Napi::Value Connection::NodeSetOAuthBearerTokenFailure(const Napi::CallbackInfo& info) {
+  if (!info[0].IsString()) {
+    Napi::Error::New(env, "1st parameter must be an error string").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   // Get string pointer for the error string
-  Nan::Utf8String errstrUtf8(Nan::To<v8::String>(info[0]).ToLocalChecked());
+  std::string errstrUtf8 = info[0].As<Napi::String>(.To<Napi::String>());
   std::string errstr(*errstrUtf8);
 
   Connection* obj = ObjectWrap::Unwrap<Connection>(info.This());
   Baton b = obj->SetOAuthBearerTokenFailure(errstr);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
-    v8::Local<v8::Value> errorObject = b.ToObject();
-    return Nan::ThrowError(errorObject);
+    Napi::Value errorObject = b.ToObject();
+    Napi::Error::New(env, errorObject).ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  info.GetReturnValue().Set(Nan::Null());
+  return env.Null();
 }
 
-NAN_METHOD(Connection::NodeName) {
+Napi::Value Connection::NodeName(const Napi::CallbackInfo& info) {
   Connection* obj = ObjectWrap::Unwrap<Connection>(info.This());
   std::string name = obj->Name();
-  info.GetReturnValue().Set(Nan::New(name).ToLocalChecked());
+  return Napi::New(env, name);
 }
 
 }  // namespace NodeKafka
