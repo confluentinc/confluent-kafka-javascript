@@ -9,17 +9,17 @@
  */
 
 #include <string>
-#include <iostream>
 #include "src/binding.h"
 
-using NodeKafka::Producer;
-using NodeKafka::KafkaConsumer;
 using NodeKafka::AdminClient;
+using NodeKafka::KafkaConsumer;
+using NodeKafka::Producer;
 using NodeKafka::Topic;
 
-using RdKafka::ErrorCode;
+using Napi::Number;
 
 Napi::Value NodeRdKafkaErr2Str(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
   int points = info[0].As<Napi::Number>().Int32Value();
   // Cast to error code
   RdKafka::ErrorCode err = static_cast<RdKafka::ErrorCode>(points);
@@ -29,7 +29,8 @@ Napi::Value NodeRdKafkaErr2Str(const Napi::CallbackInfo& info) {
   return Napi::String::New(env, errstr);
 }
 
-Napi::Value NodeRdKafkaBuildInFeatures(const Napi::CallbackInfo& info) {
+Napi::Value NodeRdKafkaBuildInFeatures(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
   RdKafka::Conf * config = RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL);
 
   std::string features;
@@ -43,34 +44,37 @@ Napi::Value NodeRdKafkaBuildInFeatures(const Napi::CallbackInfo& info) {
   delete config;
 }
 
-void ConstantsInit(Napi::Object exports) {
+void defconst(Napi::Env env, Napi::Object target, const char *name, Napi::Value value) {
+  target.Set(Napi::String::New(env, name), value);
+}
+
+void ConstantsInit(Napi::Env env, Napi::Object exports) {
   Napi::Object topicConstants = Napi::Object::New(env);
 
   // RdKafka Error Code definitions
-  NODE_DEFINE_CONSTANT(topicConstants, RdKafka::Topic::PARTITION_UA);
-  NODE_DEFINE_CONSTANT(topicConstants, RdKafka::Topic::OFFSET_BEGINNING);
-  NODE_DEFINE_CONSTANT(topicConstants, RdKafka::Topic::OFFSET_END);
-  NODE_DEFINE_CONSTANT(topicConstants, RdKafka::Topic::OFFSET_STORED);
-  NODE_DEFINE_CONSTANT(topicConstants, RdKafka::Topic::OFFSET_INVALID);
+  defconst(env, topicConstants, "RdKafka::Topic::PARTITION_UA", Number::New(env, RdKafka::Topic::PARTITION_UA));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_BEGINNING", Number::New(env, RdKafka::Topic::OFFSET_BEGINNING));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_END", Number::New(env, RdKafka::Topic::OFFSET_END));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_STORED", Number::New(env, RdKafka::Topic::OFFSET_STORED));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_INVALID", Number::New(env, RdKafka::Topic::OFFSET_INVALID));
 
   (exports).Set(Napi::String::New(env, "topic"), topicConstants);
 
-  (exports).Set(Napi::String::New(env, "err2str"),
-    Napi::GetFunction(Napi::Function::New(env, NodeRdKafkaErr2Str)));  // NOLINT
+  (exports).Set(Napi::String::New(env, "err2str"),Napi::Function::New(env, NodeRdKafkaErr2Str));  
 
-  (exports).Set(Napi::String::New(env, "features"),
-    Napi::GetFunction(Napi::Function::New(env, NodeRdKafkaBuildInFeatures)));  // NOLINT
+  (exports).Set(Napi::String::New(env, "features"), Napi::Function::New(env, NodeRdKafkaBuildInFeatures)); 
 }
 
-void Init(Napi::Object exports, Napi::Value m_, void* v_) {
-  KafkaConsumer::Init(exports);
+Napi::Object Init(Napi::Env env, Napi::Object exports) {
+  KafkaConsumer::Init(env, exports);
   Producer::Init(exports);
   AdminClient::Init(exports);
   Topic::Init(exports);
-  ConstantsInit(exports);
+  ConstantsInit(env, exports);
 
   (exports).Set(Napi::String::New(env, "librdkafkaVersion"),
-      Napi::New(env, RdKafka::version_str().c_str()));
+                Napi::String::New(env, RdKafka::version_str().c_str()));
+  return exports;
 }
 
 NODE_API_MODULE(kafka, Init)
