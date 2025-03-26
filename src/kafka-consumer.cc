@@ -660,38 +660,33 @@ Napi::Value KafkaConsumer::NodeCommitted(const Napi::CallbackInfo &info) {
     Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
   int timeout_ms;
-  Napi::Maybe<uint32_t> maybeTimeout =
-    info[1].As<Napi::Number>(.As<Napi::Number>().Uint32Value());
+  uint32_t maybeTimeout =
+    info[1].As<Napi::Number>().Uint32Value();
 
-  if (maybeTimeout.IsNothing()) {
-    timeout_ms = 1000;
-  } else {
-    timeout_ms = static_cast<int>(maybeTimeout);
-  }
+  timeout_ms = static_cast<int>(maybeTimeout);
 
   Napi::Function cb = info[2].As<Napi::Function>();
-  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
+  Napi::FunctionReference *callback = new Napi::FunctionReference();
+  callback->Reset(cb);
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+  Napi::AsyncWorker *worker =
+      new Workers::KafkaConsumerCommitted(callback, this, toppars, timeout_ms);
 
-  Napi::AsyncQueueWorker(
-    new Workers::KafkaConsumerCommitted(callback, consumer,
-      toppars, timeout_ms));
+  worker->Queue();
 
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeSubscription(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeSubscription(const Napi::CallbackInfo &info) {
+    const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
-  Baton b = consumer->Subscription();
+  Baton b = this->Subscription();
 
   if (b.err() != RdKafka::ErrorCode::ERR_NO_ERROR) {
     // Let the JS library throw if we need to so the error can be more rich
     int error_code = static_cast<int>(b.err());
-    return return Napi::Number::New(env, error_code);
+    return Napi::Number::New(env, error_code);
   }
 
   std::vector<std::string> * topics = b.data<std::vector<std::string>*>();
@@ -1138,21 +1133,19 @@ Napi::Value KafkaConsumer::NodeSeek(const Napi::CallbackInfo &info) {
   }
 
   int timeout_ms;
-  Napi::Maybe<uint32_t> maybeTimeout =
-    info[1].As<Napi::Number>(.As<Napi::Number>().Uint32Value());
+  // Nan::Maybe<uint32_t> maybeTimeout =
+  //   Nan::To<uint32_t>(info[1].As<v8::Number>());
+  uint32_t maybeTimeout =
+    info[1].As<Napi::Number>().Uint32Value();
 
-  if (maybeTimeout.IsNothing()) {
-    timeout_ms = 1000;
-  } else {
-    timeout_ms = static_cast<int>(maybeTimeout);
-    // Do not allow timeouts of less than 10. Providing 0 causes segfaults
-    // because it makes it asynchronous.
-    if (timeout_ms < 10) {
-      timeout_ms = 10;
-    }
+
+  timeout_ms = static_cast<int>(maybeTimeout);
+  // Do not allow timeouts of less than 10. Providing 0 causes segfaults
+  // because it makes it asynchronous.
+  if (timeout_ms < 10) {
+    timeout_ms = 10;
+
   }
-
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
 
   const RdKafka::TopicPartition * toppar =
     Conversion::TopicPartition::FromV8Object(info[0].As<Napi::Object>());
@@ -1162,14 +1155,20 @@ Napi::Value KafkaConsumer::NodeSeek(const Napi::CallbackInfo &info) {
     return env.Null();
   }
 
-  Napi::FunctionReference *callback = new Napi::FunctionReference(info[2].As<Napi::Function>());
-  Napi::AsyncQueueWorker(
-    new Workers::KafkaConsumerSeek(callback, consumer, toppar, timeout_ms));
+  Napi::FunctionReference *callback = new Napi::FunctionReference();
+  
+  callback->Reset(info[2].As<Napi::Function>());
+
+  Napi::AsyncWorker *worker =
+      new Workers::KafkaConsumerSeek(callback, this, toppar, timeout_ms);
+
+  worker->Queue();
 
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeOffsetsStore(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeOffsetsStore(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   // If number of parameters is less than 3 (need topic partition, timeout,
@@ -1184,33 +1183,33 @@ Napi::Value KafkaConsumer::NodeOffsetsStore(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   std::vector<RdKafka::TopicPartition *> toppars =
     Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
-  Baton b = consumer->OffsetsStore(toppars);
+  Baton b = this->OffsetsStore(toppars);
   RdKafka::TopicPartition::destroy(toppars);
 
   int error_code = static_cast<int>(b.err());
   return Napi::Number::New(env, error_code);
 }
 
-Napi::Value KafkaConsumer::NodeOffsetsStoreSingle(const Napi::CallbackInfo& info) {
+Napi::Value
+KafkaConsumer::NodeOffsetsStoreSingle(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
 
   // If number of parameters is less than 3 (need topic partition, partition,
   // offset, and leader epoch), we can't call this.
   if (info.Length() < 4) {
-    return Napi::ThrowError(
-        "Must provide topic, partition, offset and leaderEpoch");
+    Napi::Error::New(env,
+                     "Must provide topic, partition, offset and leaderEpoch")
+        .ThrowAsJavaScriptException();
+    return env.Null();
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   // Get string pointer for the topic name
-  std::string topicUTF8 = info[0].As<Napi::String>(.To<Napi::String>());
-  const std::string& topic_name(*topicUTF8);
+  std::string topicUTF8 = info[0].As<Napi::String>().Utf8Value();
+  const std::string& topic_name(topicUTF8);
 
   int64_t partition = info[1].As<Napi::Number>().Int64Value();
   int64_t offset = info[2].As<Napi::Number>().Int64Value();
@@ -1221,7 +1220,7 @@ Napi::Value KafkaConsumer::NodeOffsetsStoreSingle(const Napi::CallbackInfo& info
   toppar->set_leader_epoch(leader_epoch);
   std::vector<RdKafka::TopicPartition*> toppars = {toppar};
 
-  Baton b = consumer->OffsetsStore(toppars);
+  Baton b = this->OffsetsStore(toppars);
 
   delete toppar;
 
@@ -1229,7 +1228,8 @@ Napi::Value KafkaConsumer::NodeOffsetsStoreSingle(const Napi::CallbackInfo& info
   return Napi::Number::New(env, error_code);
 }
 
-Napi::Value KafkaConsumer::NodePause(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodePause(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   // If number of parameters is less than 3 (need topic partition, timeout,
@@ -1244,12 +1244,10 @@ Napi::Value KafkaConsumer::NodePause(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   std::vector<RdKafka::TopicPartition *> toppars =
     Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
-  Baton b = consumer->Pause(toppars);
+  Baton b = this->Pause(toppars);
   RdKafka::TopicPartition::destroy(toppars);
 
   #if 0
@@ -1269,7 +1267,8 @@ Napi::Value KafkaConsumer::NodePause(const Napi::CallbackInfo& info) {
   return Napi::Number::New(env, error_code);
 }
 
-Napi::Value KafkaConsumer::NodeResume(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeResume(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   // If number of parameters is less than 3 (need topic partition, timeout,
@@ -1284,12 +1283,10 @@ Napi::Value KafkaConsumer::NodeResume(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   std::vector<RdKafka::TopicPartition *> toppars =
     Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
-  Baton b = consumer->Resume(toppars);
+  Baton b = this->Resume(toppars);
 
   // Now iterate through and delete these toppars
   for (std::vector<RdKafka::TopicPartition *>::const_iterator it = toppars.begin();  // NOLINT
@@ -1306,7 +1303,8 @@ Napi::Value KafkaConsumer::NodeResume(const Napi::CallbackInfo& info) {
   return Napi::Number::New(env, error_code);
 }
 
-Napi::Value KafkaConsumer::NodeConsumeLoop(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeConsumeLoop(const Napi::CallbackInfo &info) {
+    const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 3) {
@@ -1331,48 +1329,39 @@ Napi::Value KafkaConsumer::NodeConsumeLoop(const Napi::CallbackInfo& info) {
   }
 
   int timeout_ms;
-  Napi::Maybe<uint32_t> maybeTimeout =
-    info[0].As<Napi::Number>(.As<Napi::Number>().Uint32Value());
-
-  if (maybeTimeout.IsNothing()) {
-    timeout_ms = 1000;
-  } else {
+  uint32_t maybeTimeout =
+    info[0].As<Napi::Number>().Uint32Value();
     timeout_ms = static_cast<int>(maybeTimeout);
-  }
 
   int timeout_sleep_delay_ms;
-  Napi::Maybe<uint32_t> maybeSleep =
-    info[1].As<Napi::Number>(.As<Napi::Number>().Uint32Value());
+  uint32_t maybeSleep =
+    info[1].As<Napi::Number>().Uint32Value();
 
-  if (maybeSleep.IsNothing()) {
-    timeout_sleep_delay_ms = 500;
-  } else {
-    timeout_sleep_delay_ms = static_cast<int>(maybeSleep);
-  }
+  timeout_sleep_delay_ms = static_cast<int>(maybeSleep);
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
-  if (consumer->m_consume_loop != nullptr) {
+  if (this->m_consume_loop != nullptr) {
     Napi::Error::New(env, "Consume was already called").ThrowAsJavaScriptException();
     return env.Null();
   }
 
-  if (!consumer->IsConnected()) {
+  if (!this->IsConnected()) {
     Napi::Error::New(env, "Connect must be called before consume").ThrowAsJavaScriptException();
     return env.Null();
   }
 
   Napi::Function cb = info[2].As<Napi::Function>();
 
-  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
+  Napi::FunctionReference *callback = new Napi::FunctionReference();
+  callback->Reset(cb);
 
-  consumer->m_consume_loop =
-    new Workers::KafkaConsumerConsumeLoop(callback, consumer, timeout_ms, timeout_sleep_delay_ms); // NOLINT
+  this->m_consume_loop =
+    new Workers::KafkaConsumerConsumeLoop(callback, this, timeout_ms, timeout_sleep_delay_ms); // NOLINT
 
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 2) {
@@ -1382,14 +1371,10 @@ Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo& info) {
   }
 
   int timeout_ms;
-  Napi::Maybe<uint32_t> maybeTimeout =
-    info[0].As<Napi::Number>(.As<Napi::Number>().Uint32Value());
+  uint32_t maybeTimeout =
+    info[0].As<Napi::Number>().Uint32Value();
 
-  if (maybeTimeout.IsNothing()) {
-    timeout_ms = 1000;
-  } else {
-    timeout_ms = static_cast<int>(maybeTimeout);
-  }
+  timeout_ms = static_cast<int>(maybeTimeout);
 
   if (info[1].IsNumber()) {
     if (!info[2].IsBoolean()) {
@@ -1403,53 +1388,43 @@ Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo& info) {
     }
 
     Napi::Number numMessagesNumber = info[1].As<Napi::Number>();
-    Napi::Maybe<uint32_t> numMessagesMaybe = numMessagesNumber.As<Napi::Number>().Uint32Value();  // NOLINT
+    uint32_t numMessages = numMessagesNumber.As<Napi::Number>().Uint32Value();  // NOLINT
 
-    uint32_t numMessages;
-    if (numMessagesMaybe.IsNothing()) {
+    if (numMessages == 0) {
       Napi::Error::New(env, "Parameter must be a number over 0").ThrowAsJavaScriptException();
       return env.Null();
-    } else {
-      numMessages = numMessagesMaybe;
     }
 
     Napi::Boolean isTimeoutOnlyForFirstMessageBoolean = info[2].As<Napi::Boolean>(); // NOLINT
-    Napi::Maybe<bool> isTimeoutOnlyForFirstMessageMaybe =
+    bool isTimeoutOnlyForFirstMessage =
       isTimeoutOnlyForFirstMessageBoolean.As<Napi::Boolean>().Value();
 
-    bool isTimeoutOnlyForFirstMessage;
-    if (isTimeoutOnlyForFirstMessageMaybe.IsNothing()) {
-      Napi::Error::New(env, "Parameter must be a boolean").ThrowAsJavaScriptException();
-      return env.Null();
-    } else {
-      isTimeoutOnlyForFirstMessage = isTimeoutOnlyForFirstMessageMaybe; // NOLINT
-    }
-
-    KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
     Napi::Function cb = info[3].As<Napi::Function>();
-    Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
-    Napi::AsyncQueueWorker(
-      new Workers::KafkaConsumerConsumeNum(callback, consumer, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage));  // NOLINT
+    Napi::FunctionReference *callback = new Napi::FunctionReference();
+    callback->Reset(cb);
 
+    Napi::AsyncWorker *worker = new Workers::KafkaConsumerConsumeNum(
+        callback, this, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage);
+    worker->Queue();
   } else {
     if (!info[1].IsFunction()) {
       Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
       return env.Null();
     }
 
-    KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
     Napi::Function cb = info[1].As<Napi::Function>();
-    Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
-    Napi::AsyncQueueWorker(
-      new Workers::KafkaConsumerConsume(callback, consumer, timeout_ms));
+    Napi::FunctionReference *callback = new Napi::FunctionReference();
+    callback->Reset(cb);
+
+    Napi::AsyncWorker* worker = new Workers::KafkaConsumerConsume(callback, this, timeout_ms);
+    worker->Queue();
   }
 
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeConnect(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeConnect(const Napi::CallbackInfo &info) {
+    const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
@@ -1458,20 +1433,20 @@ Napi::Value KafkaConsumer::NodeConnect(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   // Activate the dispatchers before the connection, as some callbacks may run
   // on the background thread.
   // We will deactivate them if the connection fails.
-  consumer->ActivateDispatchers();
+  this->ActivateDispatchers();
 
-  Napi::FunctionReference *callback = new Napi::FunctionReference(info[0].As<Napi::Function>());
-  new Workers::KafkaConsumerConnect(callback, consumer).Queue();
-
+  Napi::FunctionReference *callback = new Napi::FunctionReference();
+  callback->Reset(info[0].As<Napi::Function>());
+  Napi::AsyncWorker* worker = new Workers::KafkaConsumerConnect(callback, this);
+  worker->Queue();
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeDisconnect(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeDisconnect(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
@@ -1481,36 +1456,35 @@ Napi::Value KafkaConsumer::NodeDisconnect(const Napi::CallbackInfo& info) {
   }
 
   Napi::Function cb = info[0].As<Napi::Function>();
-  Napi::FunctionReference *callback = new Napi::FunctionReference(cb);
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+  Napi::FunctionReference *callback = new Napi::FunctionReference();
+  callback->Reset(cb);
 
   Workers::KafkaConsumerConsumeLoop* consumeLoop =
-    (Workers::KafkaConsumerConsumeLoop*)consumer->m_consume_loop;
+    (Workers::KafkaConsumerConsumeLoop*)this->m_consume_loop;
   if (consumeLoop != nullptr) {
     // stop the consume loop
     consumeLoop->Close();
 
     // cleanup the async worker
-    consumeLoop->WorkComplete();
+    //    consumeLoop->WorkComplete();
     consumeLoop->Destroy();
 
-    consumer->m_consume_loop = nullptr;
+    this->m_consume_loop = nullptr;
   }
 
-  Napi::AsyncQueueWorker(
-    new Workers::KafkaConsumerDisconnect(callback, consumer));
+  Napi::AsyncWorker* worker = new Workers::KafkaConsumerDisconnect(callback, this);
+
+  worker->Queue();
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeGetWatermarkOffsets(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeGetWatermarkOffsets(const Napi::CallbackInfo &info) {
+    const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  KafkaConsumer* obj = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   if (!info[0].IsString()) {
-    Napi::Error::New(env, "1st parameter must be a topic string").ThrowAsJavaScriptException();
-;
-    return;
+    Napi::Error::New(env, "1st parameter must be a topic string").ThrowAsJavaScriptException();    
+    return env.Null();
   }
 
   if (!info[1].IsNumber()) {
@@ -1519,9 +1493,9 @@ Napi::Value KafkaConsumer::NodeGetWatermarkOffsets(const Napi::CallbackInfo& inf
   }
 
   // Get string pointer for the topic name
-  std::string topicUTF8 = info[0].As<Napi::String>(.To<Napi::String>());
+  std::string topicUTF8 = info[0].As<Napi::String>().Utf8Value();
   // The first parameter is the topic
-  std::string topic_name(*topicUTF8);
+  std::string topic_name(topicUTF8);
 
   // Second parameter is the partition
   int32_t partition = info[1].As<Napi::Number>().Int32Value();
@@ -1530,13 +1504,13 @@ Napi::Value KafkaConsumer::NodeGetWatermarkOffsets(const Napi::CallbackInfo& inf
   int64_t low_offset;
   int64_t high_offset;
 
-  Baton b = obj->GetWatermarkOffsets(
+  Baton b = this->GetWatermarkOffsets(
     topic_name, partition, &low_offset, &high_offset);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     // Let the JS library throw if we need to so the error can be more rich
     int error_code = static_cast<int>(b.err());
-    return return Napi::Number::New(env, error_code);
+    return Napi::Number::New(env, error_code);
   } else {
     Napi::Object offsetsObj = Napi::Object::New(env);
     (offsetsObj).Set(Napi::String::New(env, "lowOffset"),
@@ -1544,7 +1518,7 @@ Napi::Value KafkaConsumer::NodeGetWatermarkOffsets(const Napi::CallbackInfo& inf
     (offsetsObj).Set(Napi::String::New(env, "highOffset"),
       Napi::Number::New(env, high_offset));
 
-    return return offsetsObj;
+    return offsetsObj;
   }
 }
 
