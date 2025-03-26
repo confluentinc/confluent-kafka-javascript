@@ -49,6 +49,12 @@ Napi::Error RdKafkaError(
   return ret;
 }
 
+Napi::Value ThrowError(const Napi::Env& env, const std::string &message) {
+  Napi::Error error = Napi::Error::New(env, message);
+  error.ThrowAsJavaScriptException();
+  return error.Value();
+}
+
 Baton::Baton(const RdKafka::ErrorCode &code) {
   m_err = code;
 }

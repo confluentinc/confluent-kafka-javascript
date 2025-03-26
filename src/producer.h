@@ -51,8 +51,7 @@ class ProducerMessage {
 
 class Producer : public Connection<Producer> {
  public:
-  static void Init(Napi::Object);
-  static Napi::Object NewInstance(Napi::Value);
+  static void Init(const Napi::Env&, Napi::Object);
 
   Baton Connect();
   void Disconnect();
@@ -82,8 +81,8 @@ class Producer : public Connection<Producer> {
   void ActivateDispatchers();
   void DeactivateDispatchers();
 
-  void ConfigureCallback(const std::string& string_key,
-                         const Napi::Function& cb, bool add) override;
+  // void ConfigureCallback(const std::string& string_key,
+  //                        const Napi::Function& cb, bool add) override;
 
   Baton InitTransactions(int32_t timeout_ms);
   Baton BeginTransaction();
@@ -98,24 +97,24 @@ class Producer : public Connection<Producer> {
   static Napi::FunctionReference constructor;
   static void New(const Napi::CallbackInfo&);
 
-  Producer(Conf*, Conf*);
+  Producer(const Napi::CallbackInfo& info);
   ~Producer();
 
  private:
-  static Napi::Value NodeProduce(const Napi::CallbackInfo& info);
-  static Napi::Value NodeSetPartitioner(const Napi::CallbackInfo& info);
-  static Napi::Value NodeConnect(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
-  static Napi::Value NodePoll(const Napi::CallbackInfo& info);
-  static Napi::Value NodeSetPollInBackground(const Napi::CallbackInfo& info);
+  Napi::Value NodeProduce(const Napi::CallbackInfo& info);
+  Napi::Value NodeSetPartitioner(const Napi::CallbackInfo& info);
+  Napi::Value NodeConnect(const Napi::CallbackInfo& info);
+  Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
+  Napi::Value NodePoll(const Napi::CallbackInfo& info);
+  Napi::Value NodeSetPollInBackground(const Napi::CallbackInfo& info);
   #if RD_KAFKA_VERSION > 0x00090200
-  static Napi::Value NodeFlush(const Napi::CallbackInfo& info);
+  Napi::Value NodeFlush(const Napi::CallbackInfo& info);
   #endif
-  static Napi::Value NodeInitTransactions(const Napi::CallbackInfo& info);
-  static Napi::Value NodeBeginTransaction(const Napi::CallbackInfo& info);
-  static Napi::Value NodeCommitTransaction(const Napi::CallbackInfo& info);
-  static Napi::Value NodeAbortTransaction(const Napi::CallbackInfo& info);
-  static Napi::Value NodeSendOffsetsToTransaction(const Napi::CallbackInfo& info);
+  Napi::Value NodeInitTransactions(const Napi::CallbackInfo& info);
+  Napi::Value NodeBeginTransaction(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommitTransaction(const Napi::CallbackInfo& info);
+  Napi::Value NodeAbortTransaction(const Napi::CallbackInfo& info);
+  Napi::Value NodeSendOffsetsToTransaction(const Napi::CallbackInfo& info);
 
   Callbacks::Delivery m_dr_cb;
   Callbacks::Partitioner m_partitioner_cb;

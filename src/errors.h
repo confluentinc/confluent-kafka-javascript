@@ -54,9 +54,10 @@ class Baton {
   
 Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &);
 Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &, const std::string &);
-Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &err, std::string errstr,
-                          bool isFatal, bool isRetriable,
-                          bool isTxnRequiresAbort);
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &err,
+                         std::string errstr, bool isFatal, bool isRetriable,
+                         bool isTxnRequiresAbort);
+Napi::Value ThrowError(const Napi::Env &env, const std::string &);
 
 }  // namespace NodeKafka
 
