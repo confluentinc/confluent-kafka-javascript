@@ -17,6 +17,7 @@
 #include "src/common.h"
 #include "src/errors.h"
 #include "src/config.h"
+#include "src/workers.h"
 #include "src/connection.h"
 #include "src/kafka-consumer.h"
 #include "src/producer.h"
