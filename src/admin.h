@@ -39,9 +39,9 @@ namespace NodeKafka {
 
 class AdminClient : public Connection<AdminClient> {
  public:
-  static void Init(Napi::Object);
-  static Napi::Object NewInstance(Napi::Value);
+  static void Init(const Napi::Env&, Napi::Object);
 
+  AdminClient(const Napi::CallbackInfo&);
   void ActivateDispatchers();
   void DeactivateDispatchers();
 
@@ -76,12 +76,10 @@ class AdminClient : public Connection<AdminClient> {
                     rd_kafka_IsolationLevel_t isolation_level,
                     rd_kafka_event_t** event_response);
 
+  void ConfigFromExisting(Connection<AdminClient>* existing);
  protected:
   static Napi::FunctionReference constructor;
-  static void New(const Napi::CallbackInfo& info);
 
-  explicit AdminClient(Conf* globalConfig);
-  explicit AdminClient(Connection* existingConnection);
   ~AdminClient();
 
   bool is_derived = false;
@@ -89,21 +87,21 @@ class AdminClient : public Connection<AdminClient> {
  private:
   // Node methods
   // static Napi::Value NodeValidateTopic(const Napi::CallbackInfo& info);
-  static Napi::Value NodeCreateTopic(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDeleteTopic(const Napi::CallbackInfo& info);
-  static Napi::Value NodeCreatePartitions(const Napi::CallbackInfo& info);
+  Napi::Value NodeCreateTopic(const Napi::CallbackInfo& info);
+  Napi::Value NodeDeleteTopic(const Napi::CallbackInfo& info);
+  Napi::Value NodeCreatePartitions(const Napi::CallbackInfo& info);
 
   // Consumer group operations
-  static Napi::Value NodeListGroups(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDescribeGroups(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDeleteGroups(const Napi::CallbackInfo& info);
-  static Napi::Value NodeListConsumerGroupOffsets(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDeleteRecords(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDescribeTopics(const Napi::CallbackInfo& info);
-  static Napi::Value NodeListOffsets(const Napi::CallbackInfo& info);
+  Napi::Value NodeListGroups(const Napi::CallbackInfo& info);
+  Napi::Value NodeDescribeGroups(const Napi::CallbackInfo& info);
+  Napi::Value NodeDeleteGroups(const Napi::CallbackInfo& info);
+  Napi::Value NodeListConsumerGroupOffsets(const Napi::CallbackInfo& info);
+  Napi::Value NodeDeleteRecords(const Napi::CallbackInfo& info);
+  Napi::Value NodeDescribeTopics(const Napi::CallbackInfo& info);
+  Napi::Value NodeListOffsets(const Napi::CallbackInfo& info);
 
-  static Napi::Value NodeConnect(const Napi::CallbackInfo& info);
-  static Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
+  Napi::Value NodeConnect(const Napi::CallbackInfo& info);
+  Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
 };
 
 }  // namespace NodeKafka

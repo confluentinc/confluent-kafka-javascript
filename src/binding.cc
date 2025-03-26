@@ -67,9 +67,9 @@ void ConstantsInit(Napi::Env env, Napi::Object exports) {
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   KafkaConsumer::Init(env, exports);
-  Producer::Init(exports);
-  AdminClient::Init(exports);
-  Topic::Init(exports);
+  Producer::Init(env, exports);
+  AdminClient::Init(env, exports);
+  Topic::Init(env, exports);
   ConstantsInit(env, exports);
 
   (exports).Set(Napi::String::New(env, "librdkafkaVersion"),

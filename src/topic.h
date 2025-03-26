@@ -23,7 +23,7 @@ namespace NodeKafka {
 
 class Topic : public Napi::ObjectWrap<Topic> {
  public:
-  static void Init(Napi::Object);
+  static void Init(const Napi::Env&, Napi::Object);
   static Napi::Object NewInstance(Napi::Value arg);
 
   template <class T> Baton toRDKafkaTopic(Connection<T> *handle);
