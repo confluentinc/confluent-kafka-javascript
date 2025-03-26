@@ -283,7 +283,7 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
 
 
 protected:
-  Connection(const Napi::CallbackInfo &info) {
+  Connection(const Napi::CallbackInfo &info): m_event_cb() {
     Napi::Env env = info.Env(); 
     if (!info.IsConstructCall()) {
       Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
@@ -294,10 +294,11 @@ protected:
 
     }
   }
-  Connection(Conf* gconfig, Conf* tconfig):
-    m_event_cb(),
-    m_gconfig(gconfig),
-    m_tconfig(tconfig) {
+
+  void Config(Conf *gconfig, Conf *tconfig) {
+    this->m_gconfig = gconfig;
+    this->m_tconfig = tconfig;
+    
     std::string errstr;
 
     m_client = NULL;

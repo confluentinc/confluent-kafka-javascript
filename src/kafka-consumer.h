@@ -40,7 +40,7 @@ class KafkaConsumer : public Connection<KafkaConsumer> {
   friend class Producer;
  public:
   static void Init(Napi::Env env, Napi::Object);
-  static Napi::Object NewInstance(Napi::Value);
+  //  static Napi::Object NewInstance(Napi::Value);
 
   Baton Connect();
   Baton Disconnect();
@@ -97,7 +97,8 @@ class KafkaConsumer : public Connection<KafkaConsumer> {
   static Napi::FunctionReference constructor;
   static void New(const Napi::CallbackInfo& info);
 
-  KafkaConsumer(Conf *, Conf *);
+  KafkaConsumer(const Napi::CallbackInfo& info);
+  //  KafkaConsumer(Conf *, Conf *);
   ~KafkaConsumer();
 
  private:

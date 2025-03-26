@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "src/errors.h"
 #include "src/kafka-consumer.h"
 #include "src/workers.h"
 
@@ -27,15 +28,54 @@ namespace NodeKafka {
  * @sa NodeKafka::Client
  */
 
-KafkaConsumer::KafkaConsumer(Conf* gconfig, Conf* tconfig):
-  Connection(gconfig, tconfig) {
-    std::string errstr;
-
-    if (m_tconfig)
-      m_gconfig->set("default_topic_conf", m_tconfig, errstr);
-
-    m_consume_loop = nullptr;
+KafkaConsumer::KafkaConsumer(const Napi::CallbackInfo& info): Connection<KafkaConsumer>(info) {
+  Napi::Env env = info.Env();
+  if (!info.IsConstructCall()) {
+    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+    return;
   }
+
+  if (info.Length() < 2) {
+    Napi::Error::New(env, "You must supply global and topic configuration").ThrowAsJavaScriptException();
+    return;
+  }
+
+  if (!info[0].IsObject()) {
+    Napi::Error::New(env, "Global configuration data must be specified").ThrowAsJavaScriptException();
+    return;
+  }
+
+  std::string errstr;
+
+  Napi::Object i1 = info[0].ToObject();
+   
+  Conf* gconfig =
+    Conf::create(RdKafka::Conf::CONF_GLOBAL, info[0].ToObject(), errstr);
+
+  if (!gconfig) {
+    Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+    return;
+  }
+
+  // If tconfig isn't set, then just let us pick properties from gconf.
+  Conf* tconfig = nullptr;
+  if (info[1].IsObject()) {
+    tconfig = Conf::create(RdKafka::Conf::CONF_TOPIC, info[1].ToObject(), errstr);
+
+    if (!tconfig) {
+      delete gconfig;
+      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+      return;
+    }
+  }
+
+  this->Config(gconfig, tconfig);
+
+  if (m_tconfig)
+    m_gconfig->set("default_topic_conf", m_tconfig, errstr);
+
+  m_consume_loop = nullptr;
+}
 
 KafkaConsumer::~KafkaConsumer() {
   // We only want to run this if it hasn't been run already
@@ -586,85 +626,28 @@ void KafkaConsumer::Init(Napi::Env env, Napi::Object exports) {
       InstanceMethod("offsetsStoreSingle", &KafkaConsumer::NodeOffsetsStoreSingle),
     });
 
-
-
-  constructor.Reset((tpl->GetFunction(Napi::GetCurrentContext()))
-    );
-  (exports).Set(Napi::String::New(env, "KafkaConsumer"),
-    (tpl->GetFunction(Napi::GetCurrentContext())));
+  constructor.Reset(KafkaConsumer);  
+  exports.Set(Napi::String::New(env, "KafkaConsumer"), KafkaConsumer);
 }
 
-void KafkaConsumer::New(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  if (!info.IsConstructCall()) {
-    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
-    return env.Null();
-  }
+// Napi::Object KafkaConsumer::NewInstance(Napi::Value arg) {
+//   Napi::Env env = arg.Env();
+//   Napi::EscapableHandleScope scope(env);
 
-  if (info.Length() < 2) {
-    Napi::Error::New(env, "You must supply global and topic configuration").ThrowAsJavaScriptException();
-    return env.Null();
-  }
+//   const unsigned argc = 1;
 
-  if (!info[0].IsObject()) {
-    Napi::Error::New(env, "Global configuration data must be specified").ThrowAsJavaScriptException();
-    return env.Null();
-  }
+//   Napi::Value argv[argc] = { arg };
+//   Napi::Function cons = Napi::Function::New(env, constructor);
+//   Napi::Object instance =
+//     Napi::NewInstance(cons, argc, argv);
 
-  std::string errstr;
-
-  Conf* gconfig =
-    Conf::create(RdKafka::Conf::CONF_GLOBAL,
-      (info[0].ToObject(Napi::GetCurrentContext())), errstr);
-
-  if (!gconfig) {
-    Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  // If tconfig isn't set, then just let us pick properties from gconf.
-  Conf* tconfig = nullptr;
-  if (info[1].IsObject()) {
-    tconfig = Conf::create(RdKafka::Conf::CONF_TOPIC,
-      (info[1].ToObject(Napi::GetCurrentContext())), errstr);
-
-    if (!tconfig) {
-      delete gconfig;
-      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-  }
-
-  // TODO: fix this - this memory is leaked.
-  KafkaConsumer* consumer = new KafkaConsumer(gconfig, tconfig);
-
-  // Wrap it
-  consumer->Wrap(info.This());
-
-  // Then there is some weird initialization that happens
-  // basically it sets the configuration data
-  // we don't need to do that because we lazy load it
-
-  return info.This();
-}
-
-Napi::Object KafkaConsumer::NewInstance(Napi::Value arg) {
-  Napi::Env env = arg.Env();
-  Napi::EscapableHandleScope scope(env);
-
-  const unsigned argc = 1;
-
-  Napi::Value argv[argc] = { arg };
-  Napi::Function cons = Napi::Function::New(env, constructor);
-  Napi::Object instance =
-    Napi::NewInstance(cons, argc, argv);
-
-  return scope.Escape(instance);
-}
+//   return scope.Escape(instance);
+// }
 
 /* Node exposed methods */
 
-Napi::Value KafkaConsumer::NodeCommitted(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeCommitted(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 3 || !info[0].IsArray()) {
@@ -718,10 +701,9 @@ Napi::Value KafkaConsumer::NodeSubscription(const Napi::CallbackInfo& info) {
   delete topics;
 }
 
-Napi::Value KafkaConsumer::NodePosition(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodePosition(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
-
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
 
   if (info.Length() < 1 || !info[0].IsArray()) {
     // Just throw an exception
@@ -732,12 +714,12 @@ Napi::Value KafkaConsumer::NodePosition(const Napi::CallbackInfo& info) {
   std::vector<RdKafka::TopicPartition *> toppars =
     Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
-  Baton b = consumer->Position(toppars);
+  Baton b = this->Position(toppars);
 
   if (b.err() != RdKafka::ErrorCode::ERR_NO_ERROR) {
     // Let the JS library throw if we need to so the error can be more rich
     int error_code = static_cast<int>(b.err());
-    return return Napi::Number::New(env, error_code);
+    return Napi::Number::New(env, error_code);
   }
 
   return 
@@ -748,40 +730,40 @@ Napi::Value KafkaConsumer::NodePosition(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value KafkaConsumer::NodeAssignments(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
 
-  Baton b = consumer->RefreshAssignments();
+  Baton b = this->RefreshAssignments();
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     // Let the JS library throw if we need to so the error can be more rich
     int error_code = static_cast<int>(b.err());
-    return return Napi::Number::New(env, error_code);
+    return Napi::Number::New(env, error_code);
   }
 
   return 
-    Conversion::TopicPartition::ToV8Array(consumer->m_partitions);
+    Conversion::TopicPartition::ToV8Array(this->m_partitions);
 }
 
-Napi::Value KafkaConsumer::NodeAssignmentLost(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeAssignmentLost(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
-  Baton b = consumer->AssignmentLost();
+  Baton b = this->AssignmentLost();
 
   bool lost = b.data<bool>();
   return Napi::Boolean::New(env, lost);
 }
 
-Napi::Value KafkaConsumer::NodeRebalanceProtocol(const Napi::CallbackInfo& info) {
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-  std::string protocol = consumer->RebalanceProtocol();
+Napi::Value KafkaConsumer::NodeRebalanceProtocol(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  std::string protocol = this->RebalanceProtocol();
   return Napi::String::New(env, protocol);
 }
 
 Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsArray()) {
@@ -793,13 +775,10 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
   Napi::Array partitions = info[0].As<Napi::Array>();
   std::vector<RdKafka::TopicPartition*> topic_partitions;
 
-  for (unsigned int i = 0; i < partitions->Length(); ++i) {
-    Napi::Value partition_obj_value;
-    if (!(
-          (partitions).Get(i).ToLocal(&partition_obj_value) &&
-          partition_obj_value.IsObject())) {
+  for (unsigned int i = 0; i < partitions.Length(); ++i) {
+    Napi::Value partition_obj_value = partitions.Get(i);
+    if (!partition_obj_value.IsObject()) {
       Napi::Error::New(env, "Must pass topic-partition objects").ThrowAsJavaScriptException();
-
     }
 
     Napi::Object partition_obj = partition_obj_value.As<Napi::Object>();
@@ -829,41 +808,38 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
     }
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   // Hand over the partitions to the consumer.
-  Baton b = consumer->Assign(topic_partitions);
+  Baton b = this->Assign(topic_partitions);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     Napi::Error::New(env, RdKafka::err2str(b.err()).c_str()).ThrowAsJavaScriptException();
 
   }
 
-  return env.True();
+  return Napi::Value::From(env, true);
 }
 
-Napi::Value KafkaConsumer::NodeUnassign(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeUnassign(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
-
-  if (!consumer->IsClosing() && !consumer->IsConnected()) {
+  if (!this->IsClosing() && !this->IsConnected()) {
     Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
     return env.Null();
   }
 
-  Baton b = consumer->Unassign();
+  Baton b = this->Unassign();
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     Napi::Error::New(env, RdKafka::err2str(b.err()).c_str()).ThrowAsJavaScriptException();
 
   }
 
-  return env.True();
+  return Napi::Value::From(env, true);
 }
 
-Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsArray()) {
@@ -875,13 +851,11 @@ Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo& info)
   Napi::Array partitions = info[0].As<Napi::Array>();
   std::vector<RdKafka::TopicPartition*> topic_partitions;
 
-  for (unsigned int i = 0; i < partitions->Length(); ++i) {
-    Napi::Value partition_obj_value;
-    if (!(
-          (partitions).Get(i).ToLocal(&partition_obj_value) &&
-          partition_obj_value.IsObject())) {
+  for (unsigned int i = 0; i < partitions.Length(); ++i) {
+    Napi::Value partition_obj_value = partitions.Get(i);
+    if (!partition_obj_value.IsObject()) {
       Napi::Error::New(env, "Must pass topic-partition objects").ThrowAsJavaScriptException();
-
+      return env.Null();
     }
 
     Napi::Object partition_obj = partition_obj_value.As<Napi::Object>();
@@ -911,21 +885,18 @@ Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo& info)
     }
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   // Hand over the partitions to the consumer.
-  Baton b = consumer->IncrementalAssign(topic_partitions);
+  Baton b = this->IncrementalAssign(topic_partitions);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
-    Napi::Value errorObject = b.ToObject();
-    Napi::Error::New(env, errorObject).ThrowAsJavaScriptException();
-
+    b.ToError(env).ThrowAsJavaScriptException();
   }
 
-  return env.True();
+  return Napi::Value::From(env, true);
 }
 
-Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsArray()) {
@@ -937,13 +908,11 @@ Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo& inf
   Napi::Array partitions = info[0].As<Napi::Array>();
   std::vector<RdKafka::TopicPartition*> topic_partitions;
 
-  for (unsigned int i = 0; i < partitions->Length(); ++i) {
-    Napi::Value partition_obj_value;
-    if (!(
-          (partitions).Get(i).ToLocal(&partition_obj_value) &&
-          partition_obj_value.IsObject())) {
+  for (unsigned int i = 0; i < partitions.Length(); ++i) {
+    Napi::Value partition_obj_value = partitions.Get(i);
+    if (!partition_obj_value.IsObject()) {
       Napi::Error::New(env, "Must pass topic-partition objects").ThrowAsJavaScriptException();
-
+      return env.Null();
     }
 
     Napi::Object partition_obj = partition_obj_value.As<Napi::Object>();
@@ -973,50 +942,47 @@ Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo& inf
     }
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   // Hand over the partitions to the consumer.
-  Baton b = consumer->IncrementalUnassign(topic_partitions);
+  Baton b = this->IncrementalUnassign(topic_partitions);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
-    Napi::Value errorObject = b.ToObject();
-    Napi::Error::New(env, errorObject).ThrowAsJavaScriptException();
+    Napi::Error errorObject = b.ToError(env);
+    errorObject.ThrowAsJavaScriptException();
 
   }
 
-  return env.True();
+  return Napi::Value::From(env, true);
 }
 
 
-Napi::Value KafkaConsumer::NodeUnsubscribe(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeUnsubscribe(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
+  Baton b = this->Unsubscribe();
 
-  Baton b = consumer->Unsubscribe();
-
-  return Napi::Number::New(env, static_cast<int>(b.err()));
+  return Napi::Value::From(env, b.err());
 }
 
-Napi::Value KafkaConsumer::NodeCommit(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeCommit(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
   int error_code;
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
 
-  if (!consumer->IsConnected()) {
+  if (!this->IsConnected()) {
     Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (info[0].IsNull() || info[0].IsUndefined()) {
-    Baton b = consumer->Commit();
+    Baton b = this->Commit();
     error_code = static_cast<int>(b.err());
   } else if (info[0].IsArray()) {
     std::vector<RdKafka::TopicPartition *> toppars =
       Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
-    Baton b = consumer->Commit(toppars);
+    Baton b = this->Commit(toppars);
     error_code = static_cast<int>(b.err());
 
     RdKafka::TopicPartition::destroy(toppars);
@@ -1029,7 +995,7 @@ Napi::Value KafkaConsumer::NodeCommit(const Napi::CallbackInfo& info) {
       return env.Null();
     }
 
-    Baton b = consumer->Commit(toppar);
+    Baton b = this->Commit(toppar);
     error_code = static_cast<int>(b.err());
 
     delete toppar;
@@ -1041,25 +1007,24 @@ Napi::Value KafkaConsumer::NodeCommit(const Napi::CallbackInfo& info) {
   return Napi::Number::New(env, error_code);
 }
 
-Napi::Value KafkaConsumer::NodeCommitSync(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeCommitSync(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
   int error_code;
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
-  if (!consumer->IsConnected()) {
+  if (!this->IsConnected()) {
     Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (info[0].IsNull() || info[0].IsUndefined()) {
-    Baton b = consumer->CommitSync();
+    Baton b = this->CommitSync();
     error_code = static_cast<int>(b.err());
   } else if (info[0].IsArray()) {
     std::vector<RdKafka::TopicPartition *> toppars =
       Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
 
-    Baton b = consumer->CommitSync(toppars);
+    Baton b = this->CommitSync(toppars);
     error_code = static_cast<int>(b.err());
 
     RdKafka::TopicPartition::destroy(toppars);
@@ -1072,7 +1037,7 @@ Napi::Value KafkaConsumer::NodeCommitSync(const Napi::CallbackInfo& info) {
       return env.Null();
     }
 
-    Baton b = consumer->CommitSync(toppar);
+    Baton b = this->CommitSync(toppar);
     error_code = static_cast<int>(b.err());
 
     delete toppar;
@@ -1084,15 +1049,14 @@ Napi::Value KafkaConsumer::NodeCommitSync(const Napi::CallbackInfo& info) {
   return Napi::Number::New(env, error_code);
 }
 
-Napi::Value KafkaConsumer::NodeCommitCb(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeCommitCb(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
   int error_code;
   std::optional<std::vector<RdKafka::TopicPartition *>> toppars = std::nullopt;
   Napi::FunctionReference *callback;
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
-  if (!consumer->IsConnected()) {
+  if (!this->IsConnected()) {
     Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
     return env.Null();
   }
@@ -1105,25 +1069,30 @@ Napi::Value KafkaConsumer::NodeCommitCb(const Napi::CallbackInfo& info) {
   if (!(
       (info[0].IsArray() || info[0].IsNull()) &&
       info[1].IsFunction())) {
-    Napi::ThrowError(
-      "First argument should be an array or null and second one a callback");
-    return;
+    Napi::Error::New(env,
+		     "First argument should be an array or null and second one a callback").ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   if (info[0].IsArray()) {
     toppars =
       Conversion::TopicPartition::FromV8Array(info[0].As<Napi::Array>());
   }
-  callback = new Napi::FunctionReference(info[1].As<Napi::Function>());
 
-  Napi::AsyncQueueWorker(
-    new Workers::KafkaConsumerCommitCb(callback, consumer,
-      toppars));
+  callback = new Napi::FunctionReference();
+  callback->Reset(info[1].As<Napi::Function>());
+
+
+  Workers::KafkaConsumerCommitCb *worker =
+      new Workers::KafkaConsumerCommitCb(callback, this, toppars);
+
+  worker->Queue();
 
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeSubscribe(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeSubscribe(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsArray()) {
@@ -1132,19 +1101,18 @@ Napi::Value KafkaConsumer::NodeSubscribe(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
-  KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
-
   Napi::Array topicsArray = info[0].As<Napi::Array>();
   std::vector<std::string> topics =
       Conversion::Util::ToStringVector(topicsArray);
 
-  Baton b = consumer->Subscribe(topics);
+  Baton b = this->Subscribe(topics);
 
   int error_code = static_cast<int>(b.err());
   return Napi::Number::New(env, error_code);
 }
 
-Napi::Value KafkaConsumer::NodeSeek(const Napi::CallbackInfo& info) {
+Napi::Value KafkaConsumer::NodeSeek(const Napi::CallbackInfo &info) {
+  const Napi::Env env = info.Env();  
   Napi::HandleScope scope(env);
 
   // If number of parameters is less than 3 (need topic partition, timeout,

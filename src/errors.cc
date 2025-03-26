@@ -14,11 +14,11 @@
 
 namespace NodeKafka {
 
-Napi::Object RdKafkaError(const RdKafka::ErrorCode &err,
+Napi::Error RdKafkaError(const Napi::Env& env, const RdKafka::ErrorCode &err,
                                    const std::string &errstr) {
   int code = static_cast<int>(err);
 
-  Napi::Object ret = Napi::Object::New(env);
+  Napi::Error ret = Napi::Error::New(env);
 
   (ret).Set(Napi::String::New(env, "message"),
     Napi::String::New(env, errstr));
@@ -28,15 +28,16 @@ Napi::Object RdKafkaError(const RdKafka::ErrorCode &err,
   return ret;
 }
 
-Napi::Object RdKafkaError(const RdKafka::ErrorCode &err) {
+Napi::Error RdKafkaError(const Napi::Env& env, const RdKafka::ErrorCode &err) {
   std::string errstr = RdKafka::err2str(err);
-  return RdKafkaError(err, errstr);
+  return RdKafkaError(env, err, errstr);
 }
 
-Napi::Object RdKafkaError(
+Napi::Error RdKafkaError(
+			 const Napi::Env& env,			  
   const RdKafka::ErrorCode &err, std::string errstr,
   bool isFatal, bool isRetriable, bool isTxnRequiresAbort) {
-  Napi::Object ret = RdKafkaError(err, errstr);
+  Napi::Error ret = RdKafkaError(env, err, errstr);
 
   (ret).Set(Napi::String::New(env, "isFatal"),
     Napi::Boolean::New(env, isFatal));
@@ -92,16 +93,16 @@ Baton Baton::BatonFromErrorAndDestroy(RdKafka::Error *error) {
   return Baton(err, errstr);
 }
 
-Napi::Object Baton::ToObject() {
+Napi::Error Baton::ToError(const Napi::Env& env) {
   if (m_errstr.empty()) {
-    return RdKafkaError(m_err);
+    return RdKafkaError(env, m_err);
   } else {
-    return RdKafkaError(m_err, m_errstr);
+    return RdKafkaError(env, m_err, m_errstr);
   }
 }
 
-Napi::Object Baton::ToTxnObject() {
-  return RdKafkaError(m_err, m_errstr, m_isFatal, m_isRetriable, m_isTxnRequiresAbort); // NOLINT
+Napi::Error Baton::ToTxnError(const Napi::Env& env) {
+  return RdKafkaError(env, m_err, m_errstr, m_isFatal, m_isRetriable, m_isTxnRequiresAbort); // NOLINT
 }
 
 RdKafka::ErrorCode Baton::err() {

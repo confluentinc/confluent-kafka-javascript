@@ -65,8 +65,8 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
     return m_baton.err();
   }
 
-  Napi::Object GetErrorObject() {
-    return m_baton.ToObject();
+  Napi::Error GetErrorObject(const Napi::Env &env) {
+    return m_baton.ToError(env);
   }
 
   Baton m_baton;
@@ -91,9 +91,10 @@ class MessageWorker : public ErrorAwareWorker {
   }
 
   void WorkMessage() {
-    if (!callback) {
-      return;
-    }
+    // TODO: is callback ever NULL?
+    // if (!callback) {
+    //   return;
+    // }
 
     std::vector<RdKafka::Message*> message_queue;
     std::vector<RdKafka::ErrorCode> warning_queue;
@@ -157,7 +158,7 @@ class MessageWorker : public ErrorAwareWorker {
     uv_async_send(m_async);
   }
 
-  inline static NAUV_WORK_CB(m_async_message) {
+  inline static void m_async_message(uv_async_t *async) {
     MessageWorker *worker = static_cast<MessageWorker*>(async->data);
     worker->WorkMessage();
   }
@@ -175,36 +176,37 @@ class MessageWorker : public ErrorAwareWorker {
 };
 
 namespace Handle {
-class OffsetsForTimes : public ErrorAwareWorker {
- public:
-  OffsetsForTimes(Napi::FunctionReference*, NodeKafka::Connection*,
-    std::vector<RdKafka::TopicPartition*> &,
-    const int &);
-  ~OffsetsForTimes();
+  using NodeKafka::Connection;
+  template <class T> class OffsetsForTimes : public ErrorAwareWorker {
+  public:
+    OffsetsForTimes(Napi::FunctionReference*, Connection<T>*,
+		    std::vector<RdKafka::TopicPartition*> &,
+		    const int &);
+    ~OffsetsForTimes();
 
-  void Execute();
-  void OnOK();
-  void OnError();
+    void Execute();
+    void OnOK();
+    void OnError();
 
- private:
-  NodeKafka::Connection * m_handle;
-  std::vector<RdKafka::TopicPartition*> m_topic_partitions;
-  const int m_timeout_ms;
-};
+  private:
+    Connection<T> * m_handle;
+    std::vector<RdKafka::TopicPartition*> m_topic_partitions;
+    const int m_timeout_ms;
+  };
 }  // namespace Handle
 
-class ConnectionMetadata : public ErrorAwareWorker {
- public:
-  ConnectionMetadata(Napi::FunctionReference*, NodeKafka::Connection*,
-    std::string, int, bool);
+template <class T> class ConnectionMetadata : public ErrorAwareWorker {
+public:
+  ConnectionMetadata(Napi::FunctionReference*, Connection<T>*,
+		     std::string, int, bool);
   ~ConnectionMetadata();
 
   void Execute();
   void OnOK();
   void OnError();
 
- private:
-  NodeKafka::Connection * m_connection;
+private:
+  Connection<T> * m_connection;
   std::string m_topic;
   int m_timeout_ms;
   bool m_all_topics;
@@ -212,9 +214,9 @@ class ConnectionMetadata : public ErrorAwareWorker {
   RdKafka::Metadata* m_metadata;
 };
 
-class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {
+template <class T> class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {
  public:
-  ConnectionQueryWatermarkOffsets(Napi::FunctionReference*, NodeKafka::Connection*,
+  ConnectionQueryWatermarkOffsets(Napi::FunctionReference*, Connection<T>*,
     std::string, int32_t, int);
   ~ConnectionQueryWatermarkOffsets();
 
@@ -223,7 +225,7 @@ class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {
   void OnError();
 
  private:
-  NodeKafka::Connection * m_connection;
+  Connection<T> * m_connection;
   std::string m_topic;
   int32_t m_partition;
   int m_timeout_ms;

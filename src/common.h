@@ -22,8 +22,6 @@
 #include "rdkafkacpp.h" // NOLINT
 #include "rdkafka.h"  // NOLINT
 
-#include "src/errors.h"
-
 typedef std::vector<const RdKafka::BrokerMetadata*> BrokerMetadataList;
 typedef std::vector<const RdKafka::PartitionMetadata*> PartitionMetadataList;
 typedef std::vector<const RdKafka::TopicMetadata *> TopicMetadataList;

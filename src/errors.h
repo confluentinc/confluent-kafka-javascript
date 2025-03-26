@@ -40,8 +40,8 @@ class Baton {
   RdKafka::ErrorCode err();
   std::string errstr();
 
-  Napi::Object ToObject();
-  Napi::Object ToTxnObject();
+  Napi::Error ToError(const Napi::Env &env);
+  Napi::Error ToTxnError(const Napi::Env &env);
 
  private:
   void* m_data;
@@ -51,10 +51,12 @@ class Baton {
   bool m_isRetriable;
   bool m_isTxnRequiresAbort;
 };
-
-Napi::Object RdKafkaError(const RdKafka::ErrorCode &);
-Napi::Object RdKafkaError(const RdKafka::ErrorCode &,
-                                   const std::string &);
+  
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &);
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &, const std::string &);
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &err, std::string errstr,
+                          bool isFatal, bool isRetriable,
+                          bool isTxnRequiresAbort);
 
 }  // namespace NodeKafka
 
