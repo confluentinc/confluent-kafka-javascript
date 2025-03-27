@@ -10,7 +10,6 @@
 #include "src/common.h"
 
 #include <iostream>
-#include <list>
 #include <string>
 #include <vector>
 
@@ -21,10 +20,10 @@ void Log(std::string str) {
 }
 
 template<typename T>
-T GetParameter(Napi::Object object, std::string field_name, T def) {
-  Napi::String field = Napi::New(env, field_name.c_str());
-  if ((object).Has(field).FromMaybe(false)) {
-    Napi::Maybe<T> maybeT = Napi::To<T>((object).Get(field));
+T GetParameter(Napi::Env& env, Napi::Object object, std::string field_name, T def) {
+  Napi::String field = Napi::String::New(env, field_name.c_str());
+  if (object.Has(field)) {
+    Napi::MaybeOrValue<T> maybeT = object.Get(field);
     if (maybeT.IsNothing()) {
       return def;
     } else {
@@ -84,8 +83,8 @@ int GetParameter<int>(Napi::Object object,
 
 template<>
 std::string GetParameter<std::string>(Napi::Object object,
-                                      std::string field_name,
-                                      std::string def) {
+				      std::string field_name,
+				      std::string def) {
   Napi::String field = Napi::New(env, field_name.c_str());
   if ((object).Has(field).FromMaybe(false)) {
     Napi::Value parameter =
@@ -94,13 +93,13 @@ std::string GetParameter<std::string>(Napi::Object object,
 
     if (!parameter->IsUndefined() && !parameter->IsNull()) {
       Napi::String val = parameter.To<Napi::String>()
-        ;
+	;
 
       if (!val->IsUndefined() && !val->IsNull()) {
-        std::string parameterValue = val.As<Napi::String>();
-        std::string parameterString(*parameterValue);
+	std::string parameterValue = val.As<Napi::String>();
+	std::string parameterString(*parameterValue);
 
-        return parameterString;
+	return parameterString;
       }
     }
   }
@@ -130,11 +129,11 @@ std::vector<std::string> v8ArrayToStringVector(Napi::Array parameter) {
     for (unsigned int i = 0; i < parameter->Length(); i++) {
       Napi::Value v;
       if (!(parameter).Get(i).ToLocal(&v)) {
-        continue;
+	continue;
       }
       Napi::MaybeLocal<v8::String> p = v.To<Napi::String>();
       if (p.IsEmpty()) {
-        continue;
+	continue;
       }
       std::string pVal = p.ToLocalChecked(.As<Napi::String>());
       std::string pString(*pVal);
@@ -150,11 +149,11 @@ std::list<std::string> v8ArrayToStringList(Napi::Array parameter) {
     for (unsigned int i = 0; i < parameter->Length(); i++) {
       Napi::Value v;
       if (!(parameter).Get(i).ToLocal(&v)) {
-        continue;
+	continue;
       }
       Napi::MaybeLocal<v8::String> p = v.To<Napi::String>();
       if (p.IsEmpty()) {
-        continue;
+	continue;
       }
       std::string pVal = p.ToLocalChecked(.As<Napi::String>());
       std::string pString(*pVal);
@@ -191,27 +190,27 @@ std::vector<std::string> ToStringVector(Napi::Array parameter) {
     for (unsigned int i = 0; i < parameter->Length(); i++) {
       Napi::Value element;
       if (!(parameter).Get(i).ToLocal(&element)) {
-        continue;
+	continue;
       }
 
       if (!element->IsRegExp()) {
-        Napi::MaybeLocal<v8::String> p = element.To<Napi::String>();
+	Napi::MaybeLocal<v8::String> p = element.To<Napi::String>();
 
-        if (p.IsEmpty()) {
-          continue;
-        }
+	if (p.IsEmpty()) {
+	  continue;
+	}
 
-        std::string pVal = p.ToLocalChecked(.As<Napi::String>());
-        std::string pString(*pVal);
+	std::string pVal = p.ToLocalChecked(.As<Napi::String>());
+	std::string pString(*pVal);
 
-        newItem.push_back(pString);
+	newItem.push_back(pString);
       } else {
-        std::string pVal = element.As<v8::RegExp>(.As<Napi::String>()->GetSource());
-        std::string pString(*pVal);
+	std::string pVal = element.As<v8::RegExp>(.As<Napi::String>()->GetSource());
+	std::string pString(*pVal);
 
-        Log(pString);
+	Log(pString);
 
-        newItem.push_back(pString);
+	newItem.push_back(pString);
       }
     }
   }
@@ -235,12 +234,12 @@ Napi::Array ToV8Array(std::vector<std::string> parameter) {
  * objects.
  */
 Napi::Array ToV8Array(const rd_kafka_error_t** error_list,
-                               size_t error_cnt) {
+			       size_t error_cnt) {
   Napi::Array errors = Napi::Array::New(env);
 
   for (size_t i = 0; i < error_cnt; i++) {
     RdKafka::ErrorCode code =
-        static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error_list[i]));
+	static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error_list[i]));
     std::string msg = std::string(rd_kafka_error_string(error_list[i]));
     (errors).Set(i, RdKafkaError(code, msg));
   }
@@ -263,16 +262,16 @@ Napi::Object ToV8Object(const rd_kafka_Node_t* node) {
   Napi::Object obj = Napi::Object::New(env);
 
   (obj).Set(Napi::String::New(env, "id"),
-           Napi::Number::New(env, rd_kafka_Node_id(node)));
+	   Napi::Number::New(env, rd_kafka_Node_id(node)));
   (obj).Set(Napi::String::New(env, "host"),
-           Napi::String::New(env, rd_kafka_Node_host(node)));
+	   Napi::String::New(env, rd_kafka_Node_host(node)));
   (obj).Set(Napi::String::New(env, "port"),
-           Napi::Number::New(env, rd_kafka_Node_port(node)));
+	   Napi::Number::New(env, rd_kafka_Node_port(node)));
 
   const char* rack = rd_kafka_Node_rack(node);
   if (rack) {
     (obj).Set(Napi::String::New(env, "rack"),
-             Napi::String::New(env, rack));
+	     Napi::String::New(env, rack));
   }
 
   return obj;
@@ -284,19 +283,19 @@ Napi::Object ToV8Object(const rd_kafka_Node_t* node) {
 Napi::Object UuidToV8Object(const rd_kafka_Uuid_t* uuid) {
   /*Return object type
     {
-        mostSignificantBits: bigint
-        leastSignificantBits: bigint
-        base64: string
+	mostSignificantBits: bigint
+	leastSignificantBits: bigint
+	base64: string
     }
   */
   Napi::Object obj = Napi::Object::New(env);
 
   (obj).Set(Napi::String::New(env, "mostSignificantBits"),
-           v8::BigInt::New(v8::Isolate::GetCurrent(),
-                           rd_kafka_Uuid_most_significant_bits(uuid)));
+	   v8::BigInt::New(v8::Isolate::GetCurrent(),
+			   rd_kafka_Uuid_most_significant_bits(uuid)));
   (obj).Set(Napi::String::New(env, "leastSignificantBits"),
-           v8::BigInt::New(v8::Isolate::GetCurrent(),
-                           rd_kafka_Uuid_least_significant_bits(uuid)));
+	   v8::BigInt::New(v8::Isolate::GetCurrent(),
+			   rd_kafka_Uuid_least_significant_bits(uuid)));
   (
       obj).Set(Napi::String::New(env, "base64"),
       Napi::String::New(env, rd_kafka_Uuid_base64str(uuid)));
@@ -345,38 +344,38 @@ Napi::Array ToV8Array(
     // an error field to TopicPartition? Or create a TopicPartitionError?
     if (topic_partition->err() != RdKafka::ErrorCode::ERR_NO_ERROR) {
       (array).Set(topic_partition_i,
-        Napi::Error::New(env, Napi::New(env, RdKafka::err2str(topic_partition->err()))
-        ));
+	Napi::Error::New(env, Napi::New(env, RdKafka::err2str(topic_partition->err()))
+	));
     } else {
       // We have the list now let's get the properties from it
       Napi::Object obj = Napi::Object::New(env);
 
       if (topic_partition->offset() != RdKafka::Topic::OFFSET_INVALID) {
-        (obj).Set(Napi::String::New(env, "offset"),
-          Napi::Number::New(env, topic_partition->offset()));
+	(obj).Set(Napi::String::New(env, "offset"),
+	  Napi::Number::New(env, topic_partition->offset()));
       }
 
       // If present, size >= 1, since it will include at least the
       // null terminator.
       if (topic_partition->get_metadata().size() > 0) {
-        (obj).Set(Napi::String::New(env, "metadata"),
-          Napi::String::New(env, 
-            reinterpret_cast<const char*>(topic_partition->get_metadata().data()), // NOLINT
-            // null terminator is not required by the constructor.
-            topic_partition->get_metadata().size() - 1)
-          );
+	(obj).Set(Napi::String::New(env, "metadata"),
+	  Napi::String::New(env,
+	    reinterpret_cast<const char*>(topic_partition->get_metadata().data()), // NOLINT
+	    // null terminator is not required by the constructor.
+	    topic_partition->get_metadata().size() - 1)
+	  );
       }
 
       (obj).Set(Napi::String::New(env, "partition"),
-        Napi::Number::New(env, topic_partition->partition()));
+	Napi::Number::New(env, topic_partition->partition()));
       (obj).Set(Napi::String::New(env, "topic"),
-        Napi::String::New(env, topic_partition->topic().c_str())
-        );
+	Napi::String::New(env, topic_partition->topic().c_str())
+	);
 
       int leader_epoch = topic_partition->get_leader_epoch();
       if (leader_epoch >= 0) {
-        (obj).Set(Napi::String::New(env, "leaderEpoch"),
-                 Napi::Number::New(env, leader_epoch));
+	(obj).Set(Napi::String::New(env, "leaderEpoch"),
+		 Napi::Number::New(env, leader_epoch));
       }
 
       (array).Set(topic_partition_i, obj);
@@ -406,30 +405,30 @@ Napi::Array ToTopicPartitionV8Array(
   for (int topic_partition_i = 0; topic_partition_i < topic_partition_list->cnt;
        topic_partition_i++) {
     rd_kafka_topic_partition_t topic_partition =
-        topic_partition_list->elems[topic_partition_i];
+	topic_partition_list->elems[topic_partition_i];
     Napi::Object obj = Napi::Object::New(env);
 
     (obj).Set(Napi::String::New(env, "partition"),
-             Napi::Number::New(env, topic_partition.partition));
+	     Napi::Number::New(env, topic_partition.partition));
     (obj).Set(Napi::String::New(env, "topic"),
-             Napi::String::New(env, topic_partition.topic));
+	     Napi::String::New(env, topic_partition.topic));
 
     if (topic_partition.err != RD_KAFKA_RESP_ERR_NO_ERROR) {
       Napi::Object error = NodeKafka::RdKafkaError(
-          static_cast<RdKafka::ErrorCode>(topic_partition.err));
+	  static_cast<RdKafka::ErrorCode>(topic_partition.err));
       (obj).Set(Napi::String::New(env, "error"), error);
     }
 
     if (include_offset) {
       (obj).Set(Napi::String::New(env, "offset"),
-               Napi::Number::New(env, topic_partition.offset));
+	       Napi::Number::New(env, topic_partition.offset));
     }
 
     int leader_epoch =
-        rd_kafka_topic_partition_get_leader_epoch(&topic_partition);
+	rd_kafka_topic_partition_get_leader_epoch(&topic_partition);
     if (leader_epoch >= 0) {
       (obj).Set(Napi::String::New(env, "leaderEpoch"),
-               Napi::Number::New(env, leader_epoch));
+	       Napi::Number::New(env, leader_epoch));
     }
 
     (array).Set(topic_partition_i, obj);
@@ -453,13 +452,13 @@ std::vector<RdKafka::TopicPartition*> FromV8Array(
     topic_partition_i < topic_partition_list->Length(); topic_partition_i++) {
     Napi::Value topic_partition_value;
     if (!(topic_partition_list).Get(topic_partition_i)
-        .ToLocal(&topic_partition_value)) {
+	.ToLocal(&topic_partition_value)) {
       continue;
     }
 
     if (topic_partition_value.IsObject()) {
       array.push_back(FromV8Object(
-        topic_partition_value.To<Napi::Object>()));
+	topic_partition_value.To<Napi::Object>()));
     }
   }
 
@@ -493,7 +492,7 @@ rd_kafka_topic_partition_list_t* TopicPartitionv8ArrayToTopicPartitionList(
     int partition = GetParameter<int>(item, "partition", -1);
 
     rd_kafka_topic_partition_t* toppar =
-        rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
+	rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
 
     if (include_offset) {
       int64_t offset = GetParameter<int64_t>(item, "offset", 0);
@@ -506,7 +505,7 @@ rd_kafka_topic_partition_list_t* TopicPartitionv8ArrayToTopicPartitionList(
 /**
  * @brief v8 Array of Topic Partitions with offsetspec to
  *        rd_kafka_topic_partition_list_t
- * 
+ *
  * @note Converts a v8 array of type [{topic: string, partition: number,
  *      offset: {timestamp: number}}] to a rd_kafka_topic_partition_list_t
  */
@@ -532,10 +531,10 @@ TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(
     int partition = GetParameter<int>(item, "partition", -1);
 
     rd_kafka_topic_partition_t* toppar =
-        rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
+	rd_kafka_topic_partition_list_add(newList, topic.c_str(), partition);
 
     Napi::Value offsetValue =
-        (item).Get(Napi::String::New(env, "offset"));
+	(item).Get(Napi::String::New(env, "offset"));
     Napi::Object offsetObject = offsetValue.As<Napi::Object>();
     int64_t offset = GetParameter<int64_t>(offsetObject, "timestamp", 0);
 
@@ -567,15 +566,15 @@ return NULL;
   Napi::String metadataKey = Napi::String::New(env, "metadata");
   if ((topic_partition).Has(metadataKey).FromMaybe(false)) {
     Napi::Value metadataValue =
-        (topic_partition).Get(metadataKey);
+	(topic_partition).Get(metadataKey);
 
     if (metadataValue.IsString()) {
       std::string metadataValueUtf8Str = metadataValue.As<v8::String>(.As<Napi::String>());
       std::string metadataValueStr(*metadataValueUtf8Str);
       std::vector<unsigned char> metadataVector(metadataValueStr.begin(),
-                                                metadataValueStr.end());
+						metadataValueStr.end());
       metadataVector.push_back(
-          '\0');  // The null terminator is not included in the iterator.
+	  '\0');  // The null terminator is not included in the iterator.
       toppar->set_metadata(metadataVector);
     }
   }
@@ -585,7 +584,7 @@ return NULL;
       Napi::String::New(env, "leaderEpoch");
   if ((topic_partition).Has(leaderEpochKey).FromMaybe(false)) {
     Napi::Value leaderEpochValue =
-        (topic_partition).Get(leaderEpochKey);
+	(topic_partition).Get(leaderEpochKey);
 
     if (leaderEpochValue.IsNumber()) {
       int32_t leaderEpoch = leaderEpochValue.As<Napi::Number>().Int32Value();
@@ -662,9 +661,9 @@ Napi::Object ToV8Object(RdKafka::Metadata* metadata) {
       Napi::Object current_partition = Napi::Object::New(env);
 
       (current_partition).Set(Napi::String::New(env, "id"),
-        Napi::Number::New(env, xx->id()));
+	Napi::Number::New(env, xx->id()));
       (current_partition).Set(Napi::String::New(env, "leader"),
-        Napi::Number::New(env, xx->leader()));
+	Napi::Number::New(env, xx->leader()));
 
       const std::vector<int32_t> * replicas  = xx->replicas();
       const std::vector<int32_t> * isrs = xx->isrs();
@@ -678,19 +677,19 @@ Napi::Object ToV8Object(RdKafka::Metadata* metadata) {
       Napi::Array current_replicas = Napi::Array::New(env);
 
       for (r_it = replicas->begin(); r_it != replicas->end(); ++r_it, r_i++) {
-        (current_replicas).Set(r_i, Napi::Int32::New(env, *r_it));
+	(current_replicas).Set(r_i, Napi::Int32::New(env, *r_it));
       }
 
       Napi::Array current_isrs = Napi::Array::New(env);
 
       for (i_it = isrs->begin(); i_it != isrs->end(); ++i_it, i_i++) {
-        (current_isrs).Set(i_i, Napi::Int32::New(env, *i_it));
+	(current_isrs).Set(i_i, Napi::Int32::New(env, *i_it));
       }
 
       (current_partition).Set(Napi::String::New(env, "replicas"),
-        current_replicas);
+	current_replicas);
       (current_partition).Set(Napi::String::New(env, "isrs"),
-        current_isrs);
+	current_isrs);
 
       (current_topic_partitions).Set(partition_i, current_partition);
     }  // iterate over partitions
@@ -723,8 +722,8 @@ Napi::Object ToV8Object(RdKafka::Message *message) {
 }
 
 Napi::Object ToV8Object(RdKafka::Message *message,
-                                bool include_payload,
-                                bool include_headers) {
+				bool include_payload,
+				bool include_headers) {
   if (message->err() == RdKafka::ERR_NO_ERROR) {
     Napi::Object pack = Napi::Object::New(env);
 
@@ -732,13 +731,13 @@ Napi::Object ToV8Object(RdKafka::Message *message,
 
     if (!include_payload) {
       (pack).Set(Napi::String::New(env, "value"),
-        env.Undefined());
+	env.Undefined());
     } else if (message_payload) {
       (pack).Set(Napi::String::New(env, "value"),
-        Napi::Encode(message_payload, message->len(), Napi::Encoding::BUFFER));
+	Napi::Encode(message_payload, message->len(), Napi::Encoding::BUFFER));
     } else {
       (pack).Set(Napi::String::New(env, "value"),
-        env.Null());
+	env.Null());
     }
 
     RdKafka::Headers* headers;
@@ -747,13 +746,13 @@ Napi::Object ToV8Object(RdKafka::Message *message,
       int index = 0;
       std::vector<RdKafka::Headers::Header> all = headers->get_all();
       for (std::vector<RdKafka::Headers::Header>::iterator it = all.begin();
-                                                     it != all.end(); it++) {
-        Napi::Object v8header = Napi::Object::New(env);
-        (v8header).Set(Napi::String::New(env, it->key()),
-          Napi::Encode(it->value_string(),
-            it->value_size(), Napi::Encoding::BUFFER));
-        (v8headers).Set(index, v8header);
-        index++;
+						     it != all.end(); it++) {
+	Napi::Object v8header = Napi::Object::New(env);
+	(v8header).Set(Napi::String::New(env, it->key()),
+	  Napi::Encode(it->value_string(),
+	    it->value_size(), Napi::Encoding::BUFFER));
+	(v8headers).Set(index, v8header);
+	index++;
       }
       (pack).Set(Napi::String::New(env, "headers"), v8headers);
     }
@@ -767,10 +766,10 @@ Napi::Object ToV8Object(RdKafka::Message *message,
       // We want this to also be a buffer to avoid corruption
       // https://github.com/confluentinc/confluent-kafka-javascript/issues/208
       (pack).Set(Napi::String::New(env, "key"),
-        Napi::Encode(key_payload, message->key_len(), Napi::Encoding::BUFFER));
+	Napi::Encode(key_payload, message->key_len(), Napi::Encoding::BUFFER));
     } else {
       (pack).Set(Napi::String::New(env, "key"),
-        env.Null());
+	env.Null());
     }
 
     (pack).Set(Napi::String::New(env, "topic"),
@@ -785,7 +784,7 @@ Napi::Object ToV8Object(RdKafka::Message *message,
     int32_t leader_epoch = message->leader_epoch();
     if (leader_epoch >= 0) {
       (pack).Set(Napi::String::New(env, "leaderEpoch"),
-               Napi::Number::New(env, leader_epoch));
+	       Napi::Number::New(env, leader_epoch));
     }
 
     return pack;
@@ -841,32 +840,32 @@ rd_kafka_NewTopic_t* FromV8TopicObject(
     if (!config_keys.IsEmpty()) {
       Napi::Array field_array = config_keys;
       for (size_t i = 0; i < field_array->Length(); i++) {
-        Napi::String config_key = (field_array).Get(i)
-          .As<Napi::String>();
-        Napi::Value config_value = (config).Get(config_key)
-          ;
+	Napi::String config_key = (field_array).Get(i)
+	  .As<Napi::String>();
+	Napi::Value config_value = (config).Get(config_key)
+	  ;
 
-        // If the config value is a string...
-        if (config_value.IsString()) {
-          std::string pKeyVal = config_key.As<Napi::String>();
-          std::string pKeyString(*pKeyVal);
+	// If the config value is a string...
+	if (config_value.IsString()) {
+	  std::string pKeyVal = config_key.As<Napi::String>();
+	  std::string pKeyString(*pKeyVal);
 
-          std::string pValueVal = config_value.As<v8::String>(.As<Napi::String>());
-          std::string pValString(*pValueVal);
+	  std::string pValueVal = config_value.As<v8::String>(.As<Napi::String>());
+	  std::string pValString(*pValueVal);
 
-          err = rd_kafka_NewTopic_set_config(
-            new_topic, pKeyString.c_str(), pValString.c_str());
+	  err = rd_kafka_NewTopic_set_config(
+	    new_topic, pKeyString.c_str(), pValString.c_str());
 
-          if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-            errstr = rd_kafka_err2str(err);
-            rd_kafka_NewTopic_destroy(new_topic);
-            return NULL;
-          }
-        } else {
-          errstr = "Config values must all be provided as strings.";
-          rd_kafka_NewTopic_destroy(new_topic);
-          return NULL;
-        }
+	  if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+	    errstr = rd_kafka_err2str(err);
+	    rd_kafka_NewTopic_destroy(new_topic);
+	    return NULL;
+	  }
+	} else {
+	  errstr = "Config values must all be provided as strings.";
+	  rd_kafka_NewTopic_destroy(new_topic);
+	  return NULL;
+	}
       }
     }
   }
@@ -890,18 +889,18 @@ std::vector<rd_kafka_consumer_group_state_t> FromV8GroupStateArray(
     for (unsigned int i = 0; i < parameter->Length(); i++) {
       Napi::Value v;
       if (!(parameter).Get(i).ToLocal(&v)) {
-        continue;
+	continue;
       }
       Napi::Maybe<int64_t> maybeT = v.As<Napi::Number>().Int64Value();
       if (maybeT.IsNothing()) {
-        continue;
+	continue;
       }
       int64_t state_number = maybeT;
       if (state_number >= RD_KAFKA_CONSUMER_GROUP_STATE__CNT) {
-        continue;
+	continue;
       }
       returnVec.push_back(
-          static_cast<rd_kafka_consumer_group_state_t>(state_number));
+	  static_cast<rd_kafka_consumer_group_state_t>(state_number));
     }
   }
   return returnVec;
@@ -915,10 +914,10 @@ Napi::Object FromListConsumerGroupsResult(
   /* Return object type:
     {
       groups: {
-        groupId: string,
-        protocolType: string,
-        isSimpleConsumerGroup: boolean,
-        state: ConsumerGroupState (internally a number)
+	groupId: string,
+	protocolType: string,
+	isSimpleConsumerGroup: boolean,
+	state: ConsumerGroupState (internally a number)
       }[],
       errors: LibrdKafkaError[]
     }
@@ -929,7 +928,7 @@ Napi::Object FromListConsumerGroupsResult(
   const rd_kafka_error_t** error_list =
       rd_kafka_ListConsumerGroups_result_errors(result, &error_cnt);
   (returnObject).Set(Napi::String::New(env, "errors"),
-           Conversion::Util::ToV8Array(error_list, error_cnt));
+	   Conversion::Util::ToV8Array(error_list, error_cnt));
 
   Napi::Array groups = Napi::Array::New(env);
   size_t groups_cnt;
@@ -941,20 +940,20 @@ Napi::Object FromListConsumerGroupsResult(
     Napi::Object groupObject = Napi::Object::New(env);
 
     (groupObject).Set(Napi::String::New(env, "groupId"),
-             Napi::String::New(env, rd_kafka_ConsumerGroupListing_group_id(group))
-                 );
+	     Napi::String::New(env, rd_kafka_ConsumerGroupListing_group_id(group))
+		 );
 
     bool is_simple =
-        rd_kafka_ConsumerGroupListing_is_simple_consumer_group(group);
+	rd_kafka_ConsumerGroupListing_is_simple_consumer_group(group);
     (groupObject).Set(Napi::String::New(env, "isSimpleConsumerGroup"),
-             Napi::Boolean::New(env, is_simple));
+	     Napi::Boolean::New(env, is_simple));
 
     std::string protocol_type = is_simple ? "simple" : "consumer";
     (groupObject).Set(Napi::String::New(env, "protocolType"),
-             Napi::String::New(env, protocol_type));
+	     Napi::String::New(env, protocol_type));
 
     (groupObject).Set(Napi::String::New(env, "state"),
-             Napi::Number::New(env, rd_kafka_ConsumerGroupListing_state(group)));
+	     Napi::Number::New(env, rd_kafka_ConsumerGroupListing_state(group)));
 
     (groups).Set(i, groupObject);
   }
@@ -970,48 +969,48 @@ Napi::Object FromMemberDescription(
     const rd_kafka_MemberDescription_t* member) {
   /* Return object type:
     {
-        clientHost: string
-        clientId: string
-        memberId: string
-        memberAssignment: Buffer // will be always null
-        memberMetadata: Buffer // will be always null
-        groupInstanceId: string
-        assignment: {
-          topicPartitions: TopicPartition[]
-        },
+	clientHost: string
+	clientId: string
+	memberId: string
+	memberAssignment: Buffer // will be always null
+	memberMetadata: Buffer // will be always null
+	groupInstanceId: string
+	assignment: {
+	  topicPartitions: TopicPartition[]
+	},
     }
   */
   Napi::Object returnObject = Napi::Object::New(env);
 
   // clientHost
   (returnObject).Set(Napi::String::New(env, "clientHost"),
-           Napi::String::New(env, rd_kafka_MemberDescription_host(member))
-               );
+	   Napi::String::New(env, rd_kafka_MemberDescription_host(member))
+	       );
 
   // clientId
   (returnObject).Set(Napi::String::New(env, "clientId"),
-           Napi::String::New(env, rd_kafka_MemberDescription_client_id(member))
-               );
+	   Napi::String::New(env, rd_kafka_MemberDescription_client_id(member))
+	       );
 
   // memberId
   (returnObject).Set(Napi::String::New(env, "memberId"),
-           Napi::String::New(env, rd_kafka_MemberDescription_consumer_id(member))
-               );
+	   Napi::String::New(env, rd_kafka_MemberDescription_consumer_id(member))
+	       );
 
   // memberAssignment - not passed to user, always null
   (returnObject).Set(Napi::String::New(env, "memberAssignment"),
-           env.Null());
+	   env.Null());
 
   // memberMetadata - not passed to user, always null
   (returnObject).Set(Napi::String::New(env, "memberMetadata"),
-           env.Null());
+	   env.Null());
 
   // groupInstanceId
   const char* group_instance_id =
       rd_kafka_MemberDescription_group_instance_id(member);
   if (group_instance_id) {
     (returnObject).Set(Napi::String::New(env, "groupInstanceId"),
-             Napi::String::New(env, group_instance_id));
+	     Napi::String::New(env, group_instance_id));
   }
 
   // assignment
@@ -1023,9 +1022,9 @@ Napi::Object FromMemberDescription(
       Conversion::TopicPartition::ToTopicPartitionV8Array(partitions, false);
   Napi::Object assignmentObject = Napi::Object::New(env);
   (assignmentObject).Set(Napi::String::New(env, "topicPartitions"),
-           topicPartitions);
+	   topicPartitions);
   (returnObject).Set(Napi::String::New(env, "assignment"),
-           assignmentObject);
+	   assignmentObject);
 
   return returnObject;
 }
@@ -1055,16 +1054,16 @@ Napi::Object FromConsumerGroupDescription(
   (
       returnObject).Set(Napi::String::New(env, "groupId"),
       Napi::String::New(env, rd_kafka_ConsumerGroupDescription_group_id(desc))
-          );
+	  );
 
   // error
   const rd_kafka_error_t* error = rd_kafka_ConsumerGroupDescription_error(desc);
   if (error) {
     RdKafka::ErrorCode code =
-        static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error));
+	static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error));
     std::string msg = std::string(rd_kafka_error_string(error));
     (returnObject).Set(Napi::String::New(env, "error"),
-             RdKafkaError(code, msg));
+	     RdKafkaError(code, msg));
   }
 
   // members
@@ -1072,7 +1071,7 @@ Napi::Object FromConsumerGroupDescription(
   size_t member_cnt = rd_kafka_ConsumerGroupDescription_member_count(desc);
   for (size_t i = 0; i < member_cnt; i++) {
     const rd_kafka_MemberDescription_t* member =
-        rd_kafka_ConsumerGroupDescription_member(desc, i);
+	rd_kafka_ConsumerGroupDescription_member(desc, i);
     (members).Set(i, FromMemberDescription(member));
   }
   (returnObject).Set(Napi::String::New(env, "members"), members);
@@ -1081,48 +1080,48 @@ Napi::Object FromConsumerGroupDescription(
   bool is_simple =
       rd_kafka_ConsumerGroupDescription_is_simple_consumer_group(desc);
   (returnObject).Set(Napi::String::New(env, "isSimpleConsumerGroup"),
-           Napi::Boolean::New(env, is_simple));
+	   Napi::Boolean::New(env, is_simple));
 
   // protocolType
   std::string protocolType = is_simple ? "simple" : "consumer";
   (returnObject).Set(Napi::String::New(env, "protocolType"),
-           Napi::String::New(env, protocolType));
+	   Napi::String::New(env, protocolType));
 
   // protocol
   (returnObject).Set(Napi::String::New(env, "protocol"),
-           Napi::String::New(env, 
-               rd_kafka_ConsumerGroupDescription_partition_assignor(desc))
-               );
+	   Napi::String::New(env,
+	       rd_kafka_ConsumerGroupDescription_partition_assignor(desc))
+	       );
 
   // partitionAssignor
   (returnObject).Set(Napi::String::New(env, "partitionAssignor"),
-           Napi::String::New(env, 
-               rd_kafka_ConsumerGroupDescription_partition_assignor(desc))
-               );
+	   Napi::String::New(env,
+	       rd_kafka_ConsumerGroupDescription_partition_assignor(desc))
+	       );
 
   // state
   (returnObject).Set(Napi::String::New(env, "state"),
-           Napi::Number::New(env, rd_kafka_ConsumerGroupDescription_state(desc)));
+	   Napi::Number::New(env, rd_kafka_ConsumerGroupDescription_state(desc)));
 
   // coordinator
   const rd_kafka_Node_t* coordinator =
       rd_kafka_ConsumerGroupDescription_coordinator(desc);
   if (coordinator) {
     Napi::Object coordinatorObject =
-        Conversion::Util::ToV8Object(coordinator);
+	Conversion::Util::ToV8Object(coordinator);
     (returnObject).Set(Napi::String::New(env, "coordinator"),
-             coordinatorObject);
+	     coordinatorObject);
   }
 
   // authorizedOperations
   size_t authorized_operations_cnt;
   const rd_kafka_AclOperation_t* authorized_operations =
       rd_kafka_ConsumerGroupDescription_authorized_operations(
-          desc, &authorized_operations_cnt);
+	  desc, &authorized_operations_cnt);
   if (authorized_operations) {
     (returnObject).Set(Napi::String::New(env, "authorizedOperations"),
-             Conversion::Util::ToV8Array(authorized_operations,
-                                         authorized_operations_cnt));
+	     Conversion::Util::ToV8Array(authorized_operations,
+					 authorized_operations_cnt));
   }
 
   return returnObject;
@@ -1173,22 +1172,22 @@ Napi::Array FromDeleteGroupsResult(
     Napi::Object group_object = Napi::Object::New(env);
 
     (group_object).Set(Napi::String::New(env, "groupId"),
-             Napi::String::New(env, rd_kafka_group_result_name(group_result))
-                 );
+	     Napi::String::New(env, rd_kafka_group_result_name(group_result))
+		 );
 
     const rd_kafka_error_t* error = rd_kafka_group_result_error(group_result);
     if (!error) {
       (group_object).Set(Napi::String::New(env, "errorCode"),
-               Napi::Number::New(env, RD_KAFKA_RESP_ERR_NO_ERROR));
+	       Napi::Number::New(env, RD_KAFKA_RESP_ERR_NO_ERROR));
     } else {
       RdKafka::ErrorCode code =
-          static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error));
+	  static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error));
       const char* msg = rd_kafka_error_string(error);
 
       (group_object).Set(Napi::String::New(env, "errorCode"),
-               Napi::Number::New(env, code));
+	       Napi::Number::New(env, code));
       (group_object).Set(Napi::String::New(env, "error"),
-               RdKafkaError(code, msg));
+	       RdKafkaError(code, msg));
     }
     (returnArray).Set(i, group_object);
   }
@@ -1197,7 +1196,7 @@ Napi::Array FromDeleteGroupsResult(
 }
 
 /**
- * @brief Converts a rd_kafka_ListConsumerGroupOffsets_result_t* 
+ * @brief Converts a rd_kafka_ListConsumerGroupOffsets_result_t*
  *        into a v8 Array.
  */
 Napi::Array FromListConsumerGroupOffsetsResult(
@@ -1234,22 +1233,22 @@ Napi::Array FromListConsumerGroupOffsetsResult(
     // Set groupId
     std::string groupId = rd_kafka_group_result_name(group_result);
     (group_object).Set(Napi::String::New(env, "groupId"),
-             Napi::String::New(env, groupId.c_str()));
+	     Napi::String::New(env, groupId.c_str()));
 
     // Set group-level error (if any)
     const rd_kafka_error_t* group_error =
-        rd_kafka_group_result_error(group_result);
+	rd_kafka_group_result_error(group_result);
     if (group_error) {
       RdKafka::ErrorCode code =
-          static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(group_error));
+	  static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(group_error));
       const char* msg = rd_kafka_error_string(group_error);
       (group_object).Set(Napi::String::New(env, "error"),
-               RdKafkaError(code, msg));
+	       RdKafkaError(code, msg));
     }
 
     // Get the list of partitions for this group
     const rd_kafka_topic_partition_list_t* partitionList =
-        rd_kafka_group_result_partitions(group_result);
+	rd_kafka_group_result_partitions(group_result);
 
     // Prepare array for TopicPartitionOffset[]
     Napi::Array partitionsArray = Napi::Array::New(env);
@@ -1263,44 +1262,44 @@ Napi::Array FromListConsumerGroupOffsetsResult(
 
       // Set topic, partition, and offset
       (partition_object).Set(Napi::String::New(env, "topic"),
-               Napi::String::New(env, partition->topic));
+	       Napi::String::New(env, partition->topic));
       (partition_object).Set(Napi::String::New(env, "partition"),
-               Napi::Number::New(env, partition->partition));
+	       Napi::Number::New(env, partition->partition));
       (partition_object).Set(Napi::String::New(env, "offset"),
-               Napi::Number::New(env, partition->offset));
+	       Napi::Number::New(env, partition->offset));
 
       // Set metadata (if available)
       if (partition->metadata != nullptr) {
-        (
-            partition_object).Set(Napi::String::New(env, "metadata"),
-            Napi::String::New(env, static_cast<const char*>(partition->metadata))
-                );
+	(
+	    partition_object).Set(Napi::String::New(env, "metadata"),
+	    Napi::String::New(env, static_cast<const char*>(partition->metadata))
+		);
       } else {
-        (partition_object).Set(Napi::String::New(env, "metadata"),
-                 env.Null());
+	(partition_object).Set(Napi::String::New(env, "metadata"),
+		 env.Null());
       }
 
       // Set leaderEpoch (if available)
       int32_t leader_epoch =
-          rd_kafka_topic_partition_get_leader_epoch(partition);
+	  rd_kafka_topic_partition_get_leader_epoch(partition);
       if (leader_epoch >= 0) {
-        (partition_object).Set(Napi::String::New(env, "leaderEpoch"),
-                 Napi::Number::New(env, leader_epoch));
+	(partition_object).Set(Napi::String::New(env, "leaderEpoch"),
+		 Napi::Number::New(env, leader_epoch));
       }
 
       // Set partition-level error (if any)
       if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-        RdKafka::ErrorCode code =
-            static_cast<RdKafka::ErrorCode>(partition->err);
-        (group_object).Set(Napi::String::New(env, "error"),
-                 RdKafkaError(code, rd_kafka_err2str(partition->err)));
+	RdKafka::ErrorCode code =
+	    static_cast<RdKafka::ErrorCode>(partition->err);
+	(group_object).Set(Napi::String::New(env, "error"),
+		 RdKafkaError(code, rd_kafka_err2str(partition->err)));
       }
 
       (partitionsArray).Set(partitionIndex++, partition_object);
     }
 
     (group_object).Set(Napi::String::New(env, "partitions"),
-             partitionsArray);
+	     partitionsArray);
 
     (returnArray).Set(i, group_object);
   }
@@ -1335,16 +1334,16 @@ Napi::Array FromDeleteRecordsResult(
 
     // Set topic, partition, and offset and error(if required)
     (partition_object).Set(Napi::String::New(env, "topic"),
-             Napi::String::New(env, partition->topic));
+	     Napi::String::New(env, partition->topic));
     (partition_object).Set(Napi::String::New(env, "partition"),
-             Napi::Number::New(env, partition->partition));
+	     Napi::Number::New(env, partition->partition));
     (partition_object).Set(Napi::String::New(env, "lowWatermark"),
-             Napi::Number::New(env, partition->offset));
+	     Napi::Number::New(env, partition->offset));
 
     if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
       RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
       (partition_object).Set(Napi::String::New(env, "error"),
-               RdKafkaError(code, rd_kafka_err2str(partition->err)));
+	       RdKafkaError(code, rd_kafka_err2str(partition->err)));
     }
 
     (partitionsArray).Set(partitionIndex++, partition_object);
@@ -1396,74 +1395,74 @@ Napi::Array FromDescribeTopicsResult(
 
     const char* topic_name = rd_kafka_TopicDescription_name(results[i]);
     (topic_object).Set(Napi::String::New(env, "name"),
-             Napi::String::New(env, topic_name));
+	     Napi::String::New(env, topic_name));
 
     const rd_kafka_Uuid_t* topic_id =
-        rd_kafka_TopicDescription_topic_id(results[i]);
+	rd_kafka_TopicDescription_topic_id(results[i]);
     (topic_object).Set(Napi::String::New(env, "topicId"),
-             Conversion::Util::UuidToV8Object(topic_id));
+	     Conversion::Util::UuidToV8Object(topic_id));
 
     int is_internal = rd_kafka_TopicDescription_is_internal(results[i]);
     (topic_object).Set(Napi::String::New(env, "isInternal"),
-             Napi::Boolean::New(env, is_internal));
+	     Napi::Boolean::New(env, is_internal));
 
     const rd_kafka_error_t* error = rd_kafka_TopicDescription_error(results[i]);
     if (error) {
       RdKafka::ErrorCode code =
-          static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error));
+	  static_cast<RdKafka::ErrorCode>(rd_kafka_error_code(error));
       (topic_object).Set(Napi::String::New(env, "error"),
-               RdKafkaError(code, rd_kafka_error_string(error)));
+	       RdKafkaError(code, rd_kafka_error_string(error)));
     }
 
     size_t authorized_operations_cnt;
     const rd_kafka_AclOperation_t* authorized_operations =
-        rd_kafka_TopicDescription_authorized_operations(
-            results[i], &authorized_operations_cnt);
+	rd_kafka_TopicDescription_authorized_operations(
+	    results[i], &authorized_operations_cnt);
     if (authorized_operations) {
       (topic_object).Set(Napi::String::New(env, "authorizedOperations"),
-               Conversion::Util::ToV8Array(authorized_operations,
-                                           authorized_operations_cnt));
+	       Conversion::Util::ToV8Array(authorized_operations,
+					   authorized_operations_cnt));
     }
 
     size_t partition_cnt;
     const rd_kafka_TopicPartitionInfo_t** partitions =
-        rd_kafka_TopicDescription_partitions(results[i], &partition_cnt);
+	rd_kafka_TopicDescription_partitions(results[i], &partition_cnt);
     Napi::Array partitionsArray = Napi::Array::New(env);
     for (size_t j = 0; j < partition_cnt; j++) {
       Napi::Object partition_object = Napi::Object::New(env);
       const rd_kafka_TopicPartitionInfo_t* partition = partitions[j];
       (partition_object).Set(Napi::String::New(env, "partition"),
-               Napi::Number::New(env, 
-                   rd_kafka_TopicPartitionInfo_partition(partition)));
+	       Napi::Number::New(env,
+		   rd_kafka_TopicPartitionInfo_partition(partition)));
 
       const rd_kafka_Node_t* leader =
-          rd_kafka_TopicPartitionInfo_leader(partition);
+	  rd_kafka_TopicPartitionInfo_leader(partition);
       (partition_object).Set(Napi::String::New(env, "leader"),
-               Conversion::Util::ToV8Object(leader));
+	       Conversion::Util::ToV8Object(leader));
 
       size_t isr_cnt;
       const rd_kafka_Node_t** isr =
-          rd_kafka_TopicPartitionInfo_isr(partition, &isr_cnt);
+	  rd_kafka_TopicPartitionInfo_isr(partition, &isr_cnt);
       Napi::Array isrArray = Napi::Array::New(env);
       for (size_t k = 0; k < isr_cnt; k++) {
-        (isrArray).Set(k, Conversion::Util::ToV8Object(isr[k]));
+	(isrArray).Set(k, Conversion::Util::ToV8Object(isr[k]));
       }
       (partition_object).Set(Napi::String::New(env, "isr"), isrArray);
 
       size_t replicas_cnt;
       const rd_kafka_Node_t** replicas =
-          rd_kafka_TopicPartitionInfo_replicas(partition, &replicas_cnt);
+	  rd_kafka_TopicPartitionInfo_replicas(partition, &replicas_cnt);
       Napi::Array replicasArray = Napi::Array::New(env);
       for (size_t k = 0; k < replicas_cnt; k++) {
-        (replicasArray).Set(k, Conversion::Util::ToV8Object(replicas[k]));
+	(replicasArray).Set(k, Conversion::Util::ToV8Object(replicas[k]));
       }
       (partition_object).Set(Napi::String::New(env, "replicas"),
-               replicasArray);
+	       replicasArray);
 
       (partitionsArray).Set(j, partition_object);
     }
     (topic_object).Set(Napi::String::New(env, "partitions"),
-             partitionsArray);
+	     partitionsArray);
 
     (returnArray).Set(topicIndex++, topic_object);
   }
@@ -1495,7 +1494,7 @@ Napi::Array FromListOffsetsResult(
 
   for (i = 0; i < result_cnt; i++) {
     const rd_kafka_topic_partition_t* partition =
-        rd_kafka_ListOffsetsResultInfo_topic_partition(results[i]);
+	rd_kafka_ListOffsetsResultInfo_topic_partition(results[i]);
     int64_t timestamp = rd_kafka_ListOffsetsResultInfo_timestamp(results[i]);
 
     // Create the ListOffsetsResult object
@@ -1503,25 +1502,25 @@ Napi::Array FromListOffsetsResult(
 
     // Set topic, partition, offset, error and timestamp
     (partition_object).Set(Napi::String::New(env, "topic"),
-             Napi::String::New(env, partition->topic));
+	     Napi::String::New(env, partition->topic));
     (partition_object).Set(Napi::String::New(env, "partition"),
-             Napi::Number::New(env, partition->partition));
+	     Napi::Number::New(env, partition->partition));
     (partition_object).Set(Napi::String::New(env, "offset"),
-             Napi::Number::New(env, partition->offset));
+	     Napi::Number::New(env, partition->offset));
     if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
       RdKafka::ErrorCode code = static_cast<RdKafka::ErrorCode>(partition->err);
       (partition_object).Set(Napi::String::New(env, "error"),
-               RdKafkaError(code, rd_kafka_err2str(partition->err)));
+	       RdKafkaError(code, rd_kafka_err2str(partition->err)));
     }
     // Set leaderEpoch (if available)
     int32_t leader_epoch =
-        rd_kafka_topic_partition_get_leader_epoch(partition);
+	rd_kafka_topic_partition_get_leader_epoch(partition);
     if (leader_epoch >= 0) {
       (partition_object).Set(Napi::String::New(env, "leaderEpoch"),
-                Napi::Number::New(env, leader_epoch));
+		Napi::Number::New(env, leader_epoch));
     }
     (partition_object).Set(Napi::String::New(env, "timestamp"),
-             Napi::Number::New(env, timestamp));
+	     Napi::Number::New(env, timestamp));
 
     (resultArray).Set(partitionIndex++, partition_object);
   }

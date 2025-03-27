@@ -101,7 +101,7 @@ void Producer::Init(const Napi::Env& env, Napi::Object exports) {
        */
 
       InstanceMethod("configureCallbacks", &Producer::NodeConfigureCallbacks),
-      
+
 	/*
 	 * @brief Methods to do with establishing state
 	 */
@@ -133,7 +133,7 @@ void Producer::Init(const Napi::Env& env, Napi::Object exports) {
 	InstanceMethod("beginTransaction", &Producer::NodeBeginTransaction),
 	InstanceMethod("commitTransaction", &Producer::NodeCommitTransaction),
 	InstanceMethod("abortTransaction", &Producer::NodeAbortTransaction),
-	InstanceMethod("sendOffsetsToTransaction", &Producer::NodeSendOffsetsToTransaction), // NOLINT  
+	InstanceMethod("sendOffsetsToTransaction", &Producer::NodeSendOffsetsToTransaction), // NOLINT
       });
 
 
@@ -216,8 +216,8 @@ Baton Producer::Produce(void* message, size_t size, RdKafka::Topic* topic,
     if (IsConnected()) {
       RdKafka::Producer* producer = dynamic_cast<RdKafka::Producer*>(m_client);
       response_code = producer->produce(topic, partition,
-            RdKafka::Producer::RK_MSG_COPY,
-            message, size, key, key_len, opaque);
+	    RdKafka::Producer::RK_MSG_COPY,
+	    message, size, key, key_len, opaque);
     } else {
       response_code = RdKafka::ERR__STATE;
     }
@@ -286,10 +286,10 @@ Baton Producer::Produce(void* message, size_t size, std::string topic,
       RdKafka::Producer* producer = dynamic_cast<RdKafka::Producer*>(m_client);
       // This one is a bit different
       response_code = producer->produce(topic, partition,
-            RdKafka::Producer::RK_MSG_COPY,
-            message, size,
-            key, key_len,
-            timestamp, headers, opaque);
+	    RdKafka::Producer::RK_MSG_COPY,
+	    message, size,
+	    key, key_len,
+	    timestamp, headers, opaque);
     } else {
       response_code = RdKafka::ERR__STATE;
     }
@@ -503,9 +503,9 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     if (message_buffer_data == NULL) {
       // empty string message buffer should not end up as null message
       Napi::Object message_buffer_object_emptystring =
-          Napi::Buffer<char>::New(env, new char[0], 0);
+	  Napi::Buffer<char>::New(env, new char[0], 0);
       message_buffer_length =
-          message_buffer_object_emptystring.As<Napi::Buffer<char>>().Length();
+	  message_buffer_object_emptystring.As<Napi::Buffer<char>>().Length();
       message_buffer_data = message_buffer_object_emptystring.As<Napi::Buffer<char>>().Data(); // NOLINT
     }
   }
@@ -534,7 +534,7 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     if (key_buffer_data == NULL) {
       // empty string key buffer should not end up as null key
       Napi::Object key_buffer_object_emptystring =
-          Napi::Buffer<char>::New(env, new char[0], 0);
+	  Napi::Buffer<char>::New(env, new char[0], 0);
       key_buffer_length = key_buffer_object_emptystring.As<Napi::Buffer<char>>().Length();
       key_buffer_data = key_buffer_object_emptystring.As<Napi::Buffer<char>>().Data();
     }
@@ -577,45 +577,45 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
 
     if (v8Headers.Length() >= 1) {
       for (unsigned int i = 0; i < v8Headers.Length(); i++) {
-        Napi::Object header = (v8Headers).Get(i)
-          .ToObject();
-        if (header.IsEmpty()) {
-          continue;
-        }
+	Napi::Object header = (v8Headers).Get(i)
+	  .ToObject();
+	if (header.IsEmpty()) {
+	  continue;
+	}
 
-        Napi::Array props = header.GetPropertyNames();
+	Napi::Array props = header.GetPropertyNames();
 
-        // TODO: Other properties in the list of properties should not be
-        // ignored, but they are. This is a bug, need to handle it either in JS
-        // or here.
-        Napi::MaybeOrValue<Napi::Value> jsKey = props.Get(Napi::Value::From(env, 0));
+	// TODO: Other properties in the list of properties should not be
+	// ignored, but they are. This is a bug, need to handle it either in JS
+	// or here.
+	Napi::MaybeOrValue<Napi::Value> jsKey = props.Get(Napi::Value::From(env, 0));
 
-        // The key must be a string.
-        if (jsKey.IsEmpty()) {
-          Napi::Error::New(env, "Header key must be a string").ThrowAsJavaScriptException();
+	// The key must be a string.
+	if (jsKey.IsEmpty()) {
+	  Napi::Error::New(env, "Header key must be a string").ThrowAsJavaScriptException();
 
-        }
-        std::string uKey = jsKey.ToString().Utf8Value();
-        std::string key(uKey);
+	}
+	std::string uKey = jsKey.ToString().Utf8Value();
+	std::string key(uKey);
 
-        // Valid types for the header are string or buffer.
-        // Other types will throw an error.
-        Napi::Value v8Value =
-            (header).Get(jsKey);
+	// Valid types for the header are string or buffer.
+	// Other types will throw an error.
+	Napi::Value v8Value =
+	    (header).Get(jsKey);
 
-        if (v8Value.IsBuffer()) {
-          const char* value = v8Value.As<Napi::Buffer<char>>().Data();
-          const size_t value_len = v8Value.As<Napi::Buffer<char>>().Length();
-          headers.push_back(RdKafka::Headers::Header(key, value, value_len));
-        } else if (v8Value.IsString()) {
-          std::string uValue = v8Value.As<Napi::String>().Utf8Value();
-          std::string value(uValue);
-          headers.push_back(
-              RdKafka::Headers::Header(key, value.c_str(), value.size()));
-        } else {
-          Napi::Error::New(env, "Header value must be a string or buffer").ThrowAsJavaScriptException();
+	if (v8Value.IsBuffer()) {
+	  const char* value = v8Value.As<Napi::Buffer<char>>().Data();
+	  const size_t value_len = v8Value.As<Napi::Buffer<char>>().Length();
+	  headers.push_back(RdKafka::Headers::Header(key, value, value_len));
+	} else if (v8Value.IsString()) {
+	  std::string uValue = v8Value.As<Napi::String>().Utf8Value();
+	  std::string value(uValue);
+	  headers.push_back(
+	      RdKafka::Headers::Header(key, value.c_str(), value.size()));
+	} else {
+	  Napi::Error::New(env, "Header value must be a string or buffer").ThrowAsJavaScriptException();
 
-        }
+	}
       }
     }
   }
@@ -835,7 +835,7 @@ Napi::Value Producer::NodeInitTransactions(const Napi::CallbackInfo &info) {
 }
 
 Napi::Value Producer::NodeBeginTransaction(const Napi::CallbackInfo &info) {
-  const Napi::Env env = info.Env();  
+  const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
@@ -926,7 +926,7 @@ Producer::NodeSendOffsetsToTransaction(const Napi::CallbackInfo &info) {
 
   NodeKafka::KafkaConsumer *consumer =
     ObjectWrap<KafkaConsumer>::Unwrap(info[1].As<Napi::Object>());
-  
+
   int timeout_ms = info[2].As<Napi::Number>().Int32Value();
   Napi::Function cb = info[3].As<Napi::Function>();
   Napi::FunctionReference *callback = new Napi::FunctionReference();

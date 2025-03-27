@@ -91,7 +91,7 @@ class KafkaConsumer : public Connection<KafkaConsumer> {
   void DeactivateDispatchers();
 
   void ConfigureCallback(const std::string& string_key,
-                         const Napi::Function& cb, bool add) override;
+			 const Napi::Function& cb, bool add) override;
 
  protected:
   static Napi::FunctionReference constructor;

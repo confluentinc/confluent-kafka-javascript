@@ -57,7 +57,7 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
   bool IsClosing() const {
     return m_client != NULL && m_is_closing;
   }
-  
+
   // Baton<RdKafka::Topic*>
   Baton CreateTopic(std::string topic_name, RdKafka::Conf* conf = NULL) {
     std::string errstr;
@@ -285,7 +285,7 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
 
 protected:
   Connection(const Napi::CallbackInfo &info): m_event_cb() {
-    Napi::Env env = info.Env(); 
+    Napi::Env env = info.Env();
     if (!info.IsConstructCall()) {
       Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
     }
@@ -299,7 +299,7 @@ protected:
   void Config(Conf *gconfig, Conf *tconfig) {
     this->m_gconfig = gconfig;
     this->m_tconfig = tconfig;
-    
+
     std::string errstr;
 
     m_client = NULL;
@@ -383,7 +383,7 @@ protected:
     RdKafka::Error* error = m_client->sasl_background_callbacks_enable();
     return rdkafkaErrorToBaton(error);
   }
-  
+
   // Baton setupSaslOAuthBearerConfig();
   // Baton setupSaslOAuthBearerBackgroundQueue();
 
@@ -429,7 +429,7 @@ protected:
     *callback = Napi::Persistent(cb);
 
     Napi::AsyncWorker *worker = new Workers::ConnectionMetadata(
-        callback, obj, topic, timeout_ms, allTopics);
+	callback, obj, topic, timeout_ms, allTopics);
     worker->Queue();
 
     return env.Null();
@@ -456,7 +456,7 @@ protected:
     Connection* handle = this;
 
     Napi::AsyncWorker *worker = new Workers::Handle::OffsetsForTimes(
-        callback, handle, toppars, timeout_ms);
+	callback, handle, toppars, timeout_ms);
     worker->Queue();
 
     return env.Null();
@@ -506,7 +506,7 @@ protected:
     callback->Reset(cb);
 
     Napi::AsyncWorker *worker = new Workers::ConnectionQueryWatermarkOffsets(
-        callback, obj, topic_name, partition, timeout_ms);
+	callback, obj, topic_name, partition, timeout_ms);
     worker->Queue();
 
     return env.Null();
@@ -557,7 +557,7 @@ protected:
       Napi::Error::New(env, "Need to specify a callbacks object").ThrowAsJavaScriptException();
       return env.Null();
     }
-    
+
     Connection* obj = this;
 
     const bool add = info[0].As<Napi::Boolean>().Value();
@@ -579,11 +579,11 @@ protected:
 	std::string configs_utf8_key = configs_key.As<Napi::String>();
 	configs_string_key = std::string(configs_utf8_key);
 	if (configs_string_key.compare("global") == 0) {
-          config_type = 1;
+	  config_type = 1;
 	} else if (configs_string_key.compare("topic") == 0) {
-          config_type = 2;
+	  config_type = 2;
 	} else if (configs_string_key.compare("event") == 0) {
-          config_type = 3;
+	  config_type = 3;
 	} else {
 	  continue;
 	}
@@ -613,23 +613,23 @@ protected:
 	if (value.IsFunction()) {
 	  Napi::Function cb = value.As<Napi::Function>();
 	  switch (config_type) {
-          case 1:
-            obj->m_gconfig->ConfigureCallback(string_key, cb, add, errstr);
-            if (!errstr.empty()) {
-              Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
-              return env.Null();
-            }
-            break;
-          case 2:
-            obj->m_tconfig->ConfigureCallback(string_key, cb, add, errstr);
-            if (!errstr.empty()) {
-              Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
-              return env.Null();
-            }
-            break;
-          case 3:
-            obj->ConfigureCallback(string_key, cb, add);
-            break;
+	  case 1:
+	    obj->m_gconfig->ConfigureCallback(string_key, cb, add, errstr);
+	    if (!errstr.empty()) {
+	      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+	      return env.Null();
+	    }
+	    break;
+	  case 2:
+	    obj->m_tconfig->ConfigureCallback(string_key, cb, add, errstr);
+	    if (!errstr.empty()) {
+	      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+	      return env.Null();
+	    }
+	    break;
+	  case 3:
+	    obj->ConfigureCallback(string_key, cb, add);
+	    break;
 	  }
 	}
       }
@@ -668,7 +668,7 @@ protected:
     int64_t lifetime_ms = info[1].As<Napi::Number>().Int64Value();
 
     // Get string pointer for the principal_name
-    std::string principal_nameUtf8 = 
+    std::string principal_nameUtf8 =
       info[2].As<Napi::String>().Utf8Value();
     std::string principal_name(principal_nameUtf8);
 
@@ -716,7 +716,7 @@ protected:
     Napi::Env env = info.Env();
 
     return Napi::String::From(env, this->Name());
-  }  
+  }
 };
 
 }  // namespace NodeKafka

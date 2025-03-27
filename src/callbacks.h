@@ -47,7 +47,7 @@ class Dispatcher {
  private:
   inline static void func(uv_async_t *async) {
      Dispatcher *dispatcher =
-            static_cast<Dispatcher*>(async->data);
+	    static_cast<Dispatcher*>(async->data);
      dispatcher->Flush();
   }
   static void AsyncHandleCloseCallback(uv_handle_t *);
@@ -166,18 +166,18 @@ struct rebalance_event_t {
   std::vector<event_topic_partition_t> partitions;
 
   rebalance_event_t(RdKafka::ErrorCode p_err,
-        std::vector<RdKafka::TopicPartition*> p_partitions):
-        err(p_err) {
+	std::vector<RdKafka::TopicPartition*> p_partitions):
+	err(p_err) {
     // Iterate over the topic partitions because we won't have them later
     for (size_t topic_partition_i = 0;
       topic_partition_i < p_partitions.size(); topic_partition_i++) {
       RdKafka::TopicPartition* topic_partition =
-        p_partitions[topic_partition_i];
+	p_partitions[topic_partition_i];
 
       event_topic_partition_t tp(
-        topic_partition->topic(),
-        topic_partition->partition(),
-        topic_partition->offset());
+	topic_partition->topic(),
+	topic_partition->partition(),
+	topic_partition->offset());
 
       partitions.push_back(tp);
     }
@@ -195,13 +195,13 @@ struct offset_commit_event_t {
     for (size_t topic_partition_i = 0;
       topic_partition_i < p_partitions.size(); topic_partition_i++) {
       RdKafka::TopicPartition* topic_partition =
-        p_partitions[topic_partition_i];
+	p_partitions[topic_partition_i];
 
       // Just reuse this thing because it's the same exact thing we need
       event_topic_partition_t tp(
-        topic_partition->topic(),
-        topic_partition->partition(),
-        topic_partition->offset());
+	topic_partition->topic(),
+	topic_partition->partition(),
+	topic_partition->offset());
 
       partitions.push_back(tp);
     }

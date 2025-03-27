@@ -29,7 +29,7 @@ class Topic : public Napi::ObjectWrap<Topic> {
   template <class T> Baton toRDKafkaTopic(Connection<T> *handle);
 
  protected:
-  static Napi::FunctionReference constructor;  
+  static Napi::FunctionReference constructor;
 
   Napi::Value NodeGetMetadata(const Napi::CallbackInfo& info);
 

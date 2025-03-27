@@ -532,8 +532,8 @@ class AdminClientCreatePartitions : public ErrorAwareWorker {
 class AdminClientListGroups : public ErrorAwareWorker {
  public:
   AdminClientListGroups(Napi::FunctionReference *, NodeKafka::AdminClient *, bool,
-                        std::vector<rd_kafka_consumer_group_state_t> &,
-                        const int &);
+			std::vector<rd_kafka_consumer_group_state_t> &,
+			const int &);
   ~AdminClientListGroups();
 
   void Execute();
@@ -554,7 +554,7 @@ class AdminClientListGroups : public ErrorAwareWorker {
 class AdminClientDescribeGroups : public ErrorAwareWorker {
  public:
   AdminClientDescribeGroups(Napi::FunctionReference *, NodeKafka::AdminClient *,
-                            std::vector<std::string> &, bool, const int &);
+			    std::vector<std::string> &, bool, const int &);
   ~AdminClientDescribeGroups();
 
   void Execute();
@@ -575,7 +575,7 @@ class AdminClientDescribeGroups : public ErrorAwareWorker {
 class AdminClientDeleteGroups : public ErrorAwareWorker {
  public:
   AdminClientDeleteGroups(Napi::FunctionReference *, NodeKafka::AdminClient *,
-                            rd_kafka_DeleteGroup_t **, size_t, const int &);
+			    rd_kafka_DeleteGroup_t **, size_t, const int &);
   ~AdminClientDeleteGroups();
 
   void Execute();
@@ -596,8 +596,8 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
 class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
  public:
   AdminClientListConsumerGroupOffsets(Napi::FunctionReference *, NodeKafka::AdminClient *,
-                          rd_kafka_ListConsumerGroupOffsets_t **, size_t, bool,
-                          const int &);
+			  rd_kafka_ListConsumerGroupOffsets_t **, size_t, bool,
+			  const int &);
   ~AdminClientListConsumerGroupOffsets();
 
   void Execute();
@@ -619,8 +619,8 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
 class AdminClientDeleteRecords : public ErrorAwareWorker {
  public:
   AdminClientDeleteRecords(Napi::FunctionReference *, NodeKafka::AdminClient *,
-                           rd_kafka_DeleteRecords_t **, size_t, const int &,
-                           const int &);
+			   rd_kafka_DeleteRecords_t **, size_t, const int &,
+			   const int &);
   ~AdminClientDeleteRecords();
 
   void Execute();
@@ -642,8 +642,8 @@ class AdminClientDeleteRecords : public ErrorAwareWorker {
 class AdminClientDescribeTopics : public ErrorAwareWorker {
  public:
   AdminClientDescribeTopics(Napi::FunctionReference *, NodeKafka::AdminClient *,
-                            rd_kafka_TopicCollection_t *, const bool,
-                            const int &);
+			    rd_kafka_TopicCollection_t *, const bool,
+			    const int &);
   ~AdminClientDescribeTopics();
 
   void Execute();
@@ -664,8 +664,8 @@ class AdminClientDescribeTopics : public ErrorAwareWorker {
 class AdminClientListOffsets : public ErrorAwareWorker {
  public:
   AdminClientListOffsets(Napi::FunctionReference *, NodeKafka::AdminClient *,
-                         rd_kafka_topic_partition_list_t *, const int &,
-                         rd_kafka_IsolationLevel_t);
+			 rd_kafka_topic_partition_list_t *, const int &,
+			 rd_kafka_IsolationLevel_t);
   ~AdminClientListOffsets();
 
   void Execute();

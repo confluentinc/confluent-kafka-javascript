@@ -60,9 +60,9 @@ void ConstantsInit(Napi::Env env, Napi::Object exports) {
 
   (exports).Set(Napi::String::New(env, "topic"), topicConstants);
 
-  (exports).Set(Napi::String::New(env, "err2str"),Napi::Function::New(env, NodeRdKafkaErr2Str));  
+  (exports).Set(Napi::String::New(env, "err2str"),Napi::Function::New(env, NodeRdKafkaErr2Str));
 
-  (exports).Set(Napi::String::New(env, "features"), Napi::Function::New(env, NodeRdKafkaBuildInFeatures)); 
+  (exports).Set(Napi::String::New(env, "features"), Napi::Function::New(env, NodeRdKafkaBuildInFeatures));
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -73,7 +73,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   ConstantsInit(env, exports);
 
   (exports).Set(Napi::String::New(env, "librdkafkaVersion"),
-                Napi::String::New(env, RdKafka::version_str().c_str()));
+		Napi::String::New(env, RdKafka::version_str().c_str()));
   return exports;
 }
 

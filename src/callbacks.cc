@@ -41,7 +41,7 @@ Napi::Array TopicPartitionListToV8Array(
 
     if (tp.offset >= 0) {
       (tp_obj).Set(Napi::String::New(env, "offset"),
-        Napi::Number::New(env, tp.offset));
+	Napi::Number::New(env, tp.offset));
     }
 
     (tp_array).Set(i, tp_obj);
@@ -84,7 +84,7 @@ void Dispatcher::AsyncHandleCloseCallback(uv_handle_t *handle) {
 void Dispatcher::Deactivate() {
   if (async) {
     uv_close(reinterpret_cast<uv_handle_t *>(async),
-             Dispatcher::AsyncHandleCloseCallback);
+	     Dispatcher::AsyncHandleCloseCallback);
     async = NULL;
   }
 }
@@ -206,53 +206,53 @@ void EventDispatcher::Flush() {
 
     switch (_events[i].type) {
       case RdKafka::Event::EVENT_ERROR:
-        argv[0] = Napi::String::New(env, "error");
-        argv[1] = Napi::Error::New(env, _events[i].message.c_str());
+	argv[0] = Napi::String::New(env, "error");
+	argv[1] = Napi::Error::New(env, _events[i].message.c_str());
 
-        // if (event->err() == RdKafka::ERR__ALL_BROKERS_DOWN). Stop running
-        // This may be better suited to the node side of things
-        break;
+	// if (event->err() == RdKafka::ERR__ALL_BROKERS_DOWN). Stop running
+	// This may be better suited to the node side of things
+	break;
       case RdKafka::Event::EVENT_STATS:
-        argv[0] = Napi::String::New(env, "stats");
+	argv[0] = Napi::String::New(env, "stats");
 
-        (jsobj).Set(Napi::String::New(env, "message"),
-          Napi::String::New(env, _events[i].message.c_str()));
+	(jsobj).Set(Napi::String::New(env, "message"),
+	  Napi::String::New(env, _events[i].message.c_str()));
 
-        break;
+	break;
       case RdKafka::Event::EVENT_LOG:
-        argv[0] = Napi::String::New(env, "log");
+	argv[0] = Napi::String::New(env, "log");
 
-        (jsobj).Set(Napi::String::New(env, "severity"),
-          Napi::New(env, _events[i].severity));
-        (jsobj).Set(Napi::String::New(env, "fac"),
-          Napi::New(env, _events[i].fac.c_str()));
-        (jsobj).Set(Napi::String::New(env, "message"),
-          Napi::New(env, _events[i].message.c_str()));
-        (jsobj).Set(Napi::String::New(env, "name"),
-          Napi::New(env, this->client_name.c_str()));
+	(jsobj).Set(Napi::String::New(env, "severity"),
+	  Napi::New(env, _events[i].severity));
+	(jsobj).Set(Napi::String::New(env, "fac"),
+	  Napi::New(env, _events[i].fac.c_str()));
+	(jsobj).Set(Napi::String::New(env, "message"),
+	  Napi::New(env, _events[i].message.c_str()));
+	(jsobj).Set(Napi::String::New(env, "name"),
+	  Napi::New(env, this->client_name.c_str()));
 
-        break;
+	break;
       case RdKafka::Event::EVENT_THROTTLE:
-        argv[0] = Napi::String::New(env, "throttle");
+	argv[0] = Napi::String::New(env, "throttle");
 
-        (jsobj).Set(Napi::String::New(env, "message"),
-          Napi::New(env, _events[i].message.c_str()));
+	(jsobj).Set(Napi::String::New(env, "message"),
+	  Napi::New(env, _events[i].message.c_str()));
 
-        (jsobj).Set(Napi::String::New(env, "throttleTime"),
-          Napi::New(env, _events[i].throttle_time));
-        (jsobj).Set(Napi::String::New(env, "brokerName"),
-          Napi::New(env, _events[i].broker_name));
-        (jsobj).Set(Napi::String::New(env, "brokerId"),
-          Napi::Number::New(env, _events[i].broker_id));
+	(jsobj).Set(Napi::String::New(env, "throttleTime"),
+	  Napi::New(env, _events[i].throttle_time));
+	(jsobj).Set(Napi::String::New(env, "brokerName"),
+	  Napi::New(env, _events[i].broker_name));
+	(jsobj).Set(Napi::String::New(env, "brokerId"),
+	  Napi::Number::New(env, _events[i].broker_id));
 
-        break;
+	break;
       default:
-        argv[0] = Napi::String::New(env, "event");
+	argv[0] = Napi::String::New(env, "event");
 
-        (jsobj).Set(Napi::String::New(env, "message"),
-          Napi::New(env, events[i].message.c_str()));
+	(jsobj).Set(Napi::String::New(env, "message"),
+	  Napi::New(env, events[i].message.c_str()));
 
-        break;
+	break;
     }
 
     if (_events[i].type != RdKafka::Event::EVENT_ERROR) {
@@ -301,34 +301,34 @@ void DeliveryReportDispatcher::Flush() {
     const DeliveryReport& event = events_list[i];
 
     if (event.is_error) {
-        // If it is an error we need the first argument to be set
-        argv[0] = Napi::New(env, event.error_code);
+	// If it is an error we need the first argument to be set
+	argv[0] = Napi::New(env, event.error_code);
     } else {
-        argv[0] = env.Null();
+	argv[0] = env.Null();
     }
     Napi::Object jsobj(Napi::Object::New(env));
 
     (jsobj).Set(Napi::String::New(env, "topic"),
-            Napi::New(env, event.topic_name));
+	    Napi::New(env, event.topic_name));
     (jsobj).Set(Napi::String::New(env, "partition"),
-            Napi::Number::New(env, event.partition));
+	    Napi::Number::New(env, event.partition));
     (jsobj).Set(Napi::String::New(env, "offset"),
-            Napi::Number::New(env, event.offset));
+	    Napi::Number::New(env, event.offset));
 
     if (event.key) {
-      Napi::MaybeLocal<v8::Object> buff = Napi::Buffer<char>::New(env, 
-        static_cast<char*>(event.key),
-        static_cast<int>(event.key_len));
+      Napi::MaybeLocal<v8::Object> buff = Napi::Buffer<char>::New(env,
+	static_cast<char*>(event.key),
+	static_cast<int>(event.key_len));
 
       (jsobj).Set(Napi::String::New(env, "key"),
-              buff);
+	      buff);
     } else {
       (jsobj).Set(Napi::String::New(env, "key"), env.Null());
     }
 
     if (event.opaque) {
       Napi::Persistent<v8::Value> * persistent =
-        static_cast<Napi::Persistent<v8::Value> *>(event.opaque);
+	static_cast<Napi::Persistent<v8::Value> *>(event.opaque);
       Napi::Value object = Napi::New(env, *persistent);
       (jsobj).Set(Napi::String::New(env, "opaque"), object);
 
@@ -341,25 +341,25 @@ void DeliveryReportDispatcher::Flush() {
 
     if (event.timestamp > -1) {
       (jsobj).Set(Napi::String::New(env, "timestamp"),
-              Napi::Number::New(env, event.timestamp));
+	      Napi::Number::New(env, event.timestamp));
     }
 
     if (event.m_include_payload) {
       if (event.payload) {
-        Napi::MaybeLocal<v8::Object> buff = Napi::Buffer<char>::New(env, 
-          static_cast<char*>(event.payload),
-          static_cast<int>(event.len));
+	Napi::MaybeLocal<v8::Object> buff = Napi::Buffer<char>::New(env,
+	  static_cast<char*>(event.payload),
+	  static_cast<int>(event.len));
 
-        (jsobj).Set(Napi::String::New(env, "value"),
-          buff);
+	(jsobj).Set(Napi::String::New(env, "value"),
+	  buff);
       } else {
-        (jsobj).Set(Napi::String::New(env, "value"),
-          env.Null());
+	(jsobj).Set(Napi::String::New(env, "value"),
+	  env.Null());
       }
     }
 
     (jsobj).Set(Napi::String::New(env, "size"),
-            Napi::Number::New(env, event.len));
+	    Napi::Number::New(env, event.len));
 
     argv[1] = jsobj;
 
@@ -588,9 +588,9 @@ Partitioner::Partitioner() {}
 Partitioner::~Partitioner() {}
 
 int32_t Partitioner::partitioner_cb(const RdKafka::Topic *topic,
-                                    const std::string *key,
-                                    int32_t partition_cnt,
-                                    void *msg_opaque) {
+				    const std::string *key,
+				    int32_t partition_cnt,
+				    void *msg_opaque) {
   // Send this and get the callback and parse the int
   if (callback.IsEmpty()) {
     // default behavior
