@@ -186,6 +186,16 @@ export type PartitionMetadata = {
 
 export type Transaction = Producer;
 
+export enum ProducerState {
+  INIT = 0,
+  CONNECTING = 1,
+  INITIALIZING_TRANSACTIONS = 2,
+  INITIALIZED_TRANSACTIONS = 3,
+  CONNECTED = 4,
+  DISCONNECTING = 5,
+  DISCONNECTED = 6,
+}
+
 export type Producer = Client & {
   send(record: ProducerRecord): Promise<RecordMetadata[]>
   sendBatch(batch: ProducerBatch): Promise<RecordMetadata[]>
@@ -197,6 +207,7 @@ export type Producer = Client & {
   abort(): Promise<void>
   sendOffsets(args: { consumer: Consumer, topics: TopicOffsets[] }): Promise<void>
   isActive(): boolean
+  getState(): ProducerState
 }
 
 export enum PartitionAssigners {
@@ -352,6 +363,14 @@ export type ITopicMetadata = {
   authorizedOperations?: AclOperationTypes[]
 }
 
+export enum ConsumerState {
+  INIT = 0,
+  CONNECTING = 1,
+  CONNECTED = 2,
+  DISCONNECTING = 3,
+  DISCONNECTED = 4,
+}
+
 export type Consumer = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
   stop(): Promise<void>
@@ -364,6 +383,7 @@ export type Consumer = Client & {
   paused(): TopicPartitions[]
   resume(topics: Array<{ topic: string; partitions?: number[] }>): void
   assignment(): TopicPartition[]
+  getState(): ConsumerState
 }
 
 export interface AdminConfig {
@@ -414,8 +434,9 @@ export type Admin = {
     groupId: string,
     topics?: TopicInput,
     timeout?: number,
-    requireStableOffsets?: boolean }):
-    Promise<Array<{topic: string; partitions:FetchOffsetsPartition[]}>>
+    requireStableOffsets?: boolean
+  }):
+    Promise<Array<{ topic: string; partitions: FetchOffsetsPartition[] }>>
   deleteTopicRecords(options: {
     topic: string; partitions: SeekEntry[];
     timeout?: number; operationTimeout?: number
