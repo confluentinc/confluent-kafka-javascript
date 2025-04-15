@@ -1,6 +1,6 @@
 # This file is managed by ServiceBot plugin - Semaphore. The content in this file is created using a common
 # template and configurations in service.yml.
-# Any modifications made to version, name, agent, and global_job_config will be overwritten by the generated
+# Any modifications made to version, name, agent and global_job_config will be overwritten by the generated
 # content in nightly runs. Code changes made to the remaining sections will not be affected.
 # For more information, please refer to the page:
 # https://confluentinc.atlassian.net/wiki/spaces/Foundations/pages/2871296194/Add+SemaphoreCI
@@ -25,16 +25,19 @@ global_job_config:
   prologue:
     commands:
       - checkout
-      - git submodule update --init --recursive
-      - cd deps/librdkafka
-      - git fetch origin
-      - git checkout v2.8.0
-      - cd ../../
-      - cache clear
+      - make show-args
+      - . vault-setup
+      - . vault-sem-get-secret ci-reporting
+      - . vault-sem-get-secret v1/ci/kv/service-foundations/cc-mk-include
+      - make init-ci
+  epilogue:
+    always:
+      commands:
+        - make epilogue-ci
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -48,7 +51,7 @@ blocks:
             - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
 
   - name: "Linux arm64 (musl): Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -59,10 +62,10 @@ blocks:
       jobs:
         - name: "Build from source and test for musl"
           commands:
-              - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
+            - docker run -v "$(pwd):/v" node:18-alpine /v/.semaphore/build-docker-alpine.sh
 
   - name: "Linux arm64: Build and test"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -88,7 +91,7 @@ blocks:
             - make test
 
   - name: "Linux amd64: Build, test, lint, docs"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -115,9 +118,9 @@ blocks:
         - name: "Docs"
           commands:
             - make docs
-  
+
   - name: "(SR) Linux amd64: test, e2e"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -136,9 +139,9 @@ blocks:
           commands:
             - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
             - make integtest
-  
+
   - name: "Linux amd64: Performance"
-    dependencies: [ ]
+    dependencies: []
     task:
       agent:
         machine:
@@ -174,7 +177,7 @@ blocks:
             - rm -rf ./node_modules
 
   - name: "Linux amd64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -210,7 +213,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -246,7 +249,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux amd64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -282,7 +285,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Linux arm64 musl: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -318,7 +321,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "macOS arm64/m1: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -353,7 +356,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "macOS Intel: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
@@ -388,7 +391,7 @@ blocks:
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
   - name: "Windows x64: Release"
-    dependencies: [ ]
+    dependencies: []
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
