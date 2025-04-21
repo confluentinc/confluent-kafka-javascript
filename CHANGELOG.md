@@ -8,7 +8,7 @@ v1.3.0 is a feature release. It is supported for all usage.
 
 ## Fixes
 
-1. Support Protobuf oneof fields in Data Controct rules (#261)
+1. Support Protobuf oneof fields in Data Contract rules (#261)
 2. Ensure use of DEK object is thread-safe (#268)
 3. Fix token fetch to return after successful request (#278)
 4. Add loose OAuth authorization (#289)
