@@ -94,7 +94,7 @@ export interface CommonConstructorConfig extends GlobalConfig {
 }
 
 export class Kafka {
-  constructor(config: CommonConstructorConfig)
+  constructor(config?: CommonConstructorConfig)
   producer(config?: ProducerConstructorConfig): Producer
   consumer(config: ConsumerConstructorConfig): Consumer
   admin(config?: AdminConstructorConfig): Admin
