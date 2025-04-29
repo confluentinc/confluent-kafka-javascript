@@ -179,6 +179,7 @@ describe('Consumer seek >', () => {
                     topic: topicName,
                     messages: [message1, message2, message3, message4],
                 });
+                await producer.flush();
 
                 await consumer.subscribe({ topic: topicName });
 
@@ -305,6 +306,9 @@ describe('Consumer seek >', () => {
                 const message3 = { key: `key-0`, value: `value-${value3}`, partition: 0 };
 
                 await producer.send({ topic: topicName, messages: [message1, message2, message3] });
+                // Avoid an OUT OF RANGE when seeking
+                await producer.flush();
+
                 await consumer.subscribe({ topic: topicName, });
 
                 const messagesConsumed = [];
@@ -348,6 +352,11 @@ describe('Consumer seek >', () => {
     });
 
     describe('batch staleness >', () => {
+        beforeEach(async () => {
+            // Theses tests expect a single partititon
+            await createTopic({ topic: topicName, partitions: 1 });
+        });
+
         it('stops consuming messages after staleness', async () => {
             consumer = createConsumer({
                 groupId,
@@ -410,6 +419,13 @@ describe('Consumer seek >', () => {
 
             consumer.run({
                 eachBatch: async ({ batch, isStale, resolveOffset }) => {
+                    if (offsetsConsumed.length == 0 && 
+                        batch.messages.length == 1) {
+                        // Await a batch of at least two messages
+                        resolveOffset(batch.messages[0].offset);
+                        return;
+                    }
+
                     for (const message of batch.messages) {
                         if (isStale()) break;
 
