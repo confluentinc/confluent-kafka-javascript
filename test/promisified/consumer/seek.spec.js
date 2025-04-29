@@ -353,7 +353,7 @@ describe('Consumer seek >', () => {
 
     describe('batch staleness >', () => {
         beforeEach(async () => {
-            // Theses tests expect a single partititon
+            // These tests expect a single partititon
             await createTopic({ topic: topicName, partitions: 1 });
         });
 
