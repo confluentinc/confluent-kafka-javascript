@@ -9,6 +9,8 @@ import {
 } from "../schemaregistry-client";
 import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
+import {parse, stringify} from "uuid"
+import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 
 export enum SerdeType {
   KEY = 'KEY',
@@ -16,6 +18,96 @@ export enum SerdeType {
 }
 
 export const MAGIC_BYTE = Buffer.alloc(1)
+export const MAGIC_BYTE_V0 = MAGIC_BYTE
+export const MAGIC_BYTE_V1 = Buffer.alloc(1, 1)
+
+export class SchemaId {
+  schemaType: string
+  id?: number
+  guid?: string
+  messageIndexes?: number[]
+
+  constructor(schemaType: string, id?: number, guid?: string, messageIndexes?: number[]) {
+    this.schemaType = schemaType
+    this.id = id
+    this.guid = guid
+    this.messageIndexes = messageIndexes
+  }
+
+  fromBytes(payload: Buffer): number {
+    let totalBytesRead = 0
+    const magicByte = payload.subarray(0, 1)
+    if (magicByte.equals(MAGIC_BYTE_V0)) {
+      this.id = payload.subarray(1, 5).readInt32BE(0)
+      totalBytesRead = 5
+    } else if (magicByte.equals(MAGIC_BYTE_V1)) {
+      this.guid = stringify(payload.subarray(1, 17))
+      totalBytesRead = 17
+    } else {
+      throw new SerializationError(
+        `Unknown magic byte ${JSON.stringify(magicByte)}`
+      )
+    }
+    if (this.schemaType == "PROTOBUF") {
+      const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(5))
+      this.messageIndexes = msgIndexes
+      totalBytesRead += bytesRead
+    }
+    return totalBytesRead
+  }
+
+  idToBytes() : Buffer {
+    if (this.id == null) {
+      throw new SerializationError('Schema id is not set')
+    }
+    const idBuffer = Buffer.alloc(4)
+    idBuffer.writeInt32BE(this.id!, 0)
+    if (this.messageIndexes != null) {
+      return Buffer.concat([MAGIC_BYTE_V0, idBuffer, this.writeMessageIndexes(this.messageIndexes)])
+    }
+    return Buffer.concat([MAGIC_BYTE_V0, idBuffer])
+  }
+
+  guidToBytes() : Buffer {
+    if (this.guid == null) {
+      throw new SerializationError('Schema guid is not set')
+    }
+    const guidBuffer = Buffer.from(parse(this.guid!))
+    if (this.messageIndexes != null) {
+      return Buffer.concat([MAGIC_BYTE_V1, guidBuffer, this.writeMessageIndexes(this.messageIndexes)])
+    }
+    return Buffer.concat([MAGIC_BYTE_V1, guidBuffer])
+  }
+
+  readMessageIndexes(payload: Buffer): [number, number[]] {
+    // optimization
+    if (payload.length === 1 && payload[0] === 0) {
+      return [1, [0]]
+    }
+    const bw = new BufferWrapper(payload)
+    const count = bw.readVarInt()
+    const msgIndexes = []
+    for (let i = 0; i < count; i++) {
+      msgIndexes.push(bw.readVarInt())
+    }
+    return [bw.pos, msgIndexes]
+  }
+
+  writeMessageIndexes(msgIndexes: number[]): Buffer {
+    if (msgIndexes.length === 1 && msgIndexes[0] === 0) {
+      const buffer = Buffer.alloc(1)
+      buffer.writeUInt8(0, 0)
+      return buffer
+    }
+    const buffer = Buffer.alloc((1 + msgIndexes.length) * MAX_VARINT_LEN_64)
+    const bw = new BufferWrapper(buffer)
+    bw.writeVarInt(msgIndexes.length)
+    for (let i = 0; i < msgIndexes.length; i++) {
+      bw.writeVarInt(msgIndexes[i])
+    }
+    return buffer.subarray(0, bw.pos)
+  }
+}
 
 /**
  * SerializationError represents a serialization error
@@ -300,7 +392,7 @@ export abstract class Serializer extends Serde {
   writeBytes(id: number, msgBytes: Buffer): Buffer {
     const idBuffer = Buffer.alloc(4)
     idBuffer.writeInt32BE(id, 0)
-    return Buffer.concat([MAGIC_BYTE, idBuffer, msgBytes])
+    return Buffer.concat([MAGIC_BYTE_V0, idBuffer, msgBytes])
   }
 }
 
@@ -339,10 +431,10 @@ export abstract class Deserializer extends Serde {
 
   async getSchema(topic: string, payload: Buffer, format?: string): Promise<SchemaInfo> {
     const magicByte = payload.subarray(0, 1)
-    if (!magicByte.equals(MAGIC_BYTE)) {
+    if (!magicByte.equals(MAGIC_BYTE_V0)) {
       throw new SerializationError(
         `Message encoded with magic byte ${JSON.stringify(magicByte)}, expected ${JSON.stringify(
-          MAGIC_BYTE,
+          MAGIC_BYTE_V0,
         )}`,
       )
     }
