@@ -4,6 +4,7 @@ const {
     secureRandom,
     createTopic,
     createAdmin,
+    sleep,
 } = require('../testhelpers');
 const { ErrorCodes } = require('../../../lib').KafkaJS;
 
@@ -25,6 +26,10 @@ describe('Admin > listTopics', () => {
 
     it('should timeout', async () => {
         await admin.connect();
+
+        /* Await for the learned brokers to avoid having to do
+         * manual retries */
+        await sleep(1000);
 
         await expect(admin.listTopics({ timeout: 1 })).rejects.toHaveProperty(
             'code',
