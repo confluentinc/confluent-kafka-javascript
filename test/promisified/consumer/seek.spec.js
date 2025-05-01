@@ -179,6 +179,8 @@ describe('Consumer seek >', () => {
                     topic: topicName,
                     messages: [message1, message2, message3, message4],
                 });
+                // Avoids a validation that resets the offset
+                // with subsequent seek
                 await producer.flush();
 
                 await consumer.subscribe({ topic: topicName });
@@ -306,7 +308,8 @@ describe('Consumer seek >', () => {
                 const message3 = { key: `key-0`, value: `value-${value3}`, partition: 0 };
 
                 await producer.send({ topic: topicName, messages: [message1, message2, message3] });
-                // Avoid an OUT OF RANGE when seeking
+                // Avoids a validation that resets the offset
+                // with subsequent seek
                 await producer.flush();
 
                 await consumer.subscribe({ topic: topicName, });
