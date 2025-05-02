@@ -38,7 +38,6 @@ import {
   FileDescriptorProto,
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
-import { BufferWrapper, MAX_VARINT_LEN_64 } from "./buffer-wrapper";
 import { LRUCache } from "lru-cache";
 import {field_meta, file_confluent_meta, Meta} from "../confluent/meta_pb";
 import {RuleRegistry} from "./rule-registry";
@@ -165,8 +164,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const [schemaId, info] = await this.getSchemaId(PROTOBUF_TYPE, topic, msg, schema, 'serialized')
     const subject = this.subjectName(topic, info)
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
-    const msgIndexArray = this.toMessageIndexArray(messageDesc)
-    schemaId.messageIndexes = msgIndexArray
+    schemaId.messageIndexes = this.toMessageIndexArray(messageDesc)
     const msgBytes = Buffer.from(toBinary(messageDesc, msg))
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
   }
@@ -250,17 +248,6 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       metadata: info.metadata,
       ruleSet: info.ruleSet,
     }
-  }
-
-  toMessageIndexBytes(messageDesc: DescMessage): Buffer {
-    const msgIndexes: number[] = this.toMessageIndexes(messageDesc, 0)
-    const buffer = Buffer.alloc((1 + msgIndexes.length) * MAX_VARINT_LEN_64)
-    const bw = new BufferWrapper(buffer)
-    bw.writeVarInt(msgIndexes.length)
-    for (let i = 0; i < msgIndexes.length; i++) {
-      bw.writeVarInt(msgIndexes[i])
-    }
-    return buffer.subarray(0, bw.pos)
   }
 
   toMessageIndexArray(messageDesc: DescMessage): number[] {
@@ -447,19 +434,6 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       }
     }
     throw new SerializationError('message descriptor not found')
-  }
-
-  readMessageIndexes(payload: Buffer): [number, number[]] {
-    const bw = new BufferWrapper(payload)
-    const count = bw.readVarInt()
-    if (count == 0) {
-      return [1, [0]]
-    }
-    const msgIndexes = []
-    for (let i = 0; i < count; i++) {
-      msgIndexes.push(bw.readVarInt())
-    }
-    return [bw.pos, msgIndexes]
   }
 
   toMessageDescFromIndexes(fd: DescFile, msgIndexes: number[]): DescMessage {

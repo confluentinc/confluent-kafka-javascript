@@ -366,36 +366,6 @@ export abstract class Serializer extends Serde {
    */
   abstract serialize(topic: string, msg: any, headers?: IHeaders): Promise<Buffer>
 
-  // GetID returns a schema ID for the given schema
-  // TODO RAY delete
-  async getId(topic: string, msg: any, info?: SchemaInfo, format?: string): Promise<[number, SchemaInfo]> {
-    let autoRegister = this.config().autoRegisterSchemas
-    let useSchemaId = this.config().useSchemaId
-    let useLatestWithMetadata = this.config().useLatestWithMetadata
-    let useLatest = this.config().useLatestVersion
-    let normalizeSchema = this.config().normalizeSchemas
-
-    let id = -1
-    let subject = this.subjectName(topic, info)
-    if (autoRegister) {
-      id = await this.client.register(subject, info!, Boolean(normalizeSchema))
-    } else if (useSchemaId != null && useSchemaId >= 0) {
-      info = await this.client.getBySubjectAndId(subject, useSchemaId, format)
-      id = useSchemaId
-    } else if (useLatestWithMetadata != null && Object.keys(useLatestWithMetadata).length !== 0) {
-      let metadata = await this.client.getLatestWithMetadata(subject, useLatestWithMetadata, true, format)
-      info = metadata
-      id = metadata.id
-    } else if (useLatest) {
-      let metadata = await this.client.getLatestSchemaMetadata(subject, format)
-      info = metadata
-      id = metadata.id
-    } else {
-      id = await this.client.getId(subject, info!, Boolean(normalizeSchema))
-    }
-    return [id, info!]
-  }
-
   // GetSchemaID returns a schema ID for the given schema
   async getSchemaId(schemaType: string, topic: string, msg: any, info?: SchemaInfo, format?: string): Promise<[SchemaId, SchemaInfo]> {
     let autoRegister = this.config().autoRegisterSchemas
@@ -422,12 +392,6 @@ export abstract class Serializer extends Serde {
     }
     let schemaId = new SchemaId(schemaType, metadata.id, metadata.guid)
     return [schemaId, info!]
-  }
-
-  writeBytes(id: number, msgBytes: Buffer): Buffer {
-    const idBuffer = Buffer.alloc(4)
-    idBuffer.writeInt32BE(id, 0)
-    return Buffer.concat([MAGIC_BYTE_V0, idBuffer, msgBytes])
   }
 
   serializeSchemaId(topic: string, payload: Buffer, schemaId: SchemaId, headers?: IHeaders): Buffer {
@@ -477,20 +441,6 @@ export abstract class Deserializer extends Serde {
   deserializeSchemaId(topic: string, payload: Buffer, schemaId: SchemaId, headers?: IHeaders): number {
     const deserializer = this.config().schemaIdDeserializer ?? DualSchemaIdDeserializer
     return deserializer(topic, this.serdeType, payload, schemaId, headers)
-  }
-
-  async getSchema(topic: string, payload: Buffer, format?: string): Promise<SchemaInfo> {
-    const magicByte = payload.subarray(0, 1)
-    if (!magicByte.equals(MAGIC_BYTE_V0)) {
-      throw new SerializationError(
-        `Message encoded with magic byte ${JSON.stringify(magicByte)}, expected ${JSON.stringify(
-          MAGIC_BYTE_V0,
-        )}`,
-      )
-    }
-    const id = payload.subarray(1, 5).readInt32BE(0)
-    let subject = this.subjectName(topic)
-    return await this.client.getBySubjectAndId(subject, id, format)
   }
 
   async getSchemaBySchemaId(topic: string, payload: Buffer, schemaId: SchemaId, headers?: IHeaders, format?: string): Promise<[SchemaInfo, number]> {
