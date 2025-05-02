@@ -3,7 +3,7 @@ import {
   DeserializerConfig,
   FieldTransform,
   FieldType, RuleConditionError,
-  RuleContext,
+  RuleContext, SchemaId,
   SerdeType, SerializationError,
   Serializer,
   SerializerConfig
@@ -57,6 +57,9 @@ import {file_google_type_postal_address} from "../google/type/postal_address_pb"
 import {file_google_type_quaternion} from "../google/type/quaternion_pb";
 import {file_google_type_timeofday} from "../google/type/timeofday_pb";
 import {file_google_type_month} from "../google/type/month_pb";
+import {IHeaders} from "../../types/kafkajs";
+
+export const PROTOBUF_TYPE = "PROTOBUF"
 
 const builtinDeps = new Map<string, DescFile>([
   ['confluent/meta.proto',                 file_confluent_meta],
@@ -132,8 +135,9 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
    * Serializes a message.
    * @param topic - the topic
    * @param msg - the message
+   * @param headers - optional headers
    */
-  override async serialize(topic: string, msg: any): Promise<Buffer> {
+  override async serialize(topic: string, msg: any, headers?: IHeaders): Promise<Buffer> {
     if (this.client == null) {
       throw new Error('client is not initialized')
     }
@@ -158,12 +162,13 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       const fileDesc = messageDesc.file
       schema = await this.getSchemaInfo(fileDesc)
     }
-    const [id, info] = await this.getId(topic, msg, schema, 'serialized')
+    const [schemaId, info] = await this.getSchemaId(PROTOBUF_TYPE, topic, msg, schema, 'serialized')
     const subject = this.subjectName(topic, info)
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
-    const msgIndexBytes = this.toMessageIndexBytes(messageDesc)
+    const msgIndexArray = this.toMessageIndexArray(messageDesc)
+    schemaId.messageIndexes = msgIndexArray
     const msgBytes = Buffer.from(toBinary(messageDesc, msg))
-    return this.writeBytes(id, Buffer.concat([msgIndexBytes, msgBytes]))
+    return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
   }
 
   async getSchemaInfo(fileDesc: DescFile): Promise<SchemaInfo> {
@@ -235,6 +240,8 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     }
     return {
       id: id,
+      // TODO verify that guid is not required
+      guid: "",
       subject: subject,
       version: version,
       schema: info.schema,
@@ -254,6 +261,10 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       bw.writeVarInt(msgIndexes[i])
     }
     return buffer.subarray(0, bw.pos)
+  }
+
+  toMessageIndexArray(messageDesc: DescMessage): number[] {
+    return this.toMessageIndexes(messageDesc, 0)
   }
 
   toMessageIndexes(messageDesc: DescMessage, count: number): number[] {
@@ -366,8 +377,9 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
    * Deserializes a message.
    * @param topic - the topic
    * @param payload - the message payload
+   * @param headers - optional headers
    */
-  override async deserialize(topic: string, payload: Buffer): Promise<any> {
+  override async deserialize(topic: string, payload: Buffer, headers?: IHeaders): Promise<any> {
     if (!Buffer.isBuffer(payload)) {
       throw new Error('Invalid buffer')
     }
@@ -375,15 +387,16 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       return null
     }
 
-    const info = await this.getSchema(topic, payload, 'serialized')
+    const schemaId = new SchemaId(PROTOBUF_TYPE)
+    const [info, bytesRead] = await this.getSchemaBySchemaId(topic, payload, schemaId, headers, 'serialized')
+    payload = payload.subarray(bytesRead)
     const fd = await this.toFileDesc(this.client, info)
-    const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(5))
-    const messageDesc = this.toMessageDescFromIndexes(fd, msgIndexes)
+    const messageDesc = this.toMessageDescFromIndexes(fd, schemaId.messageIndexes!)
 
     const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject, 'serialized')
 
-    const msgBytes = payload.subarray(5 + bytesRead)
+    const msgBytes = payload
     let msg = fromBinary(messageDesc, msgBytes)
 
     // Currently JavaScript does not support migration rules
@@ -439,6 +452,9 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   readMessageIndexes(payload: Buffer): [number, number[]] {
     const bw = new BufferWrapper(payload)
     const count = bw.readVarInt()
+    if (count == 0) {
+      return [1, [0]]
+    }
     const msgIndexes = []
     for (let i = 0; i < count; i++) {
       msgIndexes.push(bw.readVarInt())
