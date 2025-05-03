@@ -53,7 +53,7 @@ export class SchemaId {
       )
     }
     if (this.schemaType == "PROTOBUF") {
-      const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(5))
+      const [bytesRead, msgIndexes] = this.readMessageIndexes(payload.subarray(totalBytesRead))
       this.messageIndexes = msgIndexes
       totalBytesRead += bytesRead
     }
