@@ -81,7 +81,7 @@ export function minimize(info: SchemaInfo): SchemaInfo {
  * SchemaMetadata extends SchemaInfo with additional metadata
  */
 export interface SchemaMetadata extends SchemaInfo {
-  id: number;
+  id?: number;
   guid?: string;
   subject?: string;
   version?: number;
@@ -247,7 +247,7 @@ export class SchemaRegistryClient implements Client {
   async register(subject: string, schema: SchemaInfo, normalize: boolean = false): Promise<number> {
     const metadataResult = await this.registerFullResponse(subject, schema, normalize);
 
-    return metadataResult.id;
+    return metadataResult.id!;
   }
 
   /**
@@ -336,7 +336,7 @@ export class SchemaRegistryClient implements Client {
   async getId(subject: string, schema: SchemaInfo, normalize: boolean = false): Promise<number> {
     const metadataResult = await this.getIdFullResponse(subject, schema, normalize);
 
-    return metadataResult.id;
+    return metadataResult.id!;
   }
 
   /**

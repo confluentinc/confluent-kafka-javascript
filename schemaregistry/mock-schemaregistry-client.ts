@@ -71,7 +71,7 @@ class MockClient implements Client {
     if (!metadata) {
       throw new RestError("Failed to register schema", 422, 42200);
     }
-    return metadata.id;
+    return metadata.id!;
   }
 
   async registerFullResponse(subject: string, schema: SchemaInfo, normalize: boolean = false): Promise<SchemaMetadata> {
@@ -158,7 +158,7 @@ class MockClient implements Client {
 
   async getId(subject: string, schema: SchemaInfo): Promise<number> {
     const metadata = await this.getIdFullResponse(subject, schema);
-    return metadata.id;
+    return metadata.id!;
   }
 
   async getIdFullResponse(subject: string, schema: SchemaInfo): Promise<SchemaMetadata> {
