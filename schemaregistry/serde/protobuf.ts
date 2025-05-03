@@ -375,7 +375,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     }
 
     const schemaId = new SchemaId(PROTOBUF_TYPE)
-    const [info, bytesRead] = await this.getSchemaBySchemaId(topic, payload, schemaId, headers, 'serialized')
+    const [info, bytesRead] = await this.getWriterSchema(topic, payload, schemaId, headers, 'serialized')
     payload = payload.subarray(bytesRead)
     const fd = await this.toFileDesc(this.client, info)
     const messageDesc = this.toMessageDescFromIndexes(fd, schemaId.messageIndexes!)

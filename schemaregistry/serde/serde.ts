@@ -443,7 +443,7 @@ export abstract class Deserializer extends Serde {
     return deserializer(topic, this.serdeType, payload, schemaId, headers)
   }
 
-  async getSchemaBySchemaId(topic: string, payload: Buffer, schemaId: SchemaId, headers?: IHeaders, format?: string): Promise<[SchemaInfo, number]> {
+  async getWriterSchema(topic: string, payload: Buffer, schemaId: SchemaId, headers?: IHeaders, format?: string): Promise<[SchemaInfo, number]> {
     const bytesRead = this.deserializeSchemaId(topic, payload, schemaId, headers)
     let info: SchemaInfo
     if (schemaId.id != null) {

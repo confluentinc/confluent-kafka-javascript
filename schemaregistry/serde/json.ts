@@ -195,7 +195,7 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     }
 
     const schemaId = new SchemaId(JSON_TYPE)
-    const [info, bytesRead] = await this.getSchemaBySchemaId(topic, payload, schemaId, headers)
+    const [info, bytesRead] = await this.getWriterSchema(topic, payload, schemaId, headers)
     payload = payload.subarray(bytesRead)
     const subject = this.subjectName(topic, info)
     const readerMeta = await this.getReaderSchema(subject)
