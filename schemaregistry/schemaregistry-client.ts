@@ -351,7 +351,11 @@ export class SchemaRegistryClient implements Client {
     return await this.schemaToIdMutex.runExclusive(async () => {
       const cachedSchemaMetadata: SchemaMetadata | undefined = this.infoToSchemaCache.get(cacheKey);
       if (cachedSchemaMetadata) {
-        return cachedSchemaMetadata;
+        // Allow the schema to be looked up again if version is not valid
+        // This is for backward compatibility with versions before CP 8.0
+        if (cachedSchemaMetadata.version != null && cachedSchemaMetadata.version > 0) {
+          return cachedSchemaMetadata;
+        }
       }
 
       subject = encodeURIComponent(subject);

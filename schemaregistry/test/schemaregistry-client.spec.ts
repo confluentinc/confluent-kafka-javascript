@@ -200,13 +200,13 @@ describe('SchemaRegistryClient-Get-ID', () => {
   });
 
   it('Should return id from cache when GetId is called twice', async () => {
-    restService.handleRequest.mockResolvedValue({ data: { id: 1 } } as AxiosResponse);
+    restService.handleRequest.mockResolvedValue({ data: { id: 1, version: 1 } } as AxiosResponse);
 
     const response: number = await client.getId(mockSubject, schemaInfo);
     expect(response).toEqual(1);
     expect(restService.handleRequest).toHaveBeenCalledTimes(1);
 
-    restService.handleRequest.mockResolvedValue({ data: { id: 2 } } as AxiosResponse);
+    restService.handleRequest.mockResolvedValue({ data: { id: 2, version: 1 } } as AxiosResponse);
 
     const response2: number = await client.getId(mockSubject2, schemaInfo2);
     expect(response2).toEqual(2);
