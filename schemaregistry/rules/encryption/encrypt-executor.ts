@@ -104,7 +104,7 @@ export class FieldEncryptionExecutor extends FieldRuleExecutor {
         }
       }
     } else {
-      this.config = config
+      this.config = config != null ? config : new Map<string, string>()
     }
   }
 
