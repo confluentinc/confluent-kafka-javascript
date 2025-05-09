@@ -9,6 +9,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "node-addon-api": "8.3.1",
     "@confluentinc/kafka-javascript": "file:../../..",
     "jsonwebtoken": "^9.0.2"
   }
