@@ -70,12 +70,8 @@ export class CelExecutor implements RuleExecutor {
       program = this.env.plan(parsedExpr)
       this.cache.set(ruleJson, program)
     }
-    // iterate over args
-    for (const key in args) {
-      if (args.hasOwnProperty(key)) {
-        const value = args[key]
-        this.env.set(key, value)
-      }
+    for (const [key, value] of Object.entries(args)) {
+      this.env.set(key, value)
     }
     return this.env.eval(program)
   }

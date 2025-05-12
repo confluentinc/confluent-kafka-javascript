@@ -711,7 +711,7 @@ describe('AvroSerializer', () => {
     expect(obj2.stringField).toEqual(obj.stringField);
     expect(obj2.boolField).toEqual(obj.boolField);
     expect(obj2.bytesField).toEqual(obj.bytesField);
-  }, )
+  })
   it('cel condition fail', async () => {
     let conf: ClientConfig = {
       baseURLs: [baseURL],
