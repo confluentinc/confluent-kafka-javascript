@@ -4,7 +4,6 @@ const {
     secureRandom,
     createTopic,
     createAdmin,
-    sleep,
 } = require('../testhelpers');
 const { ErrorCodes } = require('../../../lib').KafkaJS;
 

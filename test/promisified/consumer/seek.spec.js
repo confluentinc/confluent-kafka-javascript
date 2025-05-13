@@ -422,8 +422,8 @@ describe('Consumer seek >', () => {
 
             consumer.run({
                 eachBatch: async ({ batch, isStale, resolveOffset }) => {
-                    if (offsetsConsumed.length == 0 && 
-                        batch.messages.length == 1) {
+                    if (offsetsConsumed.length === 0 && 
+                        batch.messages.length === 1) {
                         // Await a batch of at least two messages
                         resolveOffset(batch.messages[0].offset);
                         return;
