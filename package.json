@@ -32,13 +32,13 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@bufbuild/buf": "^1.37.0",
-    "@bufbuild/protoc-gen-es": "^2.0.0",
-    "@eslint/js": "^9.9.0",
+    "@bufbuild/buf": "^1.50.0",
+    "@bufbuild/protoc-gen-es": "^2.3.0",
+    "@eslint/js": "^9.19.0",
     "@hapi/boom": "^10.0.1",
     "@types/eslint__js": "^8.42.3",
     "@types/jest": "^29.5.13",
-    "@types/node": "^20.16.1",
+    "@types/node": "^20.17.17",
     "axios-mock-adapter": "^2.1.0",
     "bluebird": "^3.5.3",
     "eslint": "^8.57.0",
@@ -48,9 +48,9 @@
     "mocha": "^10.7.0",
     "node-gyp": "^9.3.1",
     "nyc": "^17.1.0",
-    "ts-jest": "^29.2.5",
-    "typescript": "^5.5.4",
-    "typescript-eslint": "^8.2.0"
+    "ts-jest": "^29.3.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.23.0"
   },
   "dependencies": {
     "@mapbox/node-pre-gyp": "^1.0.11",
