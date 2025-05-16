@@ -44,7 +44,6 @@ async function runConsumer() {
     });
 
     const consumer = kafka.consumer({
-        'auto.offset.reset': 'earliest',
         kafkaJS: {
             groupId: 'test-group' + Math.random(),
             fromBeginning: true,
