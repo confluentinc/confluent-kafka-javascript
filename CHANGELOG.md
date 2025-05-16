@@ -1,3 +1,12 @@
+# confluent-kafka-javascript v1.4.0
+
+v1.4.0 is a feature release. It is supported for all usage.
+
+## Enhancements
+
+1. Adds support for `highWatermark`, `offsetLag()`, and `offsetLagLow()` in `eachBatch` callback (#317).
+
+
 # confluent-kafka-javascript v1.3.0
 
 v1.3.0 is a feature release. It is supported for all usage.
