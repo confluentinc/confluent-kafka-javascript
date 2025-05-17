@@ -49,7 +49,7 @@
     "axios-retry": "^4.5.0",
     "json-stringify-deterministic": "^1.0.12",
     "jsonata": "^2.0.5",
-    "lru-cache": "^10.4.3",
+    "lru-cache": "^11.0.0",
     "node-vault": "^0.10.2",
     "simple-oauth2": "^5.1.0",
     "uuid": "^11.0.0",
