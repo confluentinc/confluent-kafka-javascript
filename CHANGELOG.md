@@ -8,7 +8,7 @@ v1.3.1 is a maintenance release. It is supported for all usage.
    consuming with `partitionsConsumedConcurrently > 1` and all messages
    are consumed (#300)
 2. Fix type definition for `Kafka()` constructor and for passing topic configurations
-   to the `producer()` and `consumer()` in the promisified API (@davidkhala, #297, #).
+   to the `producer()` and `consumer()` in the promisified API (@davidkhala, #297, #321).
 
 
 # confluent-kafka-javascript v1.3.0
