@@ -11,7 +11,8 @@
 #ifndef SRC_KAFKA_CONSUMER_H_
 #define SRC_KAFKA_CONSUMER_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <uv.h>
 #include <iostream>
 #include <string>
@@ -35,11 +36,11 @@ namespace NodeKafka {
  * @sa NodeKafka::Client
  */
 
-class KafkaConsumer : public Connection {
+class KafkaConsumer : public Connection<KafkaConsumer> {
   friend class Producer;
  public:
-  static void Init(v8::Local<v8::Object>);
-  static v8::Local<v8::Object> NewInstance(v8::Local<v8::Value>);
+  static void Init(Napi::Env env, Napi::Object);
+  //  static Napi::Object NewInstance(Napi::Value);
 
   Baton Connect();
   Baton Disconnect();
@@ -90,13 +91,14 @@ class KafkaConsumer : public Connection {
   void DeactivateDispatchers();
 
   void ConfigureCallback(const std::string& string_key,
-                         const v8::Local<v8::Function>& cb, bool add) override;
+			 const Napi::Function& cb, bool add) override;
 
  protected:
-  static Nan::Persistent<v8::Function> constructor;
-  static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  static Napi::FunctionReference constructor;
+  static void New(const Napi::CallbackInfo& info);
 
-  KafkaConsumer(Conf *, Conf *);
+  KafkaConsumer(const Napi::CallbackInfo& info);
+  //  KafkaConsumer(Conf *, Conf *);
   ~KafkaConsumer();
 
  private:
@@ -114,32 +116,32 @@ class KafkaConsumer : public Connection {
   RdKafka::KafkaConsumer *m_consumer = nullptr;
 
   // Node methods
-  static NAN_METHOD(NodeConnect);
-  static NAN_METHOD(NodeSubscribe);
-  static NAN_METHOD(NodeDisconnect);
-  static NAN_METHOD(NodeAssign);
-  static NAN_METHOD(NodeUnassign);
-  static NAN_METHOD(NodeIncrementalAssign);
-  static NAN_METHOD(NodeIncrementalUnassign);
-  static NAN_METHOD(NodeAssignments);
-  static NAN_METHOD(NodeAssignmentLost);
-  static NAN_METHOD(NodeRebalanceProtocol);
-  static NAN_METHOD(NodeUnsubscribe);
-  static NAN_METHOD(NodeCommit);
-  static NAN_METHOD(NodeCommitSync);
-  static NAN_METHOD(NodeCommitCb);
-  static NAN_METHOD(NodeOffsetsStore);
-  static NAN_METHOD(NodeOffsetsStoreSingle);
-  static NAN_METHOD(NodeCommitted);
-  static NAN_METHOD(NodePosition);
-  static NAN_METHOD(NodeSubscription);
-  static NAN_METHOD(NodeSeek);
-  static NAN_METHOD(NodeGetWatermarkOffsets);
-  static NAN_METHOD(NodeConsumeLoop);
-  static NAN_METHOD(NodeConsume);
+  Napi::Value NodeConnect(const Napi::CallbackInfo& info);
+  Napi::Value NodeSubscribe(const Napi::CallbackInfo& info);
+  Napi::Value NodeDisconnect(const Napi::CallbackInfo& info);
+  Napi::Value NodeAssign(const Napi::CallbackInfo& info);
+  Napi::Value NodeUnassign(const Napi::CallbackInfo& info);
+  Napi::Value NodeIncrementalAssign(const Napi::CallbackInfo& info);
+  Napi::Value NodeIncrementalUnassign(const Napi::CallbackInfo& info);
+  Napi::Value NodeAssignments(const Napi::CallbackInfo& info);
+  Napi::Value NodeAssignmentLost(const Napi::CallbackInfo& info);
+  Napi::Value NodeRebalanceProtocol(const Napi::CallbackInfo& info);
+  Napi::Value NodeUnsubscribe(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommit(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommitSync(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommitCb(const Napi::CallbackInfo& info);
+  Napi::Value NodeOffsetsStore(const Napi::CallbackInfo& info);
+  Napi::Value NodeOffsetsStoreSingle(const Napi::CallbackInfo& info);
+  Napi::Value NodeCommitted(const Napi::CallbackInfo& info);
+  Napi::Value NodePosition(const Napi::CallbackInfo& info);
+  Napi::Value NodeSubscription(const Napi::CallbackInfo& info);
+  Napi::Value NodeSeek(const Napi::CallbackInfo& info);
+  Napi::Value NodeGetWatermarkOffsets(const Napi::CallbackInfo& info);
+  Napi::Value NodeConsumeLoop(const Napi::CallbackInfo& info);
+  Napi::Value NodeConsume(const Napi::CallbackInfo& info);
 
-  static NAN_METHOD(NodePause);
-  static NAN_METHOD(NodeResume);
+  Napi::Value NodePause(const Napi::CallbackInfo& info);
+  Napi::Value NodeResume(const Napi::CallbackInfo& info);
 };
 
 }  // namespace NodeKafka
