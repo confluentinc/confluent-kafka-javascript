@@ -1127,8 +1127,7 @@ v8::Local<v8::Object> FromConsumerGroupDescription(
 
   // type
   Nan::Set(returnObject, Nan::New("type").ToLocalChecked(),
-           Nan::New<v8::String>(rd_kafka_ConsumerGroupDescription_type(desc))
-               .ToLocalChecked());
+           Nan::New<v8::Number>(rd_kafka_ConsumerGroupDescription_type(desc)));
 
   // coordinator
   const rd_kafka_Node_t* coordinator =
