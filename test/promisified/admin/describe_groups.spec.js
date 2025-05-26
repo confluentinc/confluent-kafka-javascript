@@ -9,7 +9,7 @@ const {
     createAdmin,
     sleep,
 } = require('../testhelpers');
-const { ConsumerGroupStates, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
+const { ConsumerGroupStates, ConsumerGroupTypes, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
 
 describe('Admin > describeGroups', () => {
     let topicName, groupId, consumer, admin, groupInstanceId, producer;
@@ -86,6 +86,7 @@ describe('Admin > describeGroups', () => {
                 isSimpleConsumerGroup: false,
                 protocolType: 'consumer',
                 state: ConsumerGroupStates.STABLE,
+                type: ConsumerGroupTypes.CLASSIC,
                 coordinator: expect.objectContaining({
                     id: expect.any(Number),
                     host: expect.any(String),
@@ -137,6 +138,7 @@ describe('Admin > describeGroups', () => {
                 protocol: '',
                 partitionAssignor: '',
                 state: ConsumerGroupStates.EMPTY,
+                type: ConsumerGroupTypes.CLASSIC,
                 protocolType: 'consumer',
                 isSimpleConsumerGroup: false,
                 coordinator: expect.objectContaining({
