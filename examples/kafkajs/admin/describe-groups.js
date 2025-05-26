@@ -1,5 +1,5 @@
 // require('kafkajs') is replaced with require('@confluentinc/kafka-javascript').KafkaJS.
-const { Kafka, ConsumerGroupStates } = require('@confluentinc/kafka-javascript').KafkaJS;
+const { Kafka, ConsumerGroupStates, ConsumerGroupTypes } = require('@confluentinc/kafka-javascript').KafkaJS;
 const { parseArgs } = require('node:util');
 
 function printNode(node, prefix = '') {
