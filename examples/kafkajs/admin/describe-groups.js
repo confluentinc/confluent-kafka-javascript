@@ -72,6 +72,7 @@ async function adminStart() {
       console.log(`\tProtocol type: ${group.protocolType}`);
       console.log(`\tPartition assignor: ${group.partitionAssignor}`);
       console.log(`\tState: ${group.state}`);
+      console.log(`\tType: ${group.type}`);
       console.log(`\tCoordinator: ${group.coordinator ? group.coordinator.id : group.coordinator}`);
       printNode(group.coordinator, '\t');
       console.log(`\tAuthorized operations: ${group.authorizedOperations}`);
