@@ -20,13 +20,20 @@ async function adminStart() {
         short: 's',
         multiple: true,
         default: [],
-      }
+      },
+      'types': {
+        type: 'string',
+        short: 't',
+        multiple: true,
+        default: [],
+      },
     },
   });
 
   let {
     'bootstrap-servers': bootstrapServers,
     states: matchConsumerGroupStates,
+    types: matchConsumerGroupTypes,
     timeout,
   } = args.values;
 
@@ -35,6 +42,9 @@ async function adminStart() {
   }
   matchConsumerGroupStates = matchConsumerGroupStates.map(
     state => ConsumerGroupStates[state]);
+  
+  matchConsumerGroupTypes = matchConsumerGroupTypes.map(
+    type => ConsumerGroupTypes[type]);
   
   const kafka = new Kafka({
     kafkaJS: {
@@ -55,6 +65,7 @@ async function adminStart() {
       console.log(`\tType: ${group.protocolType}`);
       console.log(`\tIs simple: ${group.isSimpleConsumerGroup}`);
       console.log(`\tState: ${group.state}`);
+      console.log(`\tType: ${group.type}`);
     }
   } catch(err) {
     console.log('List topics failed', err);
