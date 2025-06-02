@@ -7,7 +7,7 @@ const {
     waitFor,
     createAdmin,
 } = require('../testhelpers');
-const { ConsumerGroupStates, ErrorCodes } = require('../../../lib').KafkaJS;
+const { ConsumerGroupStates, ConsumerGroupTypes, ErrorCodes } = require('../../../lib').KafkaJS;
 
 describe('Admin > listGroups', () => {
     let topicName, groupId, consumer, admin;
@@ -50,6 +50,7 @@ describe('Admin > listGroups', () => {
         await admin.connect();
         let listGroupsResult = await admin.listGroups({
             matchConsumerGroupStates: undefined,
+            matchConsumerGroupTypes: undefined,
         });
         expect(listGroupsResult.errors).toEqual([]);
         expect(listGroupsResult.groups).toEqual(
@@ -59,6 +60,7 @@ describe('Admin > listGroups', () => {
                     isSimpleConsumerGroup: false,
                     protocolType: 'consumer',
                     state: ConsumerGroupStates.STABLE,
+                    type: ConsumerGroupTypes.CLASSIC,
                 }),
             ])
         );
@@ -76,6 +78,7 @@ describe('Admin > listGroups', () => {
                     isSimpleConsumerGroup: false,
                     protocolType: 'consumer',
                     state: ConsumerGroupStates.EMPTY,
+                    type: ConsumerGroupTypes.CLASSIC,
                 }),
             ])
         );
