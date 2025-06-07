@@ -15,6 +15,15 @@ const clusterInformation = {
 
 const debug = process.env.TEST_DEBUG;
 
+function testConsumerGroupProtocol() {
+    return process.env.TEST_CONSUMER_GROUP_PROTOCOL ?? null;
+}
+
+function testConsumerGroupProtocolClassic() {
+    const protocol = testConsumerGroupProtocol();
+    return protocol === null || protocol === "classic";
+}
+
 function makeConfig(config, common) {
     const kafkaJS =  Object.assign(config, clusterInformation.kafkaJS);
     if (debug) {
@@ -27,6 +36,23 @@ function makeConfig(config, common) {
 }
 
 function createConsumer(config, common = {}) {
+    const protocol = testConsumerGroupProtocol();
+    if (protocol !== null && !('group.protocol' in common)) {
+        common['group.protocol'] = protocol;
+    }
+    if (!testConsumerGroupProtocolClassic()) {
+        const forbiddenProperties = [
+            "session.timeout.ms",
+            "partition.assignment.strategy",
+            "heartbeat.interval.ms",
+            "group.protocol.type"
+        ];
+        for (const prop of forbiddenProperties) {
+            if (prop in common) {
+                delete common[prop];
+            }
+        }
+    }
     const kafka = new Kafka(makeConfig(config, common));
     return kafka.consumer();
 }
@@ -129,6 +155,7 @@ class SequentialPromises {
 }
 
 module.exports = {
+    testConsumerGroupProtocolClassic,
     createConsumer,
     createProducer,
     createAdmin,
