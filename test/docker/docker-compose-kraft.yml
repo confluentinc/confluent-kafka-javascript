@@ -7,5 +7,8 @@ services:
       - 9092:29092
       - 9093:29093
     volumes:
+      - ./kafka_jaas.conf:/etc/kafka/kafka_jaas.conf
       - ./kraft/server.properties:/mnt/shared/config/server.properties
+    environment:
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_jaas.conf"
 
