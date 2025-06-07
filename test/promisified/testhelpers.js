@@ -47,9 +47,19 @@ function createConsumer(config, common = {}) {
             "heartbeat.interval.ms",
             "group.protocol.type"
         ];
+        const forbiddenPropertiesKafkaJS = [
+            "sessionTimeout",
+            "partitionAssignors",
+            "heartbeatInterval"
+        ];
         for (const prop of forbiddenProperties) {
             if (prop in common) {
                 delete common[prop];
+            }
+        }
+        for (const prop of forbiddenPropertiesKafkaJS) {
+            if (prop in config) {
+                delete config[prop];
             }
         }
     }
