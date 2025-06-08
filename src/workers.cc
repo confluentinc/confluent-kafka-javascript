@@ -816,10 +816,12 @@ void KafkaConsumerConsumeNum::Execute() {
 
   auto start_time = std::chrono::steady_clock::now();
   int timeout_ms = m_timeout_ms;
+  int early_exit_ms = 1;
 
   while (m_messages.size() - eof_event_count < max && looping) {
-    // Allow timeout_ms = 1 early exits to work
-    if (timeout_ms > 1) {
+    // Allow timeout_ms = early_exit_ms to take precedence 
+    // timeout_ms > 1
+    if (timeout_ms > early_exit_ms) {
       // Calc next single consume timeout remaining for batch
       auto now = std::chrono::steady_clock::now();
       auto elapsed =
@@ -840,7 +842,7 @@ void KafkaConsumerConsumeNum::Execute() {
           // If partition EOF and have consumed messages, retry with timeout 1
           // This allows getting ready messages, while not waiting for new ones
           if (m_messages.size() > eof_event_count) {
-            timeout_ms = 1;
+            timeout_ms = early_exit_ms;
           }
 
           // We will only go into this code path when `enable.partition.eof`
@@ -863,7 +865,7 @@ void KafkaConsumerConsumeNum::Execute() {
           // within the timeout but not wait if we already have one or more
           // messages.
           if (m_timeout_only_for_first_message) {
-            timeout_ms = 1;
+            timeout_ms = early_exit_ms;
           }
 
           break;
