@@ -9,6 +9,7 @@
  */
 #include "src/workers.h"
 
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -811,10 +812,23 @@ KafkaConsumerConsumeNum::~KafkaConsumerConsumeNum() {}
 void KafkaConsumerConsumeNum::Execute() {
   std::size_t max = static_cast<std::size_t>(m_num_messages);
   bool looping = true;
-  int timeout_ms = m_timeout_ms;
   std::size_t eof_event_count = 0;
 
+  auto start_time = std::chrono::steady_clock::now();
+  int timeout_ms = m_timeout_ms;
+
   while (m_messages.size() - eof_event_count < max && looping) {
+    // Allow timeout_ms = 1 early exits to work
+    if (timeout_ms > 1) {
+      // Calc next single consume timeout remaining for batch
+      auto now = std::chrono::steady_clock::now();
+      auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time)
+        .count();
+      // timeout_ms of 0 triggers non-blocking behavior https://github.com/confluentinc/librdkafka/blob/3f52de491f8aae1d71a9a0b3f1c07bfd6df4aec3/src/rdkafka_int.h#L1189-L1190
+      timeout_ms = std::max(1, m_timeout_ms - static_cast<int>(elapsed));
+    }
+
     // Get a message
     Baton b = m_consumer->Consume(timeout_ms);
     if (b.err() == RdKafka::ERR_NO_ERROR) {
