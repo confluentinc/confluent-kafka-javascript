@@ -50,6 +50,7 @@ function createConsumer(config, common = {}) {
         const forbiddenPropertiesKafkaJS = [
             "sessionTimeout",
             "partitionAssignors",
+            "partitionAssigners",
             "heartbeatInterval"
         ];
         for (const prop of forbiddenProperties) {
