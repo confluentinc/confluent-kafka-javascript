@@ -825,8 +825,9 @@ void KafkaConsumerConsumeNum::Execute() {
       auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time)
         .count();
-      // timeout_ms of 0 triggers non-blocking behavior https://github.com/confluentinc/librdkafka/blob/3f52de491f8aae1d71a9a0b3f1c07bfd6df4aec3/src/rdkafka_int.h#L1189-L1190
-      timeout_ms = std::max(1, m_timeout_ms - static_cast<int>(elapsed));
+      // `timeout_ms` of 0 triggers non-blocking behavior https://github.com/confluentinc/librdkafka/blob/3f52de491f8aae1d71a9a0b3f1c07bfd6df4aec3/src/rdkafka_int.h#L1189-L1190
+      // This still returns ERR_TIMED_OUT if no message available
+      timeout_ms = std::max(0, m_timeout_ms - static_cast<int>(elapsed));
     }
 
     // Get a message
