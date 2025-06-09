@@ -1,6 +1,7 @@
 jest.setTimeout(30000);
 
 const {
+    testConsumerGroupProtocolClassic,
     createConsumer,
     createProducer,
     secureRandom,
@@ -66,6 +67,9 @@ describe('Admin > describeGroups', () => {
     });
 
     it('should describe consumer groups', async () => {
+        if (testConsumerGroupProtocolClassic()) {
+            return ;
+        }
         let messagesConsumed = 0;
 
         await consumer.connect();

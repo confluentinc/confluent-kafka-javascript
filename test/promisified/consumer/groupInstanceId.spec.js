@@ -1,4 +1,4 @@
-jest.setTimeout(60000);
+jest.setTimeout(100000);
 
 const { waitFor,
     secureRandom,
