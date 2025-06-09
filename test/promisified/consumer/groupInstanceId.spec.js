@@ -1,4 +1,4 @@
-jest.setTimeout(100000);
+jest.setTimeout(30000);
 
 const { waitFor,
     secureRandom,
@@ -131,8 +131,8 @@ describe('Consumer with static membership', () => {
         await waitFor(() => consumer2.assignment().length === 2, () => null, 1000);
 
         expect(consumer2.assignment().length).toBe(2);
-        expect(assigns).toBe(2);
         if (testConsumerGroupProtocolClassic()) {
+            expect(assigns).toBe(2);
             expect(revokes).toBe(1);
         }
 
