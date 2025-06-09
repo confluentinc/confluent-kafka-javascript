@@ -1,8 +1,9 @@
-jest.setTimeout(30000);
+jest.setTimeout(60000);
 
 const { waitFor,
     secureRandom,
     createTopic,
+    testConsumerGroupProtocolClassic,
     createConsumer,
     sleep, } = require("../testhelpers");
 const { ErrorCodes } = require('../../../lib').KafkaJS;
@@ -128,6 +129,10 @@ describe('Consumer with static membership', () => {
         expect(consumer2.assignment().length).toBe(1);
 
         await waitFor(() => consumer2.assignment().length === 2, () => null, 1000);
+
+        if (!testConsumerGroupProtocolClassic()) {
+            await sleep(40000); // Wait for the session timeout to kick in
+        }
         expect(consumer2.assignment().length).toBe(2);
         expect(assigns).toBe(2);
         expect(revokes).toBe(1);

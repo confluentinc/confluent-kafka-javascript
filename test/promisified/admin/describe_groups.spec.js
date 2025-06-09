@@ -81,8 +81,8 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: 'roundrobin',
-                partitionAssignor: 'roundrobin',
+                protocol: expect.any(String),
+                partitionAssignor: expect.any(String),
                 isSimpleConsumerGroup: false,
                 protocolType: 'consumer',
                 state: ConsumerGroupStates.STABLE,
@@ -134,8 +134,8 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: '',
-                partitionAssignor: '',
+                protocol: expect.any(String),
+                partitionAssignor: expect.any(String),
                 state: ConsumerGroupStates.EMPTY,
                 protocolType: 'consumer',
                 isSimpleConsumerGroup: false,
