@@ -484,7 +484,7 @@ Baton AdminClient::CreatePartitions(
 Baton AdminClient::ListGroups(
     bool is_match_states_set,
     std::vector<rd_kafka_consumer_group_state_t> &match_states,
-    bool is_match_types_set, 
+    bool is_match_types_set,
     std::vector<rd_kafka_consumer_group_type_t> &match_types, int timeout_ms,
     /* out */ rd_kafka_event_t **event_response) {
   if (!IsConnected()) {
@@ -1224,7 +1224,8 @@ NAN_METHOD(AdminClient::NodeListGroups) {
 
   // Queue the work.
   Nan::AsyncQueueWorker(new Workers::AdminClientListGroups(
-      callback, client, is_match_states_set, match_states, is_match_types_set, match_types, timeout_ms));
+      callback, client, is_match_states_set, match_states, is_match_types_set,
+      match_types, timeout_ms));
 }
 
 /**
