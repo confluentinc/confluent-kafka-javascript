@@ -1,6 +1,7 @@
 jest.setTimeout(30000);
 
 const {
+    testConsumerGroupProtocolClassic,
     createConsumer,
     secureRandom,
     createTopic,
@@ -78,7 +79,7 @@ describe('Admin > listGroups', () => {
                     isSimpleConsumerGroup: false,
                     protocolType: 'consumer',
                     state: ConsumerGroupStates.EMPTY,
-                    type: ConsumerGroupTypes.CLASSIC,
+                    type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 }),
             ])
         );
