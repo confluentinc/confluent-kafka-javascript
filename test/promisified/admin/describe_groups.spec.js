@@ -67,9 +67,6 @@ describe('Admin > describeGroups', () => {
     });
 
     it('should describe consumer groups', async () => {
-        if (testConsumerGroupProtocolClassic()) {
-            return ;
-        }
         let messagesConsumed = 0;
 
         await consumer.connect();
@@ -90,7 +87,7 @@ describe('Admin > describeGroups', () => {
                 isSimpleConsumerGroup: false,
                 protocolType: 'consumer',
                 state: ConsumerGroupStates.STABLE,
-                type: ConsumerGroupTypes.CLASSIC,
+                type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 coordinator: expect.objectContaining({
                     id: expect.any(Number),
                     host: expect.any(String),
@@ -142,7 +139,7 @@ describe('Admin > describeGroups', () => {
                 protocol: expect.any(String),
                 partitionAssignor: expect.any(String),
                 state: ConsumerGroupStates.EMPTY,
-                type: ConsumerGroupTypes.CLASSIC,
+                type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 protocolType: 'consumer',
                 isSimpleConsumerGroup: false,
                 coordinator: expect.objectContaining({
