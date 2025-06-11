@@ -20,6 +20,7 @@ describe('Admin > listGroups', () => {
         consumer = createConsumer({
             groupId,
             fromBeginning: true,
+            autoCommit: true,
         });
 
         await createTopic({ topic: topicName, partitions: 2 });
@@ -47,11 +48,12 @@ describe('Admin > listGroups', () => {
         await consumer.run({ eachMessage: async () => {} });
 
         await waitFor(() => consumer.assignment().length > 0, () => null, 1000);
+        const groupType = testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER;
 
         await admin.connect();
         let listGroupsResult = await admin.listGroups({
-            matchConsumerGroupStates: undefined,
-            matchConsumerGroupTypes: undefined,
+            matchConsumerGroupStates: [ConsumerGroupStates.STABLE,],
+            matchConsumerGroupTypes: [groupType,],
         });
         expect(listGroupsResult.errors).toEqual([]);
         expect(listGroupsResult.groups).toEqual(
@@ -61,7 +63,7 @@ describe('Admin > listGroups', () => {
                     isSimpleConsumerGroup: false,
                     protocolType: 'consumer',
                     state: ConsumerGroupStates.STABLE,
-                    type: ConsumerGroupTypes.CLASSIC,
+                    type: groupType,
                 }),
             ])
         );
@@ -79,7 +81,7 @@ describe('Admin > listGroups', () => {
                     isSimpleConsumerGroup: false,
                     protocolType: 'consumer',
                     state: ConsumerGroupStates.EMPTY,
-                    type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
+                    type: groupType,
                 }),
             ])
         );
