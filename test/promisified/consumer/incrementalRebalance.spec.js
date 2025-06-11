@@ -3,7 +3,8 @@ jest.setTimeout(30000);
 const { waitFor,
     secureRandom,
     createTopic,
-    createConsumer, } = require("../testhelpers");
+    createConsumer,
+    testConsumerGroupProtocolClassic } = require("../testhelpers");
 const { PartitionAssigners, ErrorCodes } = require('../../../lib').KafkaJS;
 
 describe('Consumer > incremental rebalance', () => {
@@ -12,7 +13,9 @@ describe('Consumer > incremental rebalance', () => {
 
     const consumerConfig = {
         groupId,
-        partitionAssigners: [PartitionAssigners.cooperativeSticky],
+        ...(testConsumerGroupProtocolClassic() && {
+            partitionAssigners: [PartitionAssigners.cooperativeSticky],
+        }),
     };
 
     beforeEach(async () => {
