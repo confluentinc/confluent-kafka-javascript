@@ -10,12 +10,14 @@
 #ifndef SRC_BINDING_H_
 #define SRC_BINDING_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <string>
 #include "rdkafkacpp.h" // NOLINT
 #include "src/common.h"
 #include "src/errors.h"
 #include "src/config.h"
+#include "src/workers.h"
 #include "src/connection.h"
 #include "src/kafka-consumer.h"
 #include "src/producer.h"
