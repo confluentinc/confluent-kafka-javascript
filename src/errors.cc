@@ -14,38 +14,45 @@
 
 namespace NodeKafka {
 
-v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &err,
+Napi::Error RdKafkaError(const Napi::Env& env, const RdKafka::ErrorCode &err,
                                    const std::string &errstr) {
   int code = static_cast<int>(err);
 
-  v8::Local<v8::Object> ret = Nan::New<v8::Object>();
+  Napi::Error ret = Napi::Error::New(env);
 
-  Nan::Set(ret, Nan::New("message").ToLocalChecked(),
-    Nan::New<v8::String>(errstr).ToLocalChecked());
-  Nan::Set(ret, Nan::New("code").ToLocalChecked(),
-    Nan::New<v8::Number>(code));
+  (ret).Set(Napi::String::New(env, "message"),
+    Napi::String::New(env, errstr));
+  (ret).Set(Napi::String::New(env, "code"),
+    Napi::Number::New(env, code));
 
   return ret;
 }
 
-v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &err) {
+Napi::Error RdKafkaError(const Napi::Env& env, const RdKafka::ErrorCode &err) {
   std::string errstr = RdKafka::err2str(err);
-  return RdKafkaError(err, errstr);
+  return RdKafkaError(env, err, errstr);
 }
 
-v8::Local<v8::Object> RdKafkaError(
+Napi::Error RdKafkaError(
+			 const Napi::Env& env,			  
   const RdKafka::ErrorCode &err, std::string errstr,
   bool isFatal, bool isRetriable, bool isTxnRequiresAbort) {
-  v8::Local<v8::Object> ret = RdKafkaError(err, errstr);
+  Napi::Error ret = RdKafkaError(env, err, errstr);
 
-  Nan::Set(ret, Nan::New("isFatal").ToLocalChecked(),
-    Nan::New<v8::Boolean>(isFatal));
-  Nan::Set(ret, Nan::New("isRetriable").ToLocalChecked(),
-    Nan::New<v8::Boolean>(isRetriable));
-  Nan::Set(ret, Nan::New("isTxnRequiresAbort").ToLocalChecked(),
-    Nan::New<v8::Boolean>(isTxnRequiresAbort));
+  (ret).Set(Napi::String::New(env, "isFatal"),
+    Napi::Boolean::New(env, isFatal));
+  (ret).Set(Napi::String::New(env, "isRetriable"),
+    Napi::Boolean::New(env, isRetriable));
+  (ret).Set(Napi::String::New(env, "isTxnRequiresAbort"),
+    Napi::Boolean::New(env, isTxnRequiresAbort));
 
   return ret;
+}
+
+Napi::Value ThrowError(const Napi::Env& env, const std::string &message) {
+  Napi::Error error = Napi::Error::New(env, message);
+  error.ThrowAsJavaScriptException();
+  return error.Value();
 }
 
 Baton::Baton(const RdKafka::ErrorCode &code) {
@@ -92,16 +99,16 @@ Baton Baton::BatonFromErrorAndDestroy(RdKafka::Error *error) {
   return Baton(err, errstr);
 }
 
-v8::Local<v8::Object> Baton::ToObject() {
+Napi::Error Baton::ToError(const Napi::Env& env) {
   if (m_errstr.empty()) {
-    return RdKafkaError(m_err);
+    return RdKafkaError(env, m_err);
   } else {
-    return RdKafkaError(m_err, m_errstr);
+    return RdKafkaError(env, m_err, m_errstr);
   }
 }
 
-v8::Local<v8::Object> Baton::ToTxnObject() {
-  return RdKafkaError(m_err, m_errstr, m_isFatal, m_isRetriable, m_isTxnRequiresAbort); // NOLINT
+Napi::Error Baton::ToTxnError(const Napi::Env& env) {
+  return RdKafkaError(env, m_err, m_errstr, m_isFatal, m_isRetriable, m_isTxnRequiresAbort); // NOLINT
 }
 
 RdKafka::ErrorCode Baton::err() {

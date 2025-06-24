@@ -8,9 +8,7 @@
  */
 
 #include <string>
-#include <vector>
 
-#include "src/common.h"
 #include "src/connection.h"
 #include "src/topic.h"
 
@@ -29,10 +27,11 @@ namespace NodeKafka {
  * @sa NodeKafka::Connection
  */
 
-Topic::Topic(std::string topic_name, RdKafka::Conf* config):
-  m_topic_name(topic_name),
-  m_config(config) {
+void Topic::Setup(std::string topic_name, RdKafka::Conf *config) {
+  m_topic_name = topic_name;
+
   // We probably want to copy the config. May require refactoring if we do not
+  m_config = config;
 }
 
 Topic::~Topic() {
@@ -45,7 +44,7 @@ std::string Topic::name() {
   return m_topic_name;
 }
 
-Baton Topic::toRDKafkaTopic(Connection* handle) {
+template <class T> Baton Topic::toRDKafkaTopic(Connection<T>* handle) {
   if (m_config) {
     return handle->CreateTopic(m_topic_name, m_config);
   } else {
@@ -74,99 +73,80 @@ Baton offset_store (int32_t partition, int64_t offset) {
 
 */
 
-Nan::Persistent<v8::Function> Topic::constructor;
+Napi::FunctionReference Topic::constructor;
 
-void Topic::Init(v8::Local<v8::Object> exports) {
-  Nan::HandleScope scope;
+void Topic::Init(const Napi::Env &env, Napi::Object exports) {
+  Napi::HandleScope scope(env);
 
-  v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
-  tpl->SetClassName(Nan::New("Topic").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
-
-  Nan::SetPrototypeMethod(tpl, "name", NodeGetName);
+  Napi::Function Topic = DefineClass(env, "Topic", {
+      InstanceMethod("name", &Topic::NodeGetName),
+    });
 
   // connect. disconnect. resume. pause. get meta data
-  constructor.Reset((tpl->GetFunction(Nan::GetCurrentContext()))
-    .ToLocalChecked());
+  constructor.Reset(Topic);
 
-  Nan::Set(exports, Nan::New("Topic").ToLocalChecked(),
-    tpl->GetFunction(Nan::GetCurrentContext()).ToLocalChecked());
+  exports.Set(Napi::String::New(env, "Topic"), Topic);
 }
 
-void Topic::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+Topic::Topic(const Napi::CallbackInfo &info): ObjectWrap<Topic>(info) {
+  Napi::Env env = info.Env();
   if (!info.IsConstructCall()) {
-    return Nan::ThrowError("non-constructor invocation not supported");
+    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+    return;
   }
 
   if (info.Length() < 1) {
-    return Nan::ThrowError("topic name is required");
+    Napi::Error::New(env, "topic name is required").ThrowAsJavaScriptException();
+    return;
   }
 
-  if (!info[0]->IsString()) {
-    return Nan::ThrowError("Topic name must be a string");
+  if (!info[0].IsString()) {
+    Napi::Error::New(env, "Topic name must be a string").ThrowAsJavaScriptException();
+    return;
   }
 
   RdKafka::Conf* config = NULL;
 
-  if (info.Length() >= 2 && !info[1]->IsUndefined() && !info[1]->IsNull()) {
+  if (info.Length() >= 2 && !info[1].IsUndefined() && !info[1].IsNull()) {
     // If they gave us two parameters, or the 3rd parameter is null or
     // undefined, we want to pass null in for the config
 
     std::string errstr;
-    if (!info[1]->IsObject()) {
-      return Nan::ThrowError("Configuration data must be specified");
+    if (!info[1].IsObject()) {
+      Napi::Error::New(env, "Configuration data must be specified").ThrowAsJavaScriptException();
+      return;
     }
 
-    config = Conf::create(RdKafka::Conf::CONF_TOPIC, (info[1]->ToObject(Nan::GetCurrentContext())).ToLocalChecked(), errstr);  // NOLINT
+    config = Conf::create(RdKafka::Conf::CONF_TOPIC, info[1].ToObject(), errstr);  // NOLINT
 
     if (!config) {
-      return Nan::ThrowError(errstr.c_str());
+      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+      return;
     }
   }
 
-  Nan::Utf8String parameterValue(Nan::To<v8::String>(info[0]).ToLocalChecked());
-  std::string topic_name(*parameterValue);
+  std::string parameterValue = info[0].ToString();
+  std::string topic_name(parameterValue);
 
-  Topic* topic = new Topic(topic_name, config);
-
-  // Wrap it
-  topic->Wrap(info.This());
-
-  // Then there is some weird initialization that happens
-  // basically it sets the configuration data
-  // we don't need to do that because we lazy load it
-
-  info.GetReturnValue().Set(info.This());
+  this->Setup(topic_name, config);
 }
 
-// handle
+Napi::Value Topic::NodeGetName(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  Napi::HandleScope scope(env);
 
-v8::Local<v8::Object> Topic::NewInstance(v8::Local<v8::Value> arg) {
-  Nan::EscapableHandleScope scope;
+  Topic* topic = this;
 
-  const unsigned argc = 1;
-
-  v8::Local<v8::Value> argv[argc] = { arg };
-  v8::Local<v8::Function> cons = Nan::New<v8::Function>(constructor);
-  v8::Local<v8::Object> instance =
-    Nan::NewInstance(cons, argc, argv).ToLocalChecked();
-
-  return scope.Escape(instance);
+  return Napi::String::From(env, this->name());
 }
 
-NAN_METHOD(Topic::NodeGetName) {
-  Nan::HandleScope scope;
-
-  Topic* topic = ObjectWrap::Unwrap<Topic>(info.This());
-
-  info.GetReturnValue().Set(Nan::New(topic->name()).ToLocalChecked());
-}
-
-NAN_METHOD(Topic::NodePartitionAvailable) {
+Napi::Value Topic::NodePartitionAvailable(const Napi::CallbackInfo &info) {
+  return info.Env().Null();
   // @TODO(sparente)
 }
 
-NAN_METHOD(Topic::NodeOffsetStore) {
+Napi::Value Topic::NodeOffsetStore(const Napi::CallbackInfo& info) {
+  return info.Env().Null();
   // @TODO(sparente)
 }
 

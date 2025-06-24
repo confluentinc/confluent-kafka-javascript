@@ -11,7 +11,8 @@
 #define SRC_CALLBACKS_H_
 
 #include <uv.h>
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 
 #include <vector>
 #include <deque>
@@ -29,9 +30,9 @@ class Dispatcher {
  public:
   Dispatcher();
   ~Dispatcher();
-  void Dispatch(const int, v8::Local<v8::Value> []);
-  void AddCallback(const v8::Local<v8::Function>&);
-  void RemoveCallback(const v8::Local<v8::Function>&);
+  void Dispatch(const int, Napi::Value []);
+  void AddCallback(const Napi::Function&);
+  void RemoveCallback(const Napi::Function&);
   bool HasCallbacks();
   virtual void Flush() = 0;
   void Execute();
@@ -39,14 +40,14 @@ class Dispatcher {
   void Deactivate();
 
  protected:
-  std::vector<Nan::Callback*> callbacks;  // NOLINT
+  std::vector<Napi::FunctionReference*> callbacks;  // NOLINT
 
   uv_mutex_t async_lock;
 
  private:
-  NAN_INLINE static NAUV_WORK_CB(AsyncMessage_) {
+  inline static void func(uv_async_t *async) {
      Dispatcher *dispatcher =
-            static_cast<Dispatcher*>(async->data);
+	    static_cast<Dispatcher*>(async->data);
      dispatcher->Flush();
   }
   static void AsyncHandleCloseCallback(uv_handle_t *);
@@ -165,18 +166,18 @@ struct rebalance_event_t {
   std::vector<event_topic_partition_t> partitions;
 
   rebalance_event_t(RdKafka::ErrorCode p_err,
-        std::vector<RdKafka::TopicPartition*> p_partitions):
-        err(p_err) {
+	std::vector<RdKafka::TopicPartition*> p_partitions):
+	err(p_err) {
     // Iterate over the topic partitions because we won't have them later
     for (size_t topic_partition_i = 0;
       topic_partition_i < p_partitions.size(); topic_partition_i++) {
       RdKafka::TopicPartition* topic_partition =
-        p_partitions[topic_partition_i];
+	p_partitions[topic_partition_i];
 
       event_topic_partition_t tp(
-        topic_partition->topic(),
-        topic_partition->partition(),
-        topic_partition->offset());
+	topic_partition->topic(),
+	topic_partition->partition(),
+	topic_partition->offset());
 
       partitions.push_back(tp);
     }
@@ -194,13 +195,13 @@ struct offset_commit_event_t {
     for (size_t topic_partition_i = 0;
       topic_partition_i < p_partitions.size(); topic_partition_i++) {
       RdKafka::TopicPartition* topic_partition =
-        p_partitions[topic_partition_i];
+	p_partitions[topic_partition_i];
 
       // Just reuse this thing because it's the same exact thing we need
       event_topic_partition_t tp(
-        topic_partition->topic(),
-        topic_partition->partition(),
-        topic_partition->offset());
+	topic_partition->topic(),
+	topic_partition->partition(),
+	topic_partition->offset());
 
       partitions.push_back(tp);
     }
@@ -223,8 +224,8 @@ class Rebalance : public RdKafka::RebalanceCb {
     std::vector<RdKafka::TopicPartition*> &);
 
   RebalanceDispatcher dispatcher;
- private:
-  v8::Persistent<v8::Function> m_cb;
+ // private:
+ //  v8::Persistent<v8::Function> m_cb;
 };
 
 class OffsetCommitDispatcher : public Dispatcher {
@@ -242,8 +243,8 @@ class OffsetCommit : public RdKafka::OffsetCommitCb {
   void offset_commit_cb(RdKafka::ErrorCode, std::vector<RdKafka::TopicPartition*> &);  // NOLINT
 
   OffsetCommitDispatcher dispatcher;
- private:
-  v8::Persistent<v8::Function> m_cb;
+ // private:
+ //  v8::Persistent<v8::Function> m_cb;
 };
 
 class OAuthBearerTokenRefreshDispatcher : public Dispatcher {
@@ -268,8 +269,8 @@ class Partitioner : public RdKafka::PartitionerCb {
   Partitioner();
   ~Partitioner();
   int32_t partitioner_cb( const RdKafka::Topic*, const std::string*, int32_t, void*);  // NOLINT
-  Nan::Callback callback;  // NOLINT
-  void SetCallback(v8::Local<v8::Function>);
+  Napi::FunctionReference callback;  // NOLINT
+  void SetCallback(Napi::Function);
  private:
   static unsigned int djb_hash(const char*, size_t);
   static unsigned int random(const RdKafka::Topic*, int32_t);

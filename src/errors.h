@@ -11,7 +11,8 @@
 #ifndef SRC_ERRORS_H_
 #define SRC_ERRORS_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <iostream>
 #include <string>
 
@@ -39,8 +40,8 @@ class Baton {
   RdKafka::ErrorCode err();
   std::string errstr();
 
-  v8::Local<v8::Object> ToObject();
-  v8::Local<v8::Object> ToTxnObject();
+  Napi::Error ToError(const Napi::Env &env);
+  Napi::Error ToTxnError(const Napi::Env &env);
 
  private:
   void* m_data;
@@ -50,10 +51,13 @@ class Baton {
   bool m_isRetriable;
   bool m_isTxnRequiresAbort;
 };
-
-v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &);
-v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &,
-                                   const std::string &);
+  
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &);
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &, const std::string &);
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &err,
+                         std::string errstr, bool isFatal, bool isRetriable,
+                         bool isTxnRequiresAbort);
+Napi::Value ThrowError(const Napi::Env &env, const std::string &);
 
 }  // namespace NodeKafka
 
