@@ -1,6 +1,7 @@
 jest.setTimeout(30000);
 
 const {
+    testConsumerGroupProtocolClassic,
     createConsumer,
     createProducer,
     secureRandom,
@@ -9,7 +10,7 @@ const {
     createAdmin,
     sleep,
 } = require('../testhelpers');
-const { ConsumerGroupStates, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
+const { ConsumerGroupStates, ConsumerGroupTypes, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
 
 describe('Admin > describeGroups', () => {
     let topicName, groupId, consumer, admin, groupInstanceId, producer;
@@ -81,11 +82,12 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: 'roundrobin',
-                partitionAssignor: 'roundrobin',
+                protocol: expect.any(String),
+                partitionAssignor: expect.any(String),
                 isSimpleConsumerGroup: false,
                 protocolType: 'consumer',
                 state: ConsumerGroupStates.STABLE,
+                type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 coordinator: expect.objectContaining({
                     id: expect.any(Number),
                     host: expect.any(String),
@@ -134,9 +136,10 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: '',
-                partitionAssignor: '',
+                protocol: expect.any(String),
+                partitionAssignor: expect.any(String),
                 state: ConsumerGroupStates.EMPTY,
+                type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 protocolType: 'consumer',
                 isSimpleConsumerGroup: false,
                 coordinator: expect.objectContaining({
