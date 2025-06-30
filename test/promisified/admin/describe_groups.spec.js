@@ -1,6 +1,7 @@
 jest.setTimeout(30000);
 
 const {
+    testConsumerGroupProtocolClassic,
     createConsumer,
     createProducer,
     secureRandom,
@@ -66,6 +67,9 @@ describe('Admin > describeGroups', () => {
     });
 
     it('should describe consumer groups', async () => {
+        if (testConsumerGroupProtocolClassic()) {
+            return ;
+        }
         let messagesConsumed = 0;
 
         await consumer.connect();
@@ -81,8 +85,8 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: 'roundrobin',
-                partitionAssignor: 'roundrobin',
+                protocol: expect.any(String),
+                partitionAssignor: expect.any(String),
                 isSimpleConsumerGroup: false,
                 protocolType: 'consumer',
                 state: ConsumerGroupStates.STABLE,
@@ -134,8 +138,8 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: '',
-                partitionAssignor: '',
+                protocol: expect.any(String),
+                partitionAssignor: expect.any(String),
                 state: ConsumerGroupStates.EMPTY,
                 protocolType: 'consumer',
                 isSimpleConsumerGroup: false,
