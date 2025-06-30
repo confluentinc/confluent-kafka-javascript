@@ -106,6 +106,7 @@ blocks:
           commands:
             - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
             - docker compose -f test/docker/docker-compose.yml up -d && sleep 30
+            - docker ps -a
             - export NODE_OPTIONS='--max-old-space-size=1536'
             - npx jest --no-colors --ci test/promisified/
             - artifact push workflow coverage/jest/coverage-final.json --destination "jest-coverage.json"
