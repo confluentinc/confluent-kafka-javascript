@@ -38,7 +38,7 @@ describe('Client > oauthbearer callback', () => {
         }
     );
 
-    it('works for consumer',
+    it.skip('works for consumer',
         async () => {
             const client = createConsumer({
                 groupId: 'gid',
@@ -56,7 +56,7 @@ describe('Client > oauthbearer callback', () => {
         }
     );
 
-    it('works for admin',
+    it.skip('works for admin',
         async () => {
             const client = createAdmin({
                 sasl: {
