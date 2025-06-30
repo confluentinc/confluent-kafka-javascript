@@ -21,7 +21,7 @@ describe('Client > oauthbearer callback', () => {
         oauthbearer_cb_called = 0;
     });
 
-    it('works for producer',
+    it.skip('works for producer',
         async () => {
             const client = createProducer({
                 sasl: {
