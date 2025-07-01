@@ -1,6 +1,7 @@
 jest.setTimeout(30000);
 
 const {
+    testConsumerGroupProtocolClassic,
     createConsumer,
     createProducer,
     secureRandom,
@@ -9,7 +10,7 @@ const {
     createAdmin,
     sleep,
 } = require('../testhelpers');
-const { ConsumerGroupStates, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
+const { ConsumerGroupStates, ConsumerGroupTypes, ErrorCodes, AclOperationTypes } = require('../../../lib').KafkaJS;
 
 describe('Admin > describeGroups', () => {
     let topicName, groupId, consumer, admin, groupInstanceId, producer;
@@ -77,15 +78,19 @@ describe('Admin > describeGroups', () => {
         await admin.connect();
         let describeGroupsResult = await admin.describeGroups(
             [groupId], { includeAuthorizedOperations: true });
+
+        let protocolStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
+        let partitionAssignorStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
         expect(describeGroupsResult.groups.length).toEqual(1);
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: 'roundrobin',
-                partitionAssignor: 'roundrobin',
+                protocol: protocolStr,
+                partitionAssignor: partitionAssignorStr,
                 isSimpleConsumerGroup: false,
                 protocolType: 'consumer',
                 state: ConsumerGroupStates.STABLE,
+                type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 coordinator: expect.objectContaining({
                     id: expect.any(Number),
                     host: expect.any(String),
@@ -134,9 +139,10 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: '',
-                partitionAssignor: '',
+                protocol: protocolStr,
+                partitionAssignor: partitionAssignorStr,
                 state: ConsumerGroupStates.EMPTY,
+                type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 protocolType: 'consumer',
                 isSimpleConsumerGroup: false,
                 coordinator: expect.objectContaining({
