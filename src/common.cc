@@ -927,7 +927,7 @@ std::vector<rd_kafka_consumer_group_type_t> FromV8GroupTypeArray(
         continue;
       }
       int64_t type_number = maybeT.FromJust();
-      if (type_number < 0 && type_number >= RD_KAFKA_CONSUMER_GROUP_TYPE__CNT) {
+      if (type_number < 0 || type_number >= RD_KAFKA_CONSUMER_GROUP_TYPE__CNT) {
         continue;
       }
       returnVec.push_back(
