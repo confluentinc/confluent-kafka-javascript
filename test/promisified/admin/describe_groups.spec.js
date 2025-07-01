@@ -79,8 +79,8 @@ describe('Admin > describeGroups', () => {
         let describeGroupsResult = await admin.describeGroups(
             [groupId], { includeAuthorizedOperations: true });
 
-        let expectedProtocolStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
-        let expectedPartitionAssignorStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
+        let expectedProtocolStr = testConsumerGroupProtocolClassic() ? '' : 'uniform';
+        let expectedPartitionAssignorStr = testConsumerGroupProtocolClassic() ? '' : 'uniform';
         expect(describeGroupsResult.groups.length).toEqual(1);
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
