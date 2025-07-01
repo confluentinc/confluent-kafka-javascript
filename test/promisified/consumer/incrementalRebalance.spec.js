@@ -11,12 +11,11 @@ describe('Consumer > incremental rebalance', () => {
     let consumer;
     let groupId, topicName;
 
-    const consumerConfig = {
-        groupId,
-        ...(testConsumerGroupProtocolClassic() && {
-            partitionAssigners: [PartitionAssigners.cooperativeSticky],
-        }),
-    };
+    const consumerConfig = { groupId };
+
+    if (testConsumerGroupProtocolClassic()) {
+        consumerConfig.partitionAssigners = [PartitionAssigners.cooperativeSticky];
+    }
 
     beforeEach(async () => {
         topicName = `test-topic1-${secureRandom()}`;
