@@ -79,14 +79,14 @@ describe('Admin > describeGroups', () => {
         let describeGroupsResult = await admin.describeGroups(
             [groupId], { includeAuthorizedOperations: true });
 
-        let protocolStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
-        let partitionAssignorStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
+        let expectedProtocolStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
+        let expectedPartitionAssignorStr = testConsumerGroupProtocolClassic() ? 'roundrobin' : 'uniform';
         expect(describeGroupsResult.groups.length).toEqual(1);
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: protocolStr,
-                partitionAssignor: partitionAssignorStr,
+                protocol: expectedProtocolStr,
+                partitionAssignor: expectedPartitionAssignorStr,
                 isSimpleConsumerGroup: false,
                 protocolType: 'consumer',
                 state: ConsumerGroupStates.STABLE,
@@ -139,8 +139,8 @@ describe('Admin > describeGroups', () => {
         expect(describeGroupsResult.groups[0]).toEqual(
             expect.objectContaining({
                 groupId,
-                protocol: protocolStr,
-                partitionAssignor: partitionAssignorStr,
+                protocol: expectedProtocolStr,
+                partitionAssignor: expectedPartitionAssignorStr,
                 state: ConsumerGroupStates.EMPTY,
                 type: testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CLASSIC : ConsumerGroupTypes.CONSUMER,
                 protocolType: 'consumer',
