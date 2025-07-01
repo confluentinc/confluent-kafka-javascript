@@ -52,8 +52,8 @@ describe('Admin > listGroups', () => {
 
         await admin.connect();
         let listGroupsResult = await admin.listGroups({
-            matchConsumerGroupStates: [ConsumerGroupStates.STABLE,],
-            matchConsumerGroupTypes: [groupType,],
+            matchConsumerGroupStates: undefined,
+            matchConsumerGroupTypes: undefined,
         });
         expect(listGroupsResult.errors).toEqual([]);
         expect(listGroupsResult.groups).toEqual(
@@ -67,6 +67,15 @@ describe('Admin > listGroups', () => {
                 }),
             ])
         );
+
+        // Consumer group should not show up when filtering for opposite group type.
+        let oppositeGroupType = testConsumerGroupProtocolClassic() ? ConsumerGroupTypes.CONSUMER : ConsumerGroupTypes.CLASSIC;
+        listGroupsResult = await admin.listGroups({
+            matchConsumerGroupTypes: [ oppositeGroupType ],
+        });
+        expect(listGroupsResult.errors).toEqual([]);
+        expect(listGroupsResult.groups.map(group => group.groupId)).not.toContain(groupId);
+
 
         // Disconnect the consumer to make the group EMPTY.
         await consumer.disconnect();

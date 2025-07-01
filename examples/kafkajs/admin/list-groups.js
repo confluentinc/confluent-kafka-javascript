@@ -1,5 +1,5 @@
 // require('kafkajs') is replaced with require('@confluentinc/kafka-javascript').KafkaJS.
-const { Kafka, ConsumerGroupStates } = require('@confluentinc/kafka-javascript').KafkaJS;
+const { Kafka, ConsumerGroupStates, ConsumerGroupTypes } = require('@confluentinc/kafka-javascript').KafkaJS;
 const { parseArgs } = require('node:util');
 
 async function adminStart() {
@@ -58,7 +58,8 @@ async function adminStart() {
   try {
     const groupOverview = await admin.listGroups({
       timeout,
-      matchConsumerGroupStates
+      matchConsumerGroupStates,
+      matchConsumerGroupTypes
     });
     for (const group of groupOverview.groups) {
       console.log(`Group id: ${group.groupId}`);
