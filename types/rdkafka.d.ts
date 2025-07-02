@@ -352,11 +352,18 @@ export enum ConsumerGroupStates {
     EMPTY = 5,
 }
 
+export enum ConsumerGroupTypes {
+    UNKNOWN = 0,
+    CONSUMER = 1,
+    CLASSIC = 2,
+}
+
 export interface GroupOverview {
     groupId: string;
     protocolType: string;
     isSimpleConsumerGroup: boolean;
     state: ConsumerGroupStates;
+    type: ConsumerGroupTypes;
 }
 
 export enum AclOperationTypes {
@@ -383,6 +390,7 @@ export type MemberDescription = {
     memberMetadata: Buffer
     groupInstanceId?: string,
     assignment: TopicPartition[]
+    targetAssignment?: TopicPartition[]
 }
 
 export type Node = {
@@ -407,6 +415,7 @@ export type GroupDescription = {
     protocolType: string
     partitionAssignor: string
     state: ConsumerGroupStates
+    type: ConsumerGroupTypes
     coordinator: Node
     authorizedOperations?: AclOperationTypes[]
 }
@@ -496,7 +505,7 @@ export interface IAdminClient {
     listTopics(options?: { timeout?: number }, cb?: (err: LibrdKafkaError, topics: string[]) => any): void;
 
     listGroups(cb?: (err: LibrdKafkaError, result: { groups: GroupOverview[], errors: LibrdKafkaError[] }) => any): void;
-    listGroups(options?: { timeout?: number, matchConsumerGroupStates?: ConsumerGroupStates[] },
+    listGroups(options?: { timeout?: number, matchConsumerGroupStates?: ConsumerGroupStates[], matchConsumerGroupTypes?: ConsumerGroupTypes[] },
         cb?: (err: LibrdKafkaError, result: { groups: GroupOverview[], errors: LibrdKafkaError[] }) => any): void;
 
     describeGroups(groupIds: string[], cb?: (err: LibrdKafkaError, result: GroupDescriptions) => any): void;
