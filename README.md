@@ -33,15 +33,15 @@ The following configurations are supported:
 
 | Distribution                              | Supported Node Versions |
 | ----------------------------------------- | ----------------------- |
-| Debian Bullseye/Ubuntu 20.04              | 18, 20, 21, 22, 23      |
-| Debian Bookworm/Ubuntu 22.04              | 18, 20, 21, 22, 23      |
-| Alpine Linux 3.20+                        | 18, 20, 21, 22, 23      |
-| AlmaLinux 9/Rocky Linux 9/CentOS Stream 9 | 18, 20, 21, 22, 23      |
+| Debian Bullseye/Ubuntu 20.04              | 18, 20, 21, 22, 23, 24  |
+| Debian Bookworm/Ubuntu 22.04              | 18, 20, 21, 22, 23, 24  |
+| Alpine Linux 3.20+                        | 18, 20, 21, 22, 23, 24  |
+| AlmaLinux 9/Rocky Linux 9/CentOS Stream 9 | 18, 20, 21, 22, 23, 24  |
 
 Other distributions will probably work given a modern version of gcc/glibc, but we don't test the pre-built binaries with them.
 
-* macOS - arm64/m1. macOS (Intel) is supported on a best-effort basis. Node versions 18, 20, 21, 22, and 23 are supported.
-* Windows - x64. Node versions 18, 20, 21, 22, and 23 are supported.
+* macOS - arm64/m1. macOS (Intel) is supported on a best-effort basis. Node versions 18, 20, 21, 22, 23 and 24 are supported.
+* Windows - x64. Node versions 18, 20, 21, 22, 23 and 24 are supported.
 
 > [!WARNING]
 > Pre-built binary support will be dropped after the EOL of the node version or the OS.
