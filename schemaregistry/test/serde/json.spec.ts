@@ -436,7 +436,7 @@ describe('JsonSerializer', () => {
       }
     }
     let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -482,7 +482,7 @@ describe('JsonSerializer', () => {
       }
     }
     let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
 
@@ -506,7 +506,7 @@ describe('JsonSerializer', () => {
       }
     }
     let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -552,7 +552,7 @@ describe('JsonSerializer', () => {
       }
     }
     let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
 
@@ -576,7 +576,7 @@ describe('JsonSerializer', () => {
       }
     }
     let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -623,7 +623,7 @@ describe('JsonSerializer', () => {
       }
     }
     let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
 
@@ -647,7 +647,7 @@ describe('JsonSerializer', () => {
       }
     }
     let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -693,7 +693,7 @@ describe('JsonSerializer', () => {
       }
     }
     let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
   })
@@ -710,7 +710,7 @@ describe('JsonSerializer', () => {
       }
     }
     let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let info: SchemaInfo = {
       schemaType: 'JSON',
@@ -769,7 +769,7 @@ describe('JsonSerializer', () => {
       }
     }
     let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
   })
@@ -786,7 +786,7 @@ describe('JsonSerializer', () => {
       }
     }
     let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -826,7 +826,7 @@ describe('JsonSerializer', () => {
       }
     }
     let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.arrayField).toEqual([ 'hello' ]);
     expect(obj2.objectField.stringField).toEqual('world');
@@ -845,7 +845,7 @@ describe('JsonSerializer', () => {
       }
     }
     let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -885,7 +885,7 @@ describe('JsonSerializer', () => {
       }
     }
     let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.arrayField).toEqual([ 'hello' ]);
     expect(obj2.objectField.stringField).toEqual('world');

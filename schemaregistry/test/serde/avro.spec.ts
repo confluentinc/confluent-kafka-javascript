@@ -480,7 +480,7 @@ describe('AvroSerializer', () => {
       }
     };
     const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig);
-    const dekClient = fieldEncryptionExecutor.client!;
+    const dekClient = fieldEncryptionExecutor.executor.client!;
 
     const encRule: Rule = {
       name: 'test-encrypt',
@@ -518,7 +518,7 @@ describe('AvroSerializer', () => {
       }
     };
     const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig);
-    fieldEncryptionExecutor.client = dekClient;
+    fieldEncryptionExecutor.executor.client = dekClient;
     const obj2 = await deser.deserialize(topic, bytes);
     expect(obj2.color).toEqual(obj.color);
   })
@@ -1060,7 +1060,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1106,7 +1106,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.intField).toEqual(obj.intField);
     expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
@@ -1143,7 +1143,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1190,7 +1190,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.intField).toEqual(obj.intField);
     expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
@@ -1227,7 +1227,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1273,7 +1273,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.intField).toEqual(obj.intField);
     expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
@@ -1283,7 +1283,7 @@ describe('AvroSerializer', () => {
   })
   it('basic encryption with dek rotation', async () => {
     const fieldEncryptionExecutor = FieldEncryptionExecutor.registerWithClock(new FakeClock());
-    (fieldEncryptionExecutor.clock as FakeClock).fixedNow = Date.now()
+    (fieldEncryptionExecutor.executor.clock as FakeClock).fixedNow = Date.now()
     let conf: ClientConfig = {
       baseURLs: [baseURL],
       cacheCapacity: 1000
@@ -1296,7 +1296,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1342,7 +1342,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.intField).toEqual(obj.intField);
     expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
@@ -1354,7 +1354,7 @@ describe('AvroSerializer', () => {
     expect(1).toEqual(dek.version);
 
     // advance time by 2 days
-    (fieldEncryptionExecutor.clock as FakeClock).fixedNow += 2 * 24 * 60 * 60 * 1000
+    (fieldEncryptionExecutor.executor.clock as FakeClock).fixedNow += 2 * 24 * 60 * 60 * 1000
 
     bytes = await ser.serialize(topic, obj)
 
@@ -1372,7 +1372,7 @@ describe('AvroSerializer', () => {
     expect(2).toEqual(dek.version);
 
     // advance time by 2 days
-    (fieldEncryptionExecutor.clock as FakeClock).fixedNow += 2 * 24 * 60 * 60 * 1000
+    (fieldEncryptionExecutor.executor.clock as FakeClock).fixedNow += 2 * 24 * 60 * 60 * 1000
 
     bytes = await ser.serialize(topic, obj)
 
@@ -1432,7 +1432,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     await dekClient.registerKek("kek1", "local-kms", "mykey", false)
     const encryptedDek = "07V2ndh02DA73p+dTybwZFm7DKQSZN1tEwQh+FoX1DZLk4Yj2LLu4omYjp/84tAg3BYlkfGSz+zZacJHIE4="
@@ -1486,7 +1486,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     await dekClient.registerKek("kek1", "local-kms", "mykey", false)
     const encryptedDek = "YSx3DTlAHrmpoDChquJMifmPntBzxgRVdMzgYL82rgWBKn7aUSnG+WIu9ozBNS3y2vXd++mBtK07w4/W/G6w0da39X9hfOVZsGnkSvry/QRht84V8yz3dqKxGMOK5A=="
@@ -1540,7 +1540,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     await dekClient.registerKek("kek1", "local-kms", "mykey", false)
     const encryptedDek = "W/v6hOQYq1idVAcs1pPWz9UUONMVZW4IrglTnG88TsWjeCjxmtRQ4VaNe/I5dCfm2zyY9Cu0nqdvqImtUk4="
@@ -1563,7 +1563,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let info: SchemaInfo = {
       schemaType: 'AVRO',
@@ -1624,7 +1624,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.otherField.intField).toEqual(nested.intField);
     expect(obj2.otherField.doubleField).toBeCloseTo(nested.doubleField, 0.001);
@@ -1645,7 +1645,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1691,7 +1691,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.intField).toEqual(obj.intField);
     expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
@@ -1712,7 +1712,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1752,7 +1752,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.arrayField).toEqual([ 'hello' ]);
     expect(obj2.mapField).toEqual({ 'key': 'world' });
@@ -1771,7 +1771,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1811,7 +1811,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.arrayField).toEqual([ 'hello' ]);
     expect(obj2.mapField).toEqual({ 'key': 'world' });
@@ -1830,7 +1830,7 @@ describe('AvroSerializer', () => {
       }
     }
     let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.client!
+    let dekClient = fieldEncryptionExecutor.executor.client!
 
     let encRule: Rule = {
       name: 'test-encrypt',
@@ -1870,7 +1870,7 @@ describe('AvroSerializer', () => {
       }
     }
     let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.client = dekClient
+    fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.emails[0].email).toEqual('john@acme.com');
   })
