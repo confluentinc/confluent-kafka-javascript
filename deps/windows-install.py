@@ -22,7 +22,7 @@ buildReleaseDir = 'Release'
 env_dist = os.environ
 downloadBaseUrl = env_dist['NODE_RDKAFKA_NUGET_BASE_URL'] if 'NODE_RDKAFKA_NUGET_BASE_URL' in env_dist else 'https://api.nuget.org/v3-flatcontainer/librdkafka.redist/{version}/'
 librdkafkaNugetUrl = downloadBaseUrl + 'librdkafka.redist.{version}.nupkg'
-librdkafkaNugetUrl = librdkafkaNugetUrl.format(version=librdkafkaVersion)
+librdkafkaNugetUrl = librdkafkaNugetUrl.format(version=librdkafkaVersion.lower())
 print('download librdkafka form ' + librdkafkaNugetUrl)
 outputDir = 'librdkafka.redist'
 outputFile = outputDir + '.zip'
