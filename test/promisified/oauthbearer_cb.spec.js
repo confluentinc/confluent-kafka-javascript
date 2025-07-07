@@ -14,31 +14,42 @@ describe('Client > oauthbearer callback', () => {
     const providerCb = async (config) => {
         expect(config).toEqual(oauthbearer_config);
         oauthbearer_cb_called++;
-        throw new Error('oauthbearer_cb error');
+        // Sleep for a random time between 0-500ms
+        const delay = Math.floor(Math.random() * 500);
+        await sleep(delay);
+        throw new Error('oauthbearer_cb error after delay ' + delay);
     };
 
     beforeEach(async () => {
         oauthbearer_cb_called = 0;
     });
 
-    it.skip('works for producer',
+    it('works for producer',
         async () => {
-            const client = createProducer({
-                sasl: {
-                    mechanism: 'OAUTHBEARER',
-                    oauthBearerProvider: providerCb,
-                }
-            }, {
-                'sasl.oauthbearer.config': oauthbearer_config,
-            });
+            const producerTest = async (iter) => {
+                const client = createProducer({
+                    sasl: {
+                        mechanism: 'OAUTHBEARER',
+                        oauthBearerProvider: providerCb,
+                        clientId: `oauth${iter}`,
+                    }
+                }, {
+                    'sasl.oauthbearer.config': oauthbearer_config,
+                });
 
-            await expect(client.connect()).rejects.toThrow('oauthbearer_cb error');
-            expect(oauthbearer_cb_called).toBeGreaterThanOrEqual(1);
-            await client.disconnect();
+                await expect(client.connect()).rejects.toThrow('oauthbearer_cb error');
+                expect(oauthbearer_cb_called).toBeGreaterThanOrEqual(1);
+                await client.disconnect();
+            };
+            const proms = [];
+            for (let i = 0; i < 5; i++) {
+                proms.push(producerTest(i));
+            }
+            await Promise.all(proms);
         }
-    );
+    , 160000);
 
-    it.skip('works for consumer',
+    it('works for consumer',
         async () => {
             const client = createConsumer({
                 groupId: 'gid',
@@ -56,7 +67,7 @@ describe('Client > oauthbearer callback', () => {
         }
     );
 
-    it.skip('works for admin',
+    it('works for admin',
         async () => {
             const client = createAdmin({
                 sasl: {
