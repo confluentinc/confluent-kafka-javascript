@@ -1102,7 +1102,10 @@ const producer = new Kafka().producer({
 });
 ```
 
-For a special case of OAuthBearer token authentication, where the token is fetched from an OIDC provider using the `client_credentials` grant type, the library provides a built-in callback, which can be set through just the configuration without any custom function required:
+For a special case of OAuthBearer token authentication where the token is fetched from an OIDC provider using the `client_credentials` or `jwt_bearer` grant type, the library provides a built-in mechanism for authentication.
+No `oauthbearer_token_refresh_cb` needs to be provided in these cases. Instead, authentication can be set through just the configuration.
+
+If using `client_credentials` grant type, you can do the following:
 
 ```js
 const producer = new Kafka().producer({
@@ -1117,6 +1120,8 @@ const producer = new Kafka().producer({
     'sasl.oauthbearer.extensions': `logicalCluster=${kafkaLogicalCluster},identityPoolId=${identityPoolId}`
 });
 ```
+
+If using `jwt_bearer` grant type, refer to the [librdkafka documentation](https://github.com/confluentinc/librdkafka/blob/master/INTRODUCTION.md#jwt-bearer-grant-type-kip-1139).
 
 These examples are for the promisified API, but the callback-based API can be used with the same configuration settings.
 
