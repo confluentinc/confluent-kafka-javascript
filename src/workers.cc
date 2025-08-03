@@ -9,6 +9,7 @@
  */
 #include "src/workers.h"
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 #include <vector>
@@ -825,7 +826,7 @@ void KafkaConsumerConsumeNum::Execute() {
   }
 
   while (m_messages.size() - eof_event_count < max && looping) {
-    // Allow timeout_ms = early_exit_ms to take precedence 
+    // Allow timeout_ms = early_exit_ms to take precedence
     // timeout_ms > 1
     if (m_timeout_shared_by_batch && timeout_ms > early_exit_ms) {
       // Calc next single consume timeout remaining for batch
