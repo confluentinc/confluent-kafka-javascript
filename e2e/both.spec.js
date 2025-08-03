@@ -564,8 +564,8 @@ describe('Consumer/Producer', function() {
           setTimeout(producer.produce(topic, null, buffer, null), 500 * i);
         }
 
-        // Batch size large enough to not interfere with timeout test
         const start = Date.now();
+        // Batch size large enough to not interfere with timeout test
         consumer.consume(100, function(err, messages) {
           t.ifError(err);
           t.equal(messages.length, messageCount, 'Consume should wait for all messages because of debounce');
@@ -592,6 +592,7 @@ describe('Consumer/Producer', function() {
           setTimeout(producer.produce(topic, null, buffer, null), 500 * i);
         }
 
+        const start = Date.now();
         // Batch size large enough to not interfere with timeout test
         consumer.consume(100, function(err, messages) {
           t.ifError(err);
