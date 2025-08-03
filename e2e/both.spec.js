@@ -576,7 +576,7 @@ describe('Consumer/Producer', function() {
     })
 
     it('should return after timeout when bool is true', function(done) {
-      crypto.randomBytes(4096, function (_ex, buffer) {
+      crypto.randomBytes(4096, function(_ex, buffer) {
         consumer.setDefaultIsTimeoutSharedByBatch(true);
         consumer.setDefaultConsumeTimeout(1000);
 
@@ -601,7 +601,6 @@ describe('Consumer/Producer', function() {
           done();
         })
       })
-
     })
   })
 
