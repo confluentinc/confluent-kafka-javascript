@@ -561,7 +561,7 @@ describe('Consumer/Producer', function() {
 
         let messageCount = 5;
         for (let i = 0; i < messageCount; i++) {
-          setTimeout(producer.produce(topic, null, buffer, null), 500 * i);
+          setTimeout(() => producer.produce(topic, null, buffer, null), 500 * i);
         }
 
         const start = Date.now();
@@ -589,7 +589,7 @@ describe('Consumer/Producer', function() {
 
         let messageCount = 5;
         for (let i = 0; i < messageCount; i++) {
-          setTimeout(producer.produce(topic, null, buffer, null), 500 * i);
+          setTimeout(() => producer.produce(topic, null, buffer, null), 500 * i);
         }
 
         const start = Date.now();
