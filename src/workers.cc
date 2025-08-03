@@ -800,12 +800,14 @@ KafkaConsumerConsumeNum::KafkaConsumerConsumeNum(Nan::Callback *callback,
                                      KafkaConsumer* consumer,
                                      const uint32_t & num_messages,
                                      const int & timeout_ms,
-                                     bool timeout_only_for_first_message) :
+                                     bool timeout_only_for_first_message,
+                                     bool timeout_shared_by_batch) :
   ErrorAwareWorker(callback),
   m_consumer(consumer),
   m_num_messages(num_messages),
   m_timeout_ms(timeout_ms),
-  m_timeout_only_for_first_message(timeout_only_for_first_message) {}
+  m_timeout_only_for_first_message(timeout_only_for_first_message,
+  m_timeout_shared_by_batch) {}
 
 KafkaConsumerConsumeNum::~KafkaConsumerConsumeNum() {}
 
@@ -814,14 +816,18 @@ void KafkaConsumerConsumeNum::Execute() {
   bool looping = true;
   std::size_t eof_event_count = 0;
 
-  auto start_time = std::chrono::steady_clock::now();
   int timeout_ms = m_timeout_ms;
   int early_exit_ms = 1;
+
+  std::chrono::steady_clock::time_point start_time;
+  if (m_timeout_shared_by_batch) {
+    start_time = std::chrono::steady_clock::now();
+  }
 
   while (m_messages.size() - eof_event_count < max && looping) {
     // Allow timeout_ms = early_exit_ms to take precedence 
     // timeout_ms > 1
-    if (timeout_ms > early_exit_ms) {
+    if (m_timeout_shared_by_batch && timeout_ms > early_exit_ms) {
       // Calc next single consume timeout remaining for batch
       auto now = std::chrono::steady_clock::now();
       auto elapsed =
