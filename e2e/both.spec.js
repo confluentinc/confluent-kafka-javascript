@@ -547,7 +547,7 @@ describe('Consumer/Producer', function() {
   });
 
   describe('Timeout Shared By Batch - Behavior', function() {
-    it('should debounce batch return when is false', function(done) {
+    it('should debounce batch return when bool is false', function(done) {
       crypto.randomBytes(4096, function(_ex, buffer) {
         consumer.setDefaultIsTimeoutSharedByBatch(false);
         consumer.setDefaultConsumeTimeout(1000);
