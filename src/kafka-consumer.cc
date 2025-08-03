@@ -1392,7 +1392,11 @@ NAN_METHOD(KafkaConsumer::NodeConsume) {
       return Nan::ThrowError("Need to specify a boolean");
     }
 
-    if (!info[3]->IsFunction()) {
+    if (!info[3]->IsBoolean()) {
+      return Nan::ThrowError("Need to specify a boolean");
+    }
+
+    if (!info[4]->IsFunction()) {
       return Nan::ThrowError("Need to specify a callback");
     }
 
@@ -1417,12 +1421,23 @@ NAN_METHOD(KafkaConsumer::NodeConsume) {
       isTimeoutOnlyForFirstMessage = isTimeoutOnlyForFirstMessageMaybe.FromJust(); // NOLINT
     }
 
+    v8::Local<v8::Boolean> isTimeoutSharedByBatchBoolean = info[3].As<v8::Boolean>(); // NOLINT
+    Nan::Maybe<bool> isTimeoutSharedByBatchMaybe =
+      Nan::To<bool>(isTimeoutSharedByBatchBoolean);
+
+    bool isTimeoutSharedByBatch;
+    if (isTimeoutSharedByBatchMaybe.IsNothing()) {
+      return Nan::ThrowError("Parameter must be a boolean");
+    } else {
+      isTimeoutSharedByBatch = isTimeoutSharedByBatchMaybe.FromJust(); // NOLINT
+    }
+
     KafkaConsumer* consumer = ObjectWrap::Unwrap<KafkaConsumer>(info.This());
 
-    v8::Local<v8::Function> cb = info[3].As<v8::Function>();
+    v8::Local<v8::Function> cb = info[4].As<v8::Function>();
     Nan::Callback *callback = new Nan::Callback(cb);
     Nan::AsyncQueueWorker(
-      new Workers::KafkaConsumerConsumeNum(callback, consumer, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage));  // NOLINT
+      new Workers::KafkaConsumerConsumeNum(callback, consumer, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage, isTimeoutSharedByBatch));  // NOLINT
 
   } else {
     if (!info[1]->IsFunction()) {
