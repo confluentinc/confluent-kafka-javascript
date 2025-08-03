@@ -353,7 +353,6 @@ describe('Consumer/Producer', function() {
     });
   });
 
-
   it('should be able to produce and consume messages: consumeLoop', function(done) {
     var key = 'key';
 
