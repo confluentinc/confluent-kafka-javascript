@@ -807,8 +807,8 @@ KafkaConsumerConsumeNum::KafkaConsumerConsumeNum(Nan::Callback *callback,
   m_consumer(consumer),
   m_num_messages(num_messages),
   m_timeout_ms(timeout_ms),
-  m_timeout_only_for_first_message(timeout_only_for_first_message,
-  m_timeout_shared_by_batch) {}
+  m_timeout_only_for_first_message(timeout_only_for_first_message),
+  m_timeout_shared_by_batch(timeout_shared_by_batch) {}
 
 KafkaConsumerConsumeNum::~KafkaConsumerConsumeNum() {}
 
