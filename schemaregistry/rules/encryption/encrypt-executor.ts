@@ -682,7 +682,7 @@ export class KmsClientWrapper implements KmsClient {
         }
       }
     }
-    throw new RuleError('failed to encrypt key with all KMS keys')
+    throw new RuleError('no KEK found for encryption')
   }
 
   async decrypt(encryptedKey: Buffer): Promise<Buffer> {
@@ -696,7 +696,7 @@ export class KmsClientWrapper implements KmsClient {
         }
       }
     }
-    throw new RuleError('failed to decrypt key with all KMS keys')
+    throw new RuleError('no KEK found for decryption')
   }
 }
 
