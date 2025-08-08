@@ -658,11 +658,15 @@ export class KmsClientWrapper implements KmsClient {
 
   getKmsKeyIds(): string[] {
     let kmsKeyIds = [this.kek.kmsKeyId!]
+    let alternateKmsKeyIds: string | undefined
     if (this.kek.kmsProps != null) {
-      let alternateKmsKeyIds = this.kek.kmsProps[ENCRYPT_ALTERNATE_KMS_KEY_IDS]
-      if (alternateKmsKeyIds != null) {
-        kmsKeyIds = kmsKeyIds.concat(alternateKmsKeyIds.split(',').map(id => id.trim()))
-      }
+      alternateKmsKeyIds = this.kek.kmsProps[ENCRYPT_ALTERNATE_KMS_KEY_IDS]
+    }
+    if (alternateKmsKeyIds == null) {
+      alternateKmsKeyIds = this.config.get(ENCRYPT_ALTERNATE_KMS_KEY_IDS)
+    }
+    if (alternateKmsKeyIds != null) {
+      kmsKeyIds = kmsKeyIds.concat(alternateKmsKeyIds.split(',').map(id => id.trim()))
     }
     return kmsKeyIds
   }
