@@ -332,7 +332,7 @@ async function transform(ctx: RuleContext, schema: DereferencedJSONSchema, path:
   if (fieldCtx != null) {
     fieldCtx.type = getType(schema)
   }
-  if (schema.type != null && schema.type.length > 1) {
+  if (schema.type != null && Array.isArray(schema.type) && schema.type.length > 0) {
     let originalType = schema.type
     let subschema = validateSubtypes(schema, msg)
     if (subschema != null) {
