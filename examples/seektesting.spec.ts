@@ -1,5 +1,5 @@
 import {KafkaJS as Confluent, RdKafka, TopicPartitionOffset} from "@confluentinc/kafka-javascript";
-import {Admin, Consumer, EachMessagePayload, Kafka, logLevel, Producer} from "kafkajs";
+import {Admin, Consumer, EachMessagePayload, Kafka, Producer} from "kafkajs";
 jest.setTimeout(120000);
 
 const topicFn = () => `test-offset-topic-${Date.now()}`;
@@ -137,10 +137,19 @@ describe("Seek offsets", () => {
       fromBeginning: true,
       autoCommit: true,
       autoCommitInterval: 500,
+      // If the Confluent client supports a 'config' property, move configs here:
+      // config: {
+      //   'fetch.max.wait.ms': 100,
+      //   'fetch.min.bytes': 1,
+      //   'fetch.max.bytes': 10485760,
+      //   'max.partition.fetch.bytes': 1048576,
+      //   'session.timeout.ms': 30000,
+      //   'heartbeat.interval.ms': 3000,
+      // }
     },
-    rebalance_cb: (err, assignment, consumer) => {
+    rebalance_cb: (err: any, assignment: any, consumer: any) => {
       if (err.code !== RdKafka.CODES.ERRORS.ERR__ASSIGN_PARTITIONS) return;
-      offsetReady = true;
+      if (!offsetReady) offsetReady = true;
     }
   });
   await offsetConsumer.connect();
@@ -154,7 +163,9 @@ describe("Seek offsets", () => {
         offsetConsumer.resume([{ topic: payload.topic }]);
       }
       replayed++;
-      console.log(`[${Date.now()}] Pause/Resume received offset: ${payload.message.offset}`);
+      const now = new Date();
+    const localTimeWithMs = `${now.toLocaleString()}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+      console.log(`[${localTimeWithMs}] Pause/Resume received offset: ${payload.message.offset}`);
     }
   });
 
@@ -182,10 +193,19 @@ it("seek without pause/resume (confluent)", async () => {
       fromBeginning: true,
       autoCommit: true,
       autoCommitInterval: 500,
+      // If the Confluent client supports a 'config' property, move configs here:
+      // config: {
+      //   'fetch.max.wait.ms': 100,
+      //   'fetch.min.bytes': 1,
+      //   'fetch.max.bytes': 10485760,
+      //   'max.partition.fetch.bytes': 1048576,
+      //   'session.timeout.ms': 30000,
+      //   'heartbeat.interval.ms': 3000,
+      // }
     },
-    rebalance_cb: (err, assignment, consumer) => {
+    rebalance_cb: (err: any, assignment: any, consumer: any) => {
       if (err.code !== RdKafka.CODES.ERRORS.ERR__ASSIGN_PARTITIONS) return;
-      offsetReady = true;
+      if (!offsetReady) offsetReady = true;
     }
   });
   await offsetConsumer.connect();
@@ -200,7 +220,9 @@ it("seek without pause/resume (confluent)", async () => {
         // Example: seek forward by 1
         if (offsetConsumer) {
           offsetConsumer.seek({ topic: payload.topic, partition: payload.partition, offset: String(offsetNum + 1) });
-          console.log(`[${Date.now()}] Seek from offset: ${offsetNum} to offset: ${offsetNum+1}`);
+          const now = new Date();
+    const localTimeWithMs = `${now.toLocaleString()}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+          console.log(`[${localTimeWithMs}] Seek from offset: ${offsetNum} to offset: ${offsetNum+1}`);
         }
       }
       replayed++;

@@ -6,8 +6,8 @@
     "noImplicitThis": true,
     "strictNullChecks": true,
     "baseUrl": ".",
-    "types": ["./node_modules/@types/node"],
-    "typeRoots": ["."],
+    "types": ["jest", "node"],
+    "typeRoots": ["./node_modules/@types"],
     "noEmit": true,
     "forceConsistentCasingInFileNames": true,
     "strictFunctionTypes": true

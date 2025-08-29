@@ -9,6 +9,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@confluentinc/kafka-javascript": "file:.."
+    "@confluentinc/kafka-javascript": "file:..",
+    "kafkajs": "^2.2.4"
   }
 }
