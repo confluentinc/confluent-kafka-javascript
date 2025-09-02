@@ -22,7 +22,7 @@ const basicAuthCredentials: BasicAuthCredentials = {
   userInfo: '<client-id>:<client-secret>',
 };
 
-export {
-  issuerEndpointUrl, oauthClientId, oauthClientSecret, scope, identityPoolId, kafkaLogicalCluster, schemaRegistryLogicalCluster, 
+export { 
+  issuerEndpointUrl , oauthClientId, oauthClientSecret, scope, identityPoolId, kafkaLogicalCluster, schemaRegistryLogicalCluster, 
   baseUrl, clusterBootstrapUrl, clusterApiKey, clusterApiSecret, basicAuthCredentials, localAuthCredentials
 };
