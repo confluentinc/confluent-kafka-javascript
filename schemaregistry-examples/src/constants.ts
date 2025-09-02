@@ -23,6 +23,6 @@ const basicAuthCredentials: BasicAuthCredentials = {
 };
 
 export { 
-  issuerEndpointUrl , oauthClientId, oauthClientSecret, scope, identityPoolId, kafkaLogicalCluster, schemaRegistryLogicalCluster, 
+  issuerEndpointUrl ,  oauthClientId, oauthClientSecret, scope, identityPoolId, kafkaLogicalCluster, schemaRegistryLogicalCluster, 
   baseUrl, clusterBootstrapUrl, clusterApiKey, clusterApiSecret, basicAuthCredentials, localAuthCredentials
 };
