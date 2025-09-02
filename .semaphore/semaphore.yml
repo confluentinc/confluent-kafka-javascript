@@ -34,7 +34,7 @@ global_job_config:
 blocks:
   - name: "Linux amd64 (musl): Build and test"
     run:
-      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test']) AND tag !~ '^v[0-9]\\.'"
+      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test'], {pipeline_file: 'ignore'}) AND tag !~ '^v[0-9]\\.'"
     dependencies: [ ]
     task:
       agent:
@@ -50,7 +50,7 @@ blocks:
 
   - name: "Linux arm64 (musl): Build and test"
     run:
-      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test']) AND tag !~ '^v[0-9]\\.'"
+      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test'], {pipeline_file: 'ignore'}) AND tag !~ '^v[0-9]\\.'"
     dependencies: [ ]
     task:
       agent:
@@ -66,7 +66,7 @@ blocks:
 
   - name: "Linux amd64: Build and test"
     run:
-      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test']) AND tag !~ '^v[0-9]\\.'"
+      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test'], {pipeline_file: 'ignore'}) AND tag !~ '^v[0-9]\\.'"
     dependencies: [ ]
     task:
       agent:
@@ -81,7 +81,7 @@ blocks:
 
   - name: 'macOS arm64/m1: Build and test'
     run:
-      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test']) AND tag !~ '^v[0-9]\\.'"
+      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/test'], {pipeline_file: 'ignore'}) AND tag !~ '^v[0-9]\\.'"
     dependencies: []
     task:
       agent:
@@ -135,7 +135,7 @@ blocks:
 
   - name: "(SR) Linux amd64: test, e2e"
     run:
-      when: "change_in(['/package.json', '/schemaregistry', '/schemaregistry-examples', '/proto']) AND tag !~ '^v[0-9]\\.'"
+      when: "change_in(['/package.json', '/schemaregistry', '/schemaregistry-examples', '/proto'], {pipeline_file: 'ignore'}) AND tag !~ '^v[0-9]\\.'"
     dependencies: [ ]
     task:
       agent:
@@ -158,7 +158,7 @@ blocks:
 
   - name: "Linux amd64: Performance"
     run:
-      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/ci/tests']) AND tag !~ '^v[0-9]\\.'"
+      when: "change_in(['/package.json', '/deps', '/lib', '/src', '/ci/tests'], {pipeline_file: 'ignore'}) AND tag !~ '^v[0-9]\\.'"
     dependencies: [ ]
     task:
       agent:
