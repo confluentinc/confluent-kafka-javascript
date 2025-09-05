@@ -1,3 +1,11 @@
+# confluent-kafka-javascript 1.5.0
+
+v1.5.0 is a feature release. It is supported for all usage.
+
+## Fixes
+
+1. Fix issue of delay in recieving messages after pause and resume.
+
 # confluent-kafka-javascript v1.4.1
 
 v1.4.1 is a maintenance release. It is supported for all usage.
