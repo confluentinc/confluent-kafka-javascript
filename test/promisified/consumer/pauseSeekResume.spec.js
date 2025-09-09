@@ -11,6 +11,7 @@ const {
     sleep,
 } = require('../testhelpers');
 
+// See https://github.com/confluentinc/confluent-kafka-javascript/issues/285
 describe('Consumer commit', () => {
     let topicName, groupId, producer, consumer;
 
