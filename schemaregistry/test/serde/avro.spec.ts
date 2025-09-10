@@ -382,18 +382,19 @@ describe('AvroSerializer', () => {
     expect(obj2.bytesField).toEqual(obj.bytesField);
   })
   it('bad serialization', async () => {
-    const conf: ClientConfig = {
-      baseURLs: [baseURL]
-    };
-    const client = SchemaRegistryClient.newClient(conf);
-    const ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true });
-    const info = {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new AvroSerializer(client, SerdeType.VALUE, {useLatestVersion: true})
+    let info = {
       schemaType: 'AVRO',
       schema: nameSchema
-    };
-    await client.register(subject, info, false);
+    }
+    await client.register(subject, info, false)
     try {
-      await ser.serialize(topic, { lastName: "lastName" });
+      await ser.serialize(topic, { lastName: "lastName" })
     } catch (err) {
       expect(err).toBeInstanceOf(SerializationError)
     }
