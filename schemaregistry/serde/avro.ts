@@ -93,13 +93,10 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     const subject = this.subjectName(topic, info)
     msg = await this.executeRules(
       subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(info, deps))
-    if (!avroType.isValid(msg, {errorHook: (path, any, type) => {
+    avroType.isValid(msg, {errorHook: (path, any, type) => {
       throw new SerializationError(
         `Invalid message at ${path.join('.')}, expected ${type}, got ${stringify(any)}`)
-    }})) {
-      throw new SerializationError(
-        `Invalid message, expected ${avroType}, got ${stringify(msg)}`)
-    }
+    }})
     let msgBytes = avroType.toBuffer(msg)
     msgBytes = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.WRITE, null, info, msgBytes, null)
