@@ -22,10 +22,10 @@ queue:
     processing: parallel
 
 global_job_config:
+  env_vars:
+    - name: LIBRDKAFKA_VERSION
+      value: v2.11.1
   prologue:
-    env_vars:
-      - name: LIBRDKAFKA_VERSION
-        value: v2.11.1
     commands:
       - checkout
       - cache restore librdkafka-dep-${LIBRDKAFKA_VERSION}
