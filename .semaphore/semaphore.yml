@@ -28,7 +28,7 @@ global_job_config:
   prologue:
     commands:
       - checkout
-      - cache restore librdkafka-dep-${LIBRDKAFKA_VERSION}
+      - if [[ $(command cache) ]]; then cache restore librdkafka-dep-${LIBRDKAFKA_VERSION} ; fi
       - git submodule update --init --recursive
       - cd deps/librdkafka
       - git fetch origin
@@ -36,7 +36,7 @@ global_job_config:
       - cd ../../
   epilogue:
     commands:
-      - cache store librdkafka-dep-${LIBRDKAFKA_VERSION} deps/librdkafka
+      -  if [[ $(command cache) ]]; then cache store librdkafka-dep-${LIBRDKAFKA_VERSION} deps/librdkafka; done
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
@@ -112,9 +112,9 @@ blocks:
       prologue:
         commands:
           - export CKJS_LINKING=dynamic
-          - cache restore
+          - if [[ $(command cache) ]]; then cache restore; fi
           - npm run install-from-source
-          - cache store
+          - if [[ $(command cache) ]]; then cache store; fi
       jobs:
         - name: "Test"
           commands:
