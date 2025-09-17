@@ -1,10 +1,65 @@
+# confluent-kafka-javascript 1.5.0
+
+v1.5.0 is a feature release. It is supported for all usage.
+
+### Enhancements
+
+1. Adds support for `highWatermark`, `offsetLag()`, and `offsetLagLow()` in `eachBatch` callback (#317).
+
+
+## Fixes
+
+1. Fix issue of delay of up to 5s in receiving messages after pause and resume, or seek (#285, #363).
+
+
+# confluent-kafka-javascript v1.4.1
+
+v1.4.1 is a maintenance release. It is supported for all usage.
+
+## Enhancements
+
+1. References librdkafka v2.11.1. Refer to the [librdkafka v2.11.1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.11.1) for more information.
+
+
 # confluent-kafka-javascript v1.4.0
 
 v1.4.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
 
-1. Adds support for `highWatermark`, `offsetLag()`, and `offsetLagLow()` in `eachBatch` callback (#317).
+1. References librdkafka v2.11.0. Refer to the [librdkafka v2.11.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.11.0) for more information.
+2. [KIP-848] `describeGroups()` now supports KIP-848 introduced `consumer` groups. Two new fields for consumer group type and target assignment have also been added. Type defines whether this group is a `classic` or `consumer` group. Target assignment is only valid for the `consumer` protocol and it defaults to being undefined (#329).
+3. [KIP-848] Admin API for listing consumer groups now has an optional filter to return only groups of given types (#328).
+4. Add support for Node v24 pre-built binaries (@weyert, #307, #337).
+
+
+# confluent-kafka-javascript v1.3.2
+
+v1.3.2 is a maintenance release. It is supported for all usage.
+
+## Enhancements
+
+1. References librdkafka v2.10.1. Refer to the [librdkafka v2.10.1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.10.1) for more information.
+2. Support for schema id in header (#303)
+3. Add CEL support for Data Quality rules (#313)
+
+## Fixes
+
+1. Fix missing await during JSON deserialization (#301)
+2. Fix possible NPE in CSFLE executor (#305)
+
+
+# confluent-kafka-javascript v1.3.1
+
+v1.3.1 is a maintenance release. It is supported for all usage.
+
+## Fixes
+
+1. Avoid a race condition that causes 100% usage of a CPU core when
+   consuming with `partitionsConsumedConcurrently > 1` and all messages
+   are consumed (#300)
+2. Fix type definition for `Kafka()` constructor and for passing topic configurations
+   to the `producer()` and `consumer()` in the promisified API (@davidkhala, #297, #321).
 
 
 # confluent-kafka-javascript v1.3.0

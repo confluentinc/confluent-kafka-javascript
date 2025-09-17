@@ -1,4 +1,9 @@
-import { ConsumerGlobalConfig, GlobalConfig, ProducerGlobalConfig } from './config'
+import {
+  ConsumerGlobalConfig,
+  ConsumerTopicConfig,
+  GlobalConfig,
+  ProducerGlobalConfig,
+  ProducerTopicConfig } from './config'
 import {
   ConsumerGroupStates,
   GroupOverview,
@@ -9,7 +14,8 @@ import {
   Node,
   AclOperationTypes,
   Uuid,
-  IsolationLevel
+  IsolationLevel,
+  ConsumerGroupTypes
 } from './rdkafka'
 
 import {
@@ -29,6 +35,7 @@ export {
   AclOperationTypes,
   Uuid,
   IsolationLevel,
+  ConsumerGroupTypes
 } from './rdkafka'
 
 export interface OauthbearerProviderResponse {
@@ -94,7 +101,7 @@ export interface CommonConstructorConfig extends GlobalConfig {
 }
 
 export class Kafka {
-  constructor(config: CommonConstructorConfig)
+  constructor(config?: CommonConstructorConfig)
   producer(config?: ProducerConstructorConfig): Producer
   consumer(config: ConsumerConstructorConfig): Consumer
   admin(config?: AdminConstructorConfig): Admin
@@ -131,7 +138,9 @@ export interface ProducerConfig {
   logger?: Logger,
 }
 
-export interface ProducerConstructorConfig extends ProducerGlobalConfig {
+type ProducerGlobalAndTopicConfig = ProducerGlobalConfig & ProducerTopicConfig;
+
+export interface ProducerConstructorConfig extends ProducerGlobalAndTopicConfig {
   kafkaJS?: ProducerConfig;
 }
 
@@ -235,7 +244,9 @@ export interface ConsumerConfig {
   partitionAssignors?: PartitionAssignors[],
 }
 
-export interface ConsumerConstructorConfig extends ConsumerGlobalConfig {
+export type ConsumerGlobalAndTopicConfig = ConsumerGlobalConfig & ConsumerTopicConfig;
+
+export interface ConsumerConstructorConfig extends ConsumerGlobalAndTopicConfig {
   kafkaJS?: ConsumerConfig;
 }
 
@@ -406,7 +417,8 @@ export type Admin = {
   listTopics(options?: { timeout?: number }): Promise<string[]>
   listGroups(options?: {
     timeout?: number,
-    matchConsumerGroupStates?: ConsumerGroupStates[]
+    matchConsumerGroupStates?: ConsumerGroupStates[],
+    matchConsumerGroupTypes?: ConsumerGroupTypes[]
   }): Promise<{ groups: GroupOverview[], errors: LibrdKafkaError[] }>
   describeGroups(
     groups: string[],
