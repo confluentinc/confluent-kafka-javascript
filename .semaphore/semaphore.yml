@@ -22,21 +22,15 @@ queue:
     processing: parallel
 
 global_job_config:
-  env_vars:
-    - name: LIBRDKAFKA_VERSION
-      value: v2.11.1
   prologue:
     commands:
       - checkout
-      - if [[ $(command cache) ]]; then cache restore librdkafka-dep-${LIBRDKAFKA_VERSION} ; fi
+      - export LIBRDKAFKA_COMMIT_HASH="librdkafka_$(git submodule status deps/librdkafka | cut -d' ' -f1)"
+      - if [[ $(command cache) ]]; then cache restore "$LIBRDKAFKA_COMMIT_HASH" ; fi
       - git submodule update --init --recursive
-      - cd deps/librdkafka
-      - git fetch origin
-      - git checkout $LIBRDKAFKA_VERSION
-      - cd ../../
   epilogue:
     commands:
-      -  if [[ $(command cache) ]]; then cache store librdkafka-dep-${LIBRDKAFKA_VERSION} deps/librdkafka; done
+      -  if [[ $(command cache) ]]; then cache store "$LIBRDKAFKA_COMMIT_HASH" deps/librdkafka; done
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
