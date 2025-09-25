@@ -30,7 +30,8 @@ global_job_config:
       - git submodule update --init --recursive
   epilogue:
     commands:
-      -  if [[ $(command cache) ]]; then cache store "$LIBRDKAFKA_COMMIT_HASH" deps/librdkafka; done
+      - echo $LIBRDKAFKA_COMMIT_HASH
+      - if [[ $(command cache) ]]; then cache store "$LIBRDKAFKA_COMMIT_HASH" deps/librdkafka; fi
 
 blocks:
   - name: "Linux amd64 (musl): Build and test"
