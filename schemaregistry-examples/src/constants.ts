@@ -1,6 +1,7 @@
 import { BasicAuthCredentials } from '@confluentinc/schemaregistry';
 
 const issuerEndpointUrl = '<your-issuer-endpoint-url>'; // e.g. 'https://dev-123456.okta.com/oauth2/default/v1/token';
+const azureIMDSIssuerEndpointQuery = 'api-version=&resource=&client_id='; // e.g. 'api-version=<latest_version>&resource=api://<your-api-id>&client_id=<your-client-id>';
 const oauthClientId = '<your-client-id>';
 const oauthClientSecret = '<your-client-secret>';
 const scope = '<your-scope>'; // e.g. 'schemaregistry';
@@ -23,6 +24,7 @@ const basicAuthCredentials: BasicAuthCredentials = {
 };
 
 export {
-  issuerEndpointUrl, oauthClientId, oauthClientSecret, scope, identityPoolId, kafkaLogicalCluster, schemaRegistryLogicalCluster, 
+  issuerEndpointUrl,
+  azureIMDSIssuerEndpointQuery, oauthClientId, oauthClientSecret, scope, identityPoolId, kafkaLogicalCluster, schemaRegistryLogicalCluster, 
   baseUrl, clusterBootstrapUrl, clusterApiKey, clusterApiSecret, basicAuthCredentials, localAuthCredentials
 };

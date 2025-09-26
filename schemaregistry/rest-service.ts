@@ -1,8 +1,20 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults } from 'axios';
-import { OAuthClient } from './oauth/oauth-client';
 import { RestError } from './rest-error';
 import axiosRetry from "axios-retry";
 import { fullJitter, isRetriable, isSuccess } from './retry-helper';
+import {
+  _BearerTokenProvider as BearerTokenProvider,
+  _BearerTokenProviderBuilder as BearerTokenProviderBuilder
+} from './oauth/bearer-token-provider';
+import {
+  _StaticTokenProviderBuilder as StaticTokenProviderBuilder
+} from './oauth/static-token-provider';
+import {
+  _OAuthClientBuilder as OAuthClientBuilder,
+} from './oauth/oauth-client';
+import {
+  _AzureIMDSOAuthClientBuilder as AzureIMDSOAuthClientBuilder,
+} from './oauth/oauth-client-azure-imds';
 /*
  * Confluent-Schema-Registry-TypeScript - Node.js wrapper for Confluent Schema Registry
  *
@@ -25,9 +37,10 @@ export interface SaslInfo {
 }
 
 export interface BearerAuthCredentials {
-  credentialsSource: 'STATIC_TOKEN' | 'OAUTHBEARER',
+  credentialsSource: 'STATIC_TOKEN' | 'OAUTHBEARER' | 'OAUTHBEARER_AZURE_IMDS',
   token?: string,
   issuerEndpointUrl?: string,
+  issuerEndpointQuery?: string,
   clientId?: string,
   clientSecret?: string,
   scope?: string,
@@ -53,8 +66,12 @@ const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
 export class RestService {
   private client: AxiosInstance;
   private baseURLs: string[];
-  private oauthClient?: OAuthClient;
-  private oauthBearer: boolean = false;
+  private bearerTokenProvider?: BearerTokenProvider;
+  private static oauthBearerTokenProviderBuilders : Record<string, (bearerAuthCredentials: BearerAuthCredentials) => BearerTokenProviderBuilder> = {
+    'STATIC_TOKEN': (credentials) => new StaticTokenProviderBuilder(credentials),
+    'OAUTHBEARER': (credentials) => new OAuthClientBuilder(credentials),
+    'OAUTHBEARER_AZURE_IMDS': (credentials) => new AzureIMDSOAuthClientBuilder(credentials)
+  }
 
   constructor(baseURLs: string[], isForward?: boolean, axiosDefaults?: CreateAxiosDefaults,
               basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
@@ -123,39 +140,17 @@ export class RestService {
         throw new Error(`Bearer auth header '${missingHeader}' not provided`);
       }
 
-      this.setHeaders({
-        'Confluent-Identity-Pool-Id': bearerAuthCredentials.identityPoolId!,
-        'target-sr-cluster': bearerAuthCredentials.logicalCluster!
-      });
-
-      switch (bearerAuthCredentials.credentialsSource) {
-        case 'STATIC_TOKEN':
-          if (!bearerAuthCredentials.token) {
-            throw new Error('Bearer token not provided');
-          }
-          this.setAuth(undefined, bearerAuthCredentials.token);
-          break;
-        case 'OAUTHBEARER':
-          this.oauthBearer = true;
-          const requiredFields = [
-            'clientId',
-            'clientSecret',
-            'issuerEndpointUrl',
-            'scope'
-          ];
-          const missingField = requiredFields.find(field => !(field in bearerAuthCredentials));
-
-          if (missingField) {
-            throw new Error(`OAuth credential '${missingField}' not provided`);
-          }
-          const issuerEndPointUrl = new URL(bearerAuthCredentials.issuerEndpointUrl!);
-          this.oauthClient = new OAuthClient(bearerAuthCredentials.clientId!, bearerAuthCredentials.clientSecret!,
-            issuerEndPointUrl.origin, issuerEndPointUrl.pathname, bearerAuthCredentials.scope!,
-            maxRetries, retriesWaitMs, retriesMaxWaitMs);
-          break;
-        default:
-          throw new Error('Invalid bearer auth credentials source');
+      if (!(bearerAuthCredentials.credentialsSource in
+            RestService.oauthBearerTokenProviderBuilders)) {
+        throw new Error('Invalid bearer auth credentials source');
       }
+
+      this.bearerTokenProvider = RestService.oauthBearerTokenProviderBuilders[
+        bearerAuthCredentials.credentialsSource](bearerAuthCredentials).build(
+          maxRetries, retriesWaitMs, retriesMaxWaitMs
+        );
+
+      this.setHeaders(this.bearerTokenProvider!.getAdditionalHeaders());
     }
   }
 
@@ -166,7 +161,7 @@ export class RestService {
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
 
-    if (this.oauthBearer) {
+    if (this.bearerTokenProvider && this.bearerTokenProvider.tokenExpired()) {
       await this.setOAuthBearerToken();
     }
 
@@ -213,11 +208,7 @@ export class RestService {
   }
 
   async setOAuthBearerToken(): Promise<void> {
-    if (!this.oauthClient) {
-      throw new Error('OAuthClient not initialized');
-    }
-
-    const bearerToken: string = await this.oauthClient.getAccessToken();
+    const bearerToken: string = await this.bearerTokenProvider!.getAccessToken();
     this.setAuth(undefined, bearerToken);
   }
 

@@ -2,8 +2,8 @@
   "name": "@confluentinc/kafka-javascript",
   "version": "1.5.0",
   "description": "Node.js bindings for librdkafka",
-  "librdkafka": "2.11.1",
-  "librdkafka_win": "2.11.1",
+  "librdkafka": "dev_oauthbearer_metadata_based",
+  "librdkafka_win": "dev_oauthbearer_metadata_based",
   "main": "lib/index.js",
   "types": "types/index.d.ts",
   "scripts": {
