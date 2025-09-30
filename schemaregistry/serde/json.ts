@@ -404,7 +404,7 @@ async function transformField(ctx: RuleContext, path: string, propName: string, 
   try {
     ctx.enterField(msg, fullName, propName, getType(propSchema), getInlineTags(propSchema))
     let value = msg[propName]
-    if (value !== null) {
+    if (value != null) {
       const newVal = await transform(ctx, propSchema, fullName, value, fieldTransform)
       if (ctx.rule.kind === 'CONDITION') {
         if (newVal === false) {
