@@ -33,9 +33,6 @@ export class HcVaultClient implements KmsClient {
       this.authPromise = this.kmsClient.approleLogin({role_id: roleId, secret_id: secretId})
         .then((result) => {
           this.kmsClient.token = result.auth.client_token
-          console.log('token', result.auth.client_token)
-          console.log('token', result.auth.client_token)
-          console.log('token', result.auth.client_token)
         })
     }
   }
