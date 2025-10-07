@@ -106,7 +106,6 @@ blocks:
       prologue:
         commands:
           - export CKJS_LINKING=dynamic
-          - if [[ $(command cache) ]]; then cache restore; fi
           - npm run install-from-source
           - if [[ $(command cache) ]]; then cache store; fi
       jobs:
