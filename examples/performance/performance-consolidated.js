@@ -1,3 +1,4 @@
+const fs = require('fs');
 const mode = process.env.MODE ? process.env.MODE : 'confluent';
 
 let runProducer, runConsumer, runConsumeTransformProduce, runCreateTopics, runProducerConsumerTogether;
@@ -27,6 +28,44 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
     const produceConsumeLatency = process.argv.includes('--latency');
     const all = process.argv.includes('--all');
     const createTopics = process.argv.includes('--create-topics');
+    let maxAverageRSSKB, maxMaxRSSKB;
+    const stats = {};
+
+    let measures = [];
+    let interval;
+    const startTrackingMemory = () => {
+        interval = setInterval(() => {
+            measures.push({ rss: process.memoryUsage().rss,
+                            timestamp: Date.now() });
+        }, 100);
+    };
+
+    const datapointToJSON = (m) =>
+        ({ rss: m.rss.toString(), timestamp: m.timestamp.toString() });
+
+    const endTrackingMemory = (fileName) => {
+        clearInterval(interval);
+        interval = null;
+        const averageRSS = measures.reduce((sum, m) => sum + m.rss, 0) / measures.length;
+        const averageRSSKB = averageRSS / 1024;
+        maxAverageRSSKB = !maxAverageRSSKB ? averageRSSKB : Math.max(averageRSSKB, maxAverageRSSKB);
+        console.log(`=== Average RSS: ${averageRSSKB} KB`);
+        const max = measures.reduce((prev, current) => (prev.rss > current.rss) ? prev : current);
+        const maxRSSKB = max.rss / 1024;
+        maxMaxRSSKB = !maxMaxRSSKB ? maxRSSKB : Math.max(maxRSSKB, maxMaxRSSKB);
+        console.log(`=== Max RSS: ${maxRSSKB} KB at ${new Date(max.timestamp).toISOString()}`);
+        if (fileName) {
+            const measuresJSON = JSON.stringify({
+                measures: measures.map(datapointToJSON),
+                averageRSS: averageRSS.toString(),
+                maxRSS: datapointToJSON(max)
+            }, null, 2);
+            fs.writeFileSync(fileName, measuresJSON);
+        }
+        measures = [];
+    }
+
+    console.log(`=== Starting Performance Tests - Mode ${mode} ===`);
 
     if (createTopics || all) {
         console.log("=== Creating Topics (deleting if they exist already):");
@@ -45,18 +84,38 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
         console.log(`  Batch Size: ${batchSize}`);
         console.log(`  Compression: ${compression}`);
         console.log(`  Warmup Messages: ${warmupMessages}`);
+        startTrackingMemory();
         const producerRate = await runProducer(brokers, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        endTrackingMemory(`producer-memory-${mode}.json`);
         console.log("=== Producer Rate: ", producerRate);
     }
 
     if (consumer || all) {
         // If user runs this without --producer then they are responsible for seeding the topic.
-        console.log("=== Running Basic Consumer Performance Test:")
+        console.log("=== Running Basic Consumer Performance Test (eachMessage):")
         console.log(`  Brokers: ${brokers}`);
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
-        const consumerRate = await runConsumer(brokers, topic, messageCount);
-        console.log("=== Consumer Rate: ", consumerRate);
+        startTrackingMemory();
+        const consumerRate = await runConsumer(brokers, topic, warmupMessages, messageCount, false, stats);
+        endTrackingMemory(`consumer-memory-message-${mode}.json`);
+        console.log("=== Consumer Rate (eachMessage): ", consumerRate);
+        console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
+    }
+
+    if (consumer || all) {
+        // If user runs this without --producer then they are responsible for seeding the topic.
+        console.log("=== Running Basic Consumer Performance Test (eachBatch):")
+        console.log(`  Brokers: ${brokers}`);
+        console.log(`  Topic: ${topic}`);
+        console.log(`  Message Count: ${messageCount}`);
+        startTrackingMemory();
+        const consumerRate = await runConsumer(brokers, topic, warmupMessages, messageCount, true, stats);
+        endTrackingMemory(`consumer-memory-batch-${mode}.json`);
+        console.log("=== Consumer Rate (eachBatch): ", consumerRate);
+        console.log("=== Average eachBatch lag: ", stats.averageOffsetLag);
+        console.log("=== Max eachBatch lag: ", stats.maxOffsetLag);
+        console.log("=== Consumption time (eachBatch): ", stats.durationSeconds);
     }
 
     if (ctp || all) {
@@ -67,7 +126,9 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
         console.log(`  Message Count: ${messageCount}`);
         // Seed the topic with messages
         await runProducer(brokers, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        startTrackingMemory();
         const ctpRate = await runConsumeTransformProduce(brokers, topic, topic2, warmupMessages, messageCount, messageProcessTimeMs, ctpConcurrency);
+        endTrackingMemory(`consume-transform-produce-${mode}.json`);
         console.log("=== Consume-Transform-Produce Rate: ", ctpRate);
     }
 
@@ -78,7 +139,9 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
         console.log(`  Message Count: ${messageCount}`);
         console.log(`  Consumer Processing Time: ${consumerProcessingTime}`);
         console.log(`  Producer Processing Time: ${producerProcessingTime}`);
+        startTrackingMemory();
         const { mean, p50, p90, p95, outliers } = await runProducerConsumerTogether(brokers, topic, messageCount, messageSize, producerProcessingTime, consumerProcessingTime);
+        endTrackingMemory(`producer-consumer-together-${mode}.json`);
         console.log(`=== Produce-To-Consume Latency (ms): Mean: ${mean}, P50: ${p50}, P90: ${p90}, P95: ${p95}`);
 
         // The presence of outliers invalidates the mean measurement, and rasies concerns as to why there are any.
@@ -86,5 +149,10 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
         if (outliers.length > 0) {
             console.log("=== Outliers (ms): ", outliers);
         }
+    }
+
+    if (maxAverageRSSKB !== undefined && maxMaxRSSKB !== undefined) {
+        console.log(`=== Max Average RSS across tests: `, maxAverageRSSKB);
+        console.log(`=== Max RSS across tests: `, maxMaxRSSKB);
     }
 })();
