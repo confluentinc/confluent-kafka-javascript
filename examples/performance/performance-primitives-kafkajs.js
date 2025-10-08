@@ -1,6 +1,7 @@
 const { Kafka, CompressionTypes } = require('kafkajs');
 const { randomBytes } = require('crypto');
 const { hrtime } = require('process');
+const { runConsumer: runConsumerCommon } = require('./performance-primitives-common');
 
 module.exports = {
     runProducer,
@@ -106,7 +107,39 @@ async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessa
     return rate;
 }
 
-async function runConsumer(brokers, topic, totalMessageCnt) {
+class CompatibleConsumer {
+    constructor(consumer) {
+        this.consumer = consumer;
+    }
+
+    async connect() {
+        return this.consumer.connect();
+    }
+
+    async disconnect() {
+        return this.consumer.disconnect();
+    }
+
+    async subscribe(opts) {
+        return this.consumer.subscribe({
+            ...opts,
+            fromBeginning: true
+        });
+    }
+
+    pause(topics) {
+        return this.consumer.pause(topics);
+    }
+
+    run(opts) {
+        return this.consumer.run({
+            ...opts,
+            autoCommit: false,
+        });
+    }
+}
+
+function newCompatibleConsumer(brokers) {
     const kafka = new Kafka({
         clientId: 'kafka-test-performance',
         brokers: brokers.split(','),
@@ -115,53 +148,11 @@ async function runConsumer(brokers, topic, totalMessageCnt) {
     const consumer = kafka.consumer({
         groupId: 'test-group' + Math.random(),
     });
-    await consumer.connect();
-    await consumer.subscribe({ topic, fromBeginning: true });
+    return new CompatibleConsumer(consumer);
+}
 
-    let messagesReceived = 0;
-    let messagesMeasured = 0;
-    let totalMessageSize = 0;
-    let startTime;
-    let rate;
-    const skippedMessages = 100;
-
-    console.log("Starting consumer.");
-
-    consumer.run({
-        autoCommit: false,
-        eachMessage: async ({ topic, partition, message }) => {
-            messagesReceived++;
-
-            if (messagesReceived >= skippedMessages) {
-                messagesMeasured++;
-                totalMessageSize += message.value.length;
-
-                if (messagesReceived === skippedMessages) {
-                    startTime = hrtime();
-                } else if (messagesMeasured === totalMessageCnt) {
-                    let elapsed = hrtime(startTime);
-                    let durationNanos = elapsed[0] * 1e9 + elapsed[1];
-                    rate = (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
-                    console.log(`Recvd ${messagesMeasured} messages, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
-                    consumer.pause([{ topic }]);
-                }
-            }
-        }
-    });
-
-    totalMessageSize = 0;
-
-    await new Promise((resolve) => {
-        let interval = setInterval(() => {
-            if (messagesReceived >= totalMessageCnt) {
-                clearInterval(interval);
-                resolve();
-            }
-        }, 1000);
-    });
-
-    await consumer.disconnect();
-    return rate;
+async function runConsumer(brokers, topic, warmupMessages, totalMessageCnt, eachBatch, stats) {
+    return runConsumerCommon(newCompatibleConsumer(brokers), topic, warmupMessages, totalMessageCnt, eachBatch, stats);
 }
 
 async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
@@ -213,8 +204,9 @@ async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, w
                 if (messagesMeasured === totalMessageCnt) {
                     let elapsed = hrtime(startTime);
                     let durationNanos = elapsed[0] * 1e9 + elapsed[1];
+                    let durationSeconds = durationNanos / 1e9;
                     rate = (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
-                    console.log(`Recvd, transformed and sent ${messagesMeasured} messages, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
+                    console.log(`Recvd, transformed and sent ${messagesMeasured} messages in ${durationSeconds}, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
                     consumer.pause([{ topic }]);
                 }
             } else {
