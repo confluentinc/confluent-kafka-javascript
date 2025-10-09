@@ -22,7 +22,7 @@ function baseConfiguration(parameters) {
         ret = {
             ...ret,
             'security.protocol': parameters.securityProtocol,
-            'sasl.mechanism': 'plain',
+            'sasl.mechanism': 'PLAIN',
             'sasl.username': parameters.saslUsername,
             'sasl.password': parameters.saslPassword,
         };
