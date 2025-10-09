@@ -57,10 +57,11 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
 
                     if (!startTime) {
                         startTime = hrtime.bigint();
-                    } else if (messagesMeasured === totalMessageCnt) {
+                    } else if (messagesMeasured >= totalMessageCnt) {
                         let durationNanos = Number(hrtime.bigint() - startTime);
                         durationSeconds = durationNanos / 1e9;
-                        rate = (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
+                        rate = durationNanos === 0 ? Infinity :
+                            (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
                         console.log(`Recvd ${messagesMeasured} messages in ${durationSeconds} seconds, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
                         consumer.pause([{ topic }]);
                     }

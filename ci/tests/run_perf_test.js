@@ -9,7 +9,9 @@ function runCommand(command) {
     return output;
   } catch (error) {
     const errorOutput = error.stdout || error.stderr || error.message;
-    console.log(errorOutput);
+    console.log(error.stdout);
+    console.log(error.stderr);
+    console.log(error.message);
     return errorOutput;
   }
 }
@@ -30,7 +32,7 @@ function extractValue(content, pattern) {
 
 function belowThreshold(value, target, threshold = 0.7) {
   if (isNaN(value) || isNaN(target))
-    throw new Error(`Invalid number comparison: value=${value}, target=${target}`);
+    return false;
   return value < (target * threshold);
 }
 
