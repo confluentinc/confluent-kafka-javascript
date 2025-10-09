@@ -11,11 +11,27 @@ module.exports = {
     runProducerConsumerTogether,
 };
 
-async function runCreateTopics(brokers, topic, topic2) {
-    const kafka = new Kafka({
+function baseConfiguration(parameters) {
+    let ret = {
         'client.id': 'kafka-test-performance',
-        "metadata.broker.list": brokers,
-    });
+        'metadata.broker.list': parameters.brokers,
+    };
+    if (parameters.securityProtocol &&
+        parameters.saslUsername &&
+        parameters.saslPassword) {
+        ret = {
+            ...ret,
+            'security.protocol': parameters.securityProtocol,
+            'sasl.mechanism': 'plain',
+            'sasl.username': parameters.saslUsername,
+            'sasl.password': parameters.saslPassword,
+        };
+    }
+    return ret;
+}
+
+async function runCreateTopics(parameters, topic, topic2) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const admin = kafka.admin();
     await admin.connect();
@@ -44,7 +60,7 @@ async function runCreateTopics(brokers, topic, topic2) {
     await admin.disconnect();
 }
 
-async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression) {
+async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression) {
     let totalMessagesSent = 0;
     let totalBytesSent = 0;
 
@@ -55,8 +71,7 @@ async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessa
     const messages = Array(batchSize).fill(message);
 
     const kafka = new Kafka({
-        'client.id': 'kafka-test-performance',
-        'metadata.broker.list': brokers,
+        ...baseConfiguration(parameters),
         'compression.codec': CompressionTypes[compression],
     });
 
@@ -140,11 +155,8 @@ class CompatibleConsumer {
     }
 }
 
-function newCompatibleConsumer(brokers) {
-    const kafka = new Kafka({
-        'client.id': 'kafka-test-performance',
-        'metadata.broker.list': brokers,
-    });
+function newCompatibleConsumer(parameters) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const consumer = kafka.consumer({
         'group.id': 'test-group' + Math.random(),
@@ -155,15 +167,12 @@ function newCompatibleConsumer(brokers) {
     return new CompatibleConsumer(consumer);
 }
 
-async function runConsumer(brokers, topic, warmupMessages, totalMessageCnt, eachBatch, stats) {
-    return runConsumerCommon(newCompatibleConsumer(brokers), topic, warmupMessages, totalMessageCnt, eachBatch, stats);
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, stats) {
+    return runConsumerCommon(newCompatibleConsumer(parameters), topic, warmupMessages, totalMessageCnt, eachBatch, stats);
 }
 
-async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
-    const kafka = new Kafka({
-        'client.id': 'kafka-test-performance',
-        'metadata.broker.list': brokers,
-    });
+async function runConsumeTransformProduce(parameters, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const producer = kafka.producer({
         /* We want things to be flushed immediately as we'll be awaiting this. */
@@ -249,11 +258,8 @@ async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, w
     return rate;
 }
 
-async function runProducerConsumerTogether(brokers, topic, totalMessageCnt, msgSize, produceMessageProcessTimeMs, consumeMessageProcessTimeMs) {
-    const kafka = new Kafka({
-        'client.id': 'kafka-test-performance',
-        'metadata.broker.list': brokers,
-    });
+async function runProducerConsumerTogether(parameters, topic, totalMessageCnt, msgSize, produceMessageProcessTimeMs, consumeMessageProcessTimeMs) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const producer = kafka.producer({
         /* We want things to be flushed immediately as we'll be awaiting this. */
