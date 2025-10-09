@@ -9,6 +9,9 @@ if (mode === 'confluent') {
 }
 
 const brokers = process.env.KAFKA_BROKERS || 'localhost:9092';
+const securityProtocol = process.env.SECURITY_PROTOCOL;
+const saslUsername = process.env.SASL_USERNAME;
+const saslPassword = process.env.SASL_PASSWORD;
 const topic = process.env.KAFKA_TOPIC || 'test-topic';
 const topic2 = process.env.KAFKA_TOPIC2 || 'test-topic2';
 const messageCount = process.env.MESSAGE_COUNT ? +process.env.MESSAGE_COUNT : 1000000;
@@ -20,6 +23,23 @@ const messageProcessTimeMs = process.env.MESSAGE_PROCESS_TIME_MS ? +process.env.
 const ctpConcurrency = process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY ? +process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY : 1;
 const consumerProcessingTime = process.env.CONSUMER_PROCESSING_TIME ? +process.env.CONSUMER_PROCESSING_TIME : 100;
 const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.env.PRODUCER_PROCESSING_TIME : 100;
+const parameters = {
+    brokers,
+    securityProtocol,
+    saslUsername,
+    saslPassword,
+}
+
+function logParameters(parameters) {
+    console.log(`  Brokers: ${parameters.brokers}`);
+    if (parameters.securityProtocol && parameters.saslUsername && parameters.saslPassword) {
+        console.log(`  Security Protocol: ${parameters.securityProtocol}`);
+        console.log(`  SASL Username: ${parameters.saslUsername ? parameters.saslUsername : 'not set'}`);
+        console.log(`  SASL Password: ${parameters.saslPassword ? '******' : 'not set'}`);
+    } else {
+        console.log("  No security protocol configured");
+    }
+}
 
 (async function () {
     const producer = process.argv.includes('--producer');
@@ -69,15 +89,15 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
 
     if (createTopics || all) {
         console.log("=== Creating Topics (deleting if they exist already):");
-        console.log(`  Brokers: ${brokers}`);
+        logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Topic2: ${topic2}`);
-        await runCreateTopics(brokers, topic, topic2);
+        await runCreateTopics(parameters, topic, topic2);
     }
 
     if (producer || all) {
         console.log("=== Running Basic Producer Performance Test:")
-        console.log(`  Brokers: ${brokers}`);
+        logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
         console.log(`  Message Size: ${messageSize}`);
@@ -85,7 +105,7 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
         console.log(`  Compression: ${compression}`);
         console.log(`  Warmup Messages: ${warmupMessages}`);
         startTrackingMemory();
-        const producerRate = await runProducer(brokers, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        const producerRate = await runProducer(parameters, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
         endTrackingMemory(`producer-memory-${mode}.json`);
         console.log("=== Producer Rate: ", producerRate);
     }
@@ -93,11 +113,11 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
     if (consumer || all) {
         // If user runs this without --producer then they are responsible for seeding the topic.
         console.log("=== Running Basic Consumer Performance Test (eachMessage):")
-        console.log(`  Brokers: ${brokers}`);
+        logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
         startTrackingMemory();
-        const consumerRate = await runConsumer(brokers, topic, warmupMessages, messageCount, false, stats);
+        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, false, stats);
         endTrackingMemory(`consumer-memory-message-${mode}.json`);
         console.log("=== Consumer Rate (eachMessage): ", consumerRate);
         console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
@@ -106,11 +126,11 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
     if (consumer || all) {
         // If user runs this without --producer then they are responsible for seeding the topic.
         console.log("=== Running Basic Consumer Performance Test (eachBatch):")
-        console.log(`  Brokers: ${brokers}`);
+        logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
         startTrackingMemory();
-        const consumerRate = await runConsumer(brokers, topic, warmupMessages, messageCount, true, stats);
+        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, true, stats);
         endTrackingMemory(`consumer-memory-batch-${mode}.json`);
         console.log("=== Consumer Rate (eachBatch): ", consumerRate);
         console.log("=== Average eachBatch lag: ", stats.averageOffsetLag);
@@ -120,27 +140,27 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
 
     if (ctp || all) {
         console.log("=== Running Consume-Transform-Produce Performance Test:")
-        console.log(`  Brokers: ${brokers}`);
+        logParameters(parameters);
         console.log(`  ConsumeTopic: ${topic}`);
         console.log(`  ProduceTopic: ${topic2}`);
         console.log(`  Message Count: ${messageCount}`);
         // Seed the topic with messages
-        await runProducer(brokers, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        await runProducer(parameters, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
         startTrackingMemory();
-        const ctpRate = await runConsumeTransformProduce(brokers, topic, topic2, warmupMessages, messageCount, messageProcessTimeMs, ctpConcurrency);
+        const ctpRate = await runConsumeTransformProduce(parameters, topic, topic2, warmupMessages, messageCount, messageProcessTimeMs, ctpConcurrency);
         endTrackingMemory(`consume-transform-produce-${mode}.json`);
         console.log("=== Consume-Transform-Produce Rate: ", ctpRate);
     }
 
     if (produceConsumeLatency || all) {
         console.log("=== Running Produce-To-Consume Latency Performance Test:")
-        console.log(`  Brokers: ${brokers}`);
+        logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
         console.log(`  Consumer Processing Time: ${consumerProcessingTime}`);
         console.log(`  Producer Processing Time: ${producerProcessingTime}`);
         startTrackingMemory();
-        const { mean, p50, p90, p95, outliers } = await runProducerConsumerTogether(brokers, topic, messageCount, messageSize, producerProcessingTime, consumerProcessingTime);
+        const { mean, p50, p90, p95, outliers } = await runProducerConsumerTogether(parameters, topic, messageCount, messageSize, producerProcessingTime, consumerProcessingTime);
         endTrackingMemory(`producer-consumer-together-${mode}.json`);
         console.log(`=== Produce-To-Consume Latency (ms): Mean: ${mean}, P50: ${p50}, P90: ${p90}, P95: ${p95}`);
 
