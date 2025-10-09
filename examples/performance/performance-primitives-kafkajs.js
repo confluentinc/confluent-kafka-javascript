@@ -11,11 +11,29 @@ module.exports = {
     runProducerConsumerTogether,
 };
 
-async function runCreateTopics(brokers, topic, topic2) {
-    const kafka = new Kafka({
+function baseConfiguration(parameters) {
+    let ret = {
         clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+        brokers: parameters.brokers.split(','),
+    };
+    if (parameters.securityProtocol &&
+        parameters.saslUsername &&
+        parameters.saslPassword) {
+        ret = {
+            ...ret,
+            ssl: parameters.securityProtocol.toLowerCase().includes('ssl'),
+            sasl: {
+                mechanism: 'plain',
+                username: parameters.saslUsername,
+                password: parameters.saslPassword
+            }
+        };
+    }
+    return ret;
+}
+
+async function runCreateTopics(parameters, topic, topic2) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const admin = kafka.admin();
     await admin.connect();
@@ -43,7 +61,7 @@ async function runCreateTopics(brokers, topic, topic2) {
     await admin.disconnect();
 }
 
-async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression) {
+async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression) {
     let totalMessagesSent = 0;
     let totalBytesSent = 0;
 
@@ -53,10 +71,7 @@ async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessa
 
     const messages = Array(batchSize).fill(message);
 
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const producer = kafka.producer();
     await producer.connect();
@@ -139,11 +154,8 @@ class CompatibleConsumer {
     }
 }
 
-function newCompatibleConsumer(brokers) {
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+function newCompatibleConsumer(parameters) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const consumer = kafka.consumer({
         groupId: 'test-group' + Math.random(),
@@ -151,15 +163,12 @@ function newCompatibleConsumer(brokers) {
     return new CompatibleConsumer(consumer);
 }
 
-async function runConsumer(brokers, topic, warmupMessages, totalMessageCnt, eachBatch, stats) {
-    return runConsumerCommon(newCompatibleConsumer(brokers), topic, warmupMessages, totalMessageCnt, eachBatch, stats);
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, stats) {
+    return runConsumerCommon(newCompatibleConsumer(parameters), topic, warmupMessages, totalMessageCnt, eachBatch, stats);
 }
 
-async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+async function runConsumeTransformProduce(parameters, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const producer = kafka.producer({});
     await producer.connect();
@@ -234,11 +243,8 @@ async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, w
 }
 
 
-async function runProducerConsumerTogether(brokers, topic, totalMessageCnt, msgSize, produceMessageProcessTimeMs, consumeMessageProcessTimeMs) {
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+async function runProducerConsumerTogether(parameters, topic, totalMessageCnt, msgSize, produceMessageProcessTimeMs, consumeMessageProcessTimeMs) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const producer = kafka.producer({});
     await producer.connect();
