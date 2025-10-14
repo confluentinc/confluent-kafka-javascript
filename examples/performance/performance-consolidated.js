@@ -20,6 +20,8 @@ const messageCount = process.env.MESSAGE_COUNT ? +process.env.MESSAGE_COUNT : 10
 const messageSize = process.env.MESSAGE_SIZE ? +process.env.MESSAGE_SIZE : 256;
 const batchSize = process.env.BATCH_SIZE ? +process.env.BATCH_SIZE : 100;
 const compression = process.env.COMPRESSION || 'None';
+// Between 0 and 1, percentage of random bytes in each message
+const randomness = process.env.RANDOMNESS ? +process.env.RANDOMNESS : 0.5;
 const numPartitions = process.env.PARTITIONS ? +process.env.PARTITIONS : 3;
 const partitionsConsumedConcurrently = process.env.PARTITIONS_CONSUMED_CONCURRENTLY ? +process.env.PARTITIONS_CONSUMED_CONCURRENTLY : 1;
 const warmupMessages = process.env.WARMUP_MESSAGES ? +process.env.WARMUP_MESSAGES : (batchSize * 10);
@@ -110,7 +112,8 @@ function logParameters(parameters) {
         console.log(`  Compression: ${compression}`);
         console.log(`  Warmup Messages: ${warmupMessages}`);
         startTrackingMemory();
-        const producerRate = await runProducer(parameters, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        const producerRate = await runProducer(parameters, topic, batchSize,
+            warmupMessages, messageCount, messageSize, compression, randomness);
         endTrackingMemory(`producer-memory-${mode}.json`);
         console.log("=== Producer Rate: ", producerRate);
     }
@@ -121,10 +124,14 @@ function logParameters(parameters) {
         logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
+        console.log(`  Partitions consumed concurrently: ${partitionsConsumedConcurrently}`);
         startTrackingMemory();
-        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, false, partitionsConsumedConcurrently, stats);
+        const consumerRate = await runConsumer(parameters, topic,
+            warmupMessages, messageCount,
+            false, partitionsConsumedConcurrently, stats);
         endTrackingMemory(`consumer-memory-message-${mode}.json`);
-        console.log("=== Consumer Rate (eachMessage): ", consumerRate);
+        console.log("=== Consumer Rate MB/s (eachMessage): ", consumerRate);
+        console.log("=== Consumer Rate msg/s (eachMessage): ", stats.messageRate);
         console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
     }
 
@@ -134,12 +141,17 @@ function logParameters(parameters) {
         logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
+        console.log(`  Partitions consumed concurrently: ${partitionsConsumedConcurrently}`);
         startTrackingMemory();
-        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, true, partitionsConsumedConcurrently, stats);
+        const consumerRate = await runConsumer(parameters, topic,
+            warmupMessages, messageCount,
+            true, partitionsConsumedConcurrently, stats);
         endTrackingMemory(`consumer-memory-batch-${mode}.json`);
-        console.log("=== Consumer Rate (eachBatch): ", consumerRate);
+        console.log("=== Consumer Rate MB/s (eachBatch): ", consumerRate);
+        console.log("=== Consumer Rate msg/s (eachBatch): ", stats.messageRate);
         console.log("=== Average eachBatch lag: ", stats.averageOffsetLag);
         console.log("=== Max eachBatch lag: ", stats.maxOffsetLag);
+        console.log("=== Average eachBatch size: ", stats.averageBatchSize);
         console.log("=== Consumption time (eachBatch): ", stats.durationSeconds);
     }
 
