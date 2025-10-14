@@ -91,7 +91,10 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         if (eachBatch) {
             stats.averageOffsetLag = totalBatches > 0 ? (totalOffsetLag / totalBatches) : 0;
             stats.maxOffsetLag = maxOffsetLag;
+            stats.averageBatchSize = totalBatches > 0 ? (messagesMeasured / totalBatches) : 0;
         }
+        stats.messageRate = durationSeconds > 0 ? 
+                            (messagesMeasured / durationSeconds) : Infinity;
         stats.durationSeconds = durationSeconds;
     }
     return rate;
