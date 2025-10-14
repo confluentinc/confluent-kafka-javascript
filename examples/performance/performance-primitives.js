@@ -60,15 +60,18 @@ async function runCreateTopics(parameters, topic, topic2, numPartitions) {
     await admin.disconnect();
 }
 
-async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression) {
+async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness) {
     let totalMessagesSent = 0;
     let totalBytesSent = 0;
 
-    const message = {
-        value: randomBytes(msgSize),
+    const messages = Array(batchSize);
+    let staticValue = randomBytes(Math.floor(msgSize * (1 - randomness)));
+    for (let i = 0; i < batchSize; i++) {
+        /* Generate a different random value for each message */
+        messages[i] = {
+            value: Buffer.concat([staticValue, randomBytes(msgSize - staticValue.length)]),
+        };
     }
-
-    const messages = Array(batchSize).fill(message);
 
     const kafka = new Kafka({
         ...baseConfiguration(parameters),
