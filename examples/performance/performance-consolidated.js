@@ -132,6 +132,8 @@ function logParameters(parameters) {
         endTrackingMemory(`consumer-memory-message-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachMessage): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachMessage): ", stats.messageRate);
+        console.log("=== Consumer average E2E latency (eachMessage): ", stats.avgLatency);
+        console.log("=== Consumer max E2E latency (eachMessage): ", stats.maxLatency);
         console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
     }
 
@@ -152,6 +154,8 @@ function logParameters(parameters) {
         console.log("=== Average eachBatch lag: ", stats.averageOffsetLag);
         console.log("=== Max eachBatch lag: ", stats.maxOffsetLag);
         console.log("=== Average eachBatch size: ", stats.averageBatchSize);
+        console.log("=== Consumer average E2E latency (eachBatch): ", stats.avgLatency);
+        console.log("=== Consumer max E2E latency (eachBatch): ", stats.maxLatency);
         console.log("=== Consumption time (eachBatch): ", stats.durationSeconds);
     }
 
