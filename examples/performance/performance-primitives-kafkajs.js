@@ -168,8 +168,8 @@ function newCompatibleConsumer(parameters) {
     return new CompatibleConsumer(consumer);
 }
 
-async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, stats) {
-    return runConsumerCommon(newCompatibleConsumer(parameters), topic, warmupMessages, totalMessageCnt, eachBatch, stats);
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats) {
+    return runConsumerCommon(newCompatibleConsumer(parameters), topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats);
 }
 
 async function runConsumeTransformProduce(parameters, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {

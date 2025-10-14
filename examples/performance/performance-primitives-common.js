@@ -1,6 +1,6 @@
 const { hrtime } = require('process');
 
-async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eachBatch, stats) {
+async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats) {
     await consumer.connect();
     await consumer.subscribe({ topic });
 
@@ -17,6 +17,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
 
     console.log("Starting consumer.");
     let consumeMethod = {
+        partitionsConsumedConcurrently,
         eachMessage: async ({ topic, partition, message }) => {
             messagesReceived++;
 
@@ -38,6 +39,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
     }
     if (eachBatch) {
         consumeMethod = {
+            partitionsConsumedConcurrently,
             eachBatch: async ({ batch }) => {
                 const messagesBeforeBatch = messagesReceived;
                 const topic = batch.topic;

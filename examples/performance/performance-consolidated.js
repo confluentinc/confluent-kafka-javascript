@@ -21,6 +21,7 @@ const messageSize = process.env.MESSAGE_SIZE ? +process.env.MESSAGE_SIZE : 256;
 const batchSize = process.env.BATCH_SIZE ? +process.env.BATCH_SIZE : 100;
 const compression = process.env.COMPRESSION || 'None';
 const numPartitions = process.env.PARTITIONS ? +process.env.PARTITIONS : 3;
+const partitionsConsumedConcurrently = process.env.PARTITIONS_CONSUMED_CONCURRENTLY ? +process.env.PARTITIONS_CONSUMED_CONCURRENTLY : 1;
 const warmupMessages = process.env.WARMUP_MESSAGES ? +process.env.WARMUP_MESSAGES : (batchSize * 10);
 const messageProcessTimeMs = process.env.MESSAGE_PROCESS_TIME_MS ? +process.env.MESSAGE_PROCESS_TIME_MS : 5;
 const ctpConcurrency = process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY ? +process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY : 1;
@@ -121,7 +122,7 @@ function logParameters(parameters) {
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
         startTrackingMemory();
-        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, false, stats);
+        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, false, partitionsConsumedConcurrently, stats);
         endTrackingMemory(`consumer-memory-message-${mode}.json`);
         console.log("=== Consumer Rate (eachMessage): ", consumerRate);
         console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
@@ -134,7 +135,7 @@ function logParameters(parameters) {
         console.log(`  Topic: ${topic}`);
         console.log(`  Message Count: ${messageCount}`);
         startTrackingMemory();
-        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, true, stats);
+        const consumerRate = await runConsumer(parameters, topic, warmupMessages, messageCount, true, partitionsConsumedConcurrently, stats);
         endTrackingMemory(`consumer-memory-batch-${mode}.json`);
         console.log("=== Consumer Rate (eachBatch): ", consumerRate);
         console.log("=== Average eachBatch lag: ", stats.averageOffsetLag);
