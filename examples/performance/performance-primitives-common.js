@@ -14,6 +14,23 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
     let startTime;
     let rate;
     const skippedMessages = warmupMessages;
+    const decoder = new TextDecoder('utf-8');
+
+    const updateLatency = (receivedAt, numMessages, message) => {
+        if (!stats)
+            return;
+
+        const sentAt = Number(decoder.decode(message.value.slice(0, 13)));
+        const latency = receivedAt - sentAt;
+
+        if (stats.maxLatency === undefined) {
+            stats.maxLatency = latency;
+            stats.avgLatency = latency;
+        } else {
+            stats.maxLatency = Math.max(stats.maxLatency, latency);
+            stats.avgLatency = ((stats.avgLatency * (numMessages - 1)) + latency) / numMessages;
+        }
+    };
 
     console.log("Starting consumer.");
     let consumeMethod = {
@@ -24,6 +41,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
             if (messagesReceived >= skippedMessages) {
                 messagesMeasured++;
                 totalMessageSize += message.value.length;
+                updateLatency(Date.now(), messagesMeasured, message);
 
                 if (messagesReceived === skippedMessages) {
                     startTime = hrtime.bigint();
@@ -54,8 +72,14 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                     if (messagesBeforeBatch < skippedMessages) {
                         messages = messages.slice(messages.length - messagesMeasured);
                     }
-                    for (const message of messages)
+                    const now = Date.now();
+                    const messagesBase = messagesMeasured - messages.length;
+                    let i = 1;
+                    for (const message of messages) {
                         totalMessageSize += message.value.length;
+                        updateLatency(now, messagesBase + i, message);
+                        i++;
+                    }
 
                     if (!startTime) {
                         startTime = hrtime.bigint();
