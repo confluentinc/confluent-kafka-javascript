@@ -95,6 +95,7 @@ function logParameters(parameters) {
         logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Topic2: ${topic2}`);
+        console.log(`  Partitions: ${numPartitions}`);
         await runCreateTopics(parameters, topic, topic2, numPartitions);
     }
 
