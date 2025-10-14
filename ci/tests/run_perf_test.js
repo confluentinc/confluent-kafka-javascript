@@ -50,7 +50,8 @@ console.log('Running KafkaJS Producer/Consumer test...');
 const outputKjsProducerConsumer = runCommand(`MODE=kafkajs MESSAGE_COUNT=${messageCount} node performance-consolidated.js --create-topics --consumer --producer`);
 
 console.log('Running Confluent CTP test...');
-const outputConfluentCtp = runCommand('MODE=confluent MESSAGE_COUNT=5000 node performance-consolidated.js --create-topics --ctp');
+const outputConfluentCtp = skipCtpTest ? '' :
+  runCommand('MODE=confluent MESSAGE_COUNT=5000 node performance-consolidated.js --create-topics --ctp');
 
 console.log('Running KafkaJS CTP test...');
 const outputKjsCtp = skipCtpTest ? '' :
