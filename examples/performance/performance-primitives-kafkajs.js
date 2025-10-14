@@ -65,12 +65,22 @@ async function runProducer(parameters, topic, batchSize, warmupMessages, totalMe
     let totalMessagesSent = 0;
     let totalBytesSent = 0;
 
-    const messages = Array(batchSize);
-    let staticValue = randomBytes(Math.floor(msgSize * (1 - randomness)));
-    for (let i = 0; i < batchSize; i++) {
+    const messages = Array(totalMessageCnt);
+    const encoder = new TextEncoder();
+    let staticValueLength = Math.floor(msgSize * (1 - randomness));
+    if (staticValueLength < 13)
+        staticValueLength = 13;
+    const staticValueRemainder = staticValueLength - 13;
+    if (staticValueRemainder > 0) {
+        staticValueRemainder = randomBytes(staticValueRemainder);
+    } else {
+        staticValueRemainder = Buffer.alloc(0);
+    }
+
+    for (let i = 0; i < totalMessageCnt; i++) {
         /* Generate a different random value for each message */
         messages[i] = {
-            value: Buffer.concat([staticValue, randomBytes(msgSize - staticValue.length)]),
+            value: Buffer.concat([staticValueRemainder, randomBytes(msgSize - staticValueLength)]),
         };
     }
 
@@ -83,7 +93,7 @@ async function runProducer(parameters, topic, batchSize, warmupMessages, totalMe
     while (warmupMessages > 0) {
         await producer.send({
             topic,
-            messages,
+            messages: messages.slice(0, batchSize),
             compression: CompressionTypes[compression],
         });
         warmupMessages -= batchSize;
@@ -102,9 +112,15 @@ async function runProducer(parameters, topic, batchSize, warmupMessages, totalMe
     while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
         let messagesNotAwaited = 0;
         while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
+            const modifiedMessages = [];
+            for (const msg of messages.slice(messagesDispatched, messagesDispatched + batchSize)) {
+                modifiedMessages.push({ 
+                    value: Buffer.concat([encoder.encode(Date.now().toString()), msg.value])
+                });
+            }
             promises.push(producer.send({
                 topic,
-                messages,
+                messages: modifiedMessages,
                 compression: CompressionTypes[compression],
             }).then(() => {
                 totalMessagesSent += batchSize;
