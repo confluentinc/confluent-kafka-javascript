@@ -42,18 +42,22 @@ function belowTarget(value, target) {
 
 // Run performance tests and store outputs in memory
 console.log('Running Confluent Producer/Consumer test...');
-const outputConfluentProducerConsumer = runCommand('MODE=confluent MESSAGE_COUNT=50000 node performance-consolidated.js --create-topics --consumer --producer');
+const messageCount = process.env.MESSAGE_COUNT ? +process.env.MESSAGE_COUNT : 50000;
+const skipCtpTest = process.env.SKIP_CTP_TEST ? process.env.SKIP_CTP_TEST === 'true' : false;
+const outputConfluentProducerConsumer = runCommand(`MODE=confluent MESSAGE_COUNT=${messageCount} node performance-consolidated.js --create-topics --consumer --producer`);
 
 console.log('Running KafkaJS Producer/Consumer test...');
-const outputKjsProducerConsumer = runCommand('MODE=kafkajs MESSAGE_COUNT=50000 node performance-consolidated.js --create-topics --consumer --producer');
+const outputKjsProducerConsumer = runCommand(`MODE=kafkajs MESSAGE_COUNT=${messageCount} node performance-consolidated.js --create-topics --consumer --producer`);
 
 console.log('Running Confluent CTP test...');
 const outputConfluentCtp = runCommand('MODE=confluent MESSAGE_COUNT=5000 node performance-consolidated.js --create-topics --ctp');
 
 console.log('Running KafkaJS CTP test...');
-const outputKjsCtp = runCommand('MODE=kafkajs MESSAGE_COUNT=5000 node performance-consolidated.js --create-topics --ctp');
+const outputKjsCtp = skipCtpTest ? '' :
+  runCommand('MODE=kafkajs MESSAGE_COUNT=5000 node performance-consolidated.js --create-topics --ctp');
 
 // Extract Confluent results
+let ctpConfluent, ctpKjs;
 const producerConfluent = extractValue(outputConfluentProducerConsumer, '=== Producer Rate:');
 const consumerConfluentMessage = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate (eachMessage):');
 const consumerConfluentTime = extractValue(outputConfluentProducerConsumer, '=== Consumption time (eachMessage):');
@@ -63,7 +67,9 @@ const consumerConfluentBatchAverageLag = extractValue(outputConfluentProducerCon
 const consumerConfluentBatchMaxLag = extractValue(outputConfluentProducerConsumer, '=== Max eachBatch lag:');
 const consumerConfluentAverageRSS = extractValue(outputConfluentProducerConsumer, '=== Max Average RSS across tests:');
 const consumerConfluentMaxRSS = extractValue(outputConfluentProducerConsumer, '=== Max RSS across tests:');
-const ctpConfluent = extractValue(outputConfluentCtp, '=== Consume-Transform-Produce Rate:');
+if (!skipCtpTest) {
+  ctpConfluent = extractValue(outputConfluentCtp, '=== Consume-Transform-Produce Rate:');
+}
 
 // Extract KafkaJS results
 const producerKjs = extractValue(outputKjsProducerConsumer, '=== Producer Rate:');
@@ -75,7 +81,9 @@ const consumerKjsBatchAverageLag = extractValue(outputKjsProducerConsumer, '=== 
 const consumerKjsBatchMaxLag = extractValue(outputKjsProducerConsumer, '=== Max eachBatch lag:');
 const consumerKjsAverageRSS = extractValue(outputKjsProducerConsumer, '=== Max Average RSS across tests:');
 const consumerKjsMaxRSS = extractValue(outputKjsProducerConsumer, '=== Max RSS across tests:');
-const ctpKjs = extractValue(outputKjsCtp, '=== Consume-Transform-Produce Rate:');
+if (!skipCtpTest) {
+  ctpKjs = extractValue(outputKjsCtp, '=== Consume-Transform-Produce Rate:');
+}
 
 // Print results
 console.log(`Producer rates: confluent ${producerConfluent}, kafkajs ${producerKjs}`);
@@ -87,7 +95,9 @@ console.log(`Average eachBatch lag: confluent ${consumerConfluentBatchAverageLag
 console.log(`Max eachBatch lag: confluent ${consumerConfluentBatchMaxLag}, kafkajs ${consumerKjsBatchMaxLag}`);
 console.log(`Average RSS: confluent ${consumerConfluentAverageRSS}, kafkajs ${consumerKjsAverageRSS}`);
 console.log(`Max RSS: confluent ${consumerConfluentMaxRSS}, kafkajs ${consumerKjsMaxRSS}`);
-console.log(`CTP rates: confluent ${ctpConfluent}, kafkajs ${ctpKjs}`);
+if (!skipCtpTest) {
+  console.log(`CTP rates: confluent ${ctpConfluent}, kafkajs ${ctpKjs}`);
+}
 
 let errcode = 0;
 const maxPerformanceDifference = 0.7;
@@ -121,7 +131,7 @@ if (belowThreshold(consumerKjsBatchTime, consumerConfluentBatchTime, maxPerforma
   errcode = 0;
 }
 
-if (belowThreshold(ctpConfluent, ctpKjs, maxPerformanceDifference)) {
+if (!skipCtpTest && belowThreshold(ctpConfluent, ctpKjs, maxPerformanceDifference)) {
   console.log(`CTP rates differ by more than 30%: confluent ${ctpConfluent}, kafkajs ${ctpKjs}`);
   errcode = 1;
 }
@@ -141,7 +151,7 @@ if (belowTarget(consumerConfluentMessage, TARGET_CONSUME)) {
   errcode = 1;
 }
 
-if (belowTarget(ctpConfluent, TARGET_CTP)) {
+if (!skipCtpTest && belowTarget(ctpConfluent, TARGET_CTP)) {
   console.log(`Confluent CTP rate is below target: ${ctpConfluent}`);
   errcode = 1;
 }

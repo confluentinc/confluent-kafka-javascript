@@ -5,7 +5,9 @@ let runProducer, runConsumer, runConsumeTransformProduce, runCreateTopics, runPr
 if (mode === 'confluent') {
     ({ runProducer, runConsumer, runConsumeTransformProduce, runCreateTopics, runProducerConsumerTogether } = require('./performance-primitives'));
 } else {
-    ({ runProducer, runConsumer, runConsumeTransformProduce, runCreateTopics, runProducerConsumerTogether } = require('./performance-primitives-kafkajs'));
+    ({ runProducer, runConsumer, runConsumeTransformProduce, runProducerConsumerTogether } = require('./performance-primitives-kafkajs'));
+    /* createTopics is more reliable in CKJS */
+    ({ runCreateTopics } = require('./performance-primitives'));
 }
 
 const brokers = process.env.KAFKA_BROKERS || 'localhost:9092';
@@ -18,6 +20,7 @@ const messageCount = process.env.MESSAGE_COUNT ? +process.env.MESSAGE_COUNT : 10
 const messageSize = process.env.MESSAGE_SIZE ? +process.env.MESSAGE_SIZE : 256;
 const batchSize = process.env.BATCH_SIZE ? +process.env.BATCH_SIZE : 100;
 const compression = process.env.COMPRESSION || 'None';
+const numPartitions = process.env.PARTITIONS ? +process.env.PARTITIONS : 3;
 const warmupMessages = process.env.WARMUP_MESSAGES ? +process.env.WARMUP_MESSAGES : (batchSize * 10);
 const messageProcessTimeMs = process.env.MESSAGE_PROCESS_TIME_MS ? +process.env.MESSAGE_PROCESS_TIME_MS : 5;
 const ctpConcurrency = process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY ? +process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY : 1;
@@ -92,7 +95,7 @@ function logParameters(parameters) {
         logParameters(parameters);
         console.log(`  Topic: ${topic}`);
         console.log(`  Topic2: ${topic2}`);
-        await runCreateTopics(parameters, topic, topic2);
+        await runCreateTopics(parameters, topic, topic2, numPartitions);
     }
 
     if (producer || all) {
