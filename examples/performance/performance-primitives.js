@@ -69,7 +69,7 @@ async function runProducer(parameters, topic, batchSize, warmupMessages, totalMe
     let staticValueLength = Math.floor(msgSize * (1 - randomness));
     if (staticValueLength < 13)
         staticValueLength = 13;
-    const staticValueRemainder = staticValueLength - 13;
+    let staticValueRemainder = staticValueLength - 13;
     if (staticValueRemainder > 0) {
         staticValueRemainder = randomBytes(staticValueRemainder);
     } else {
