@@ -23,7 +23,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         const sentAt = Number(decoder.decode(message.value.slice(0, 13)));
         const latency = receivedAt - sentAt;
 
-        if (stats.maxLatency === undefined) {
+        if (!stats.maxLatency) {
             stats.maxLatency = latency;
             stats.avgLatency = latency;
         } else {
