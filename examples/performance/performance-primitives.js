@@ -41,7 +41,7 @@ async function runCreateTopics(parameters, topic, topic2, numPartitions) {
             topics: [{ topic: t, numPartitions }],
         }).catch(console.error);
         if (topicCreated) {
-            console.log(`Created topic ${t}`);
+            console.log(`Created topic ${t} with ${numPartitions} partitions`);
             continue;
         }
 
@@ -53,7 +53,7 @@ async function runCreateTopics(parameters, topic, topic2, numPartitions) {
                 { topic: t, numPartitions },
             ],
         }).catch(console.error);
-        console.log(`Created topic ${t}`);
+        console.log(`Created topic ${t} with ${numPartitions} partitions`);
         await new Promise(resolve => setTimeout(resolve, 1000)); /* Propagate. */
     }
 
