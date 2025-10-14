@@ -30,7 +30,7 @@ function baseConfiguration(parameters) {
     return ret;
 }
 
-async function runCreateTopics(parameters, topic, topic2) {
+async function runCreateTopics(parameters, topic, topic2, numPartitions) {
     const kafka = new Kafka(baseConfiguration(parameters));
 
     const admin = kafka.admin();
@@ -38,7 +38,7 @@ async function runCreateTopics(parameters, topic, topic2) {
 
     for (let t of [topic, topic2]) {
         let topicCreated = await admin.createTopics({
-            topics: [{ topic: t, numPartitions: 3 }],
+            topics: [{ topic: t, numPartitions }],
         }).catch(console.error);
         if (topicCreated) {
             console.log(`Created topic ${t}`);
@@ -50,7 +50,7 @@ async function runCreateTopics(parameters, topic, topic2) {
         await new Promise(resolve => setTimeout(resolve, 1000)); /* Propagate. */
         await admin.createTopics({
             topics: [
-                { topic: t, numPartitions: 3 },
+                { topic: t, numPartitions },
             ],
         }).catch(console.error);
         console.log(`Created topic ${t}`);
@@ -98,6 +98,7 @@ async function runProducer(parameters, topic, batchSize, warmupMessages, totalMe
     // await them all at once. We need the second while loop to keep sending
     // in case of queue full errors, which surface only on awaiting.
     while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
+        let messagesNotAwaited = 0;
         while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
             promises.push(producer.send({
                 topic,
@@ -115,8 +116,12 @@ async function runProducer(parameters, topic, batchSize, warmupMessages, totalMe
                 }
             }));
             messagesDispatched += batchSize;
+            messagesNotAwaited += batchSize;
+            if (messagesNotAwaited >= 10000)
+                break;
         }
         await Promise.all(promises);
+        promises = [];
     }
     let elapsed = hrtime(startTime);
     let durationNanos = elapsed[0] * 1e9 + elapsed[1];
