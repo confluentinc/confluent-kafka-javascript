@@ -306,9 +306,85 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     return rate;
 }
 
+async function runLagMonitoring(admin, topic) {
+    const handlers = installHandlers();
+    let groupId = process.env.GROUPID_MONITOR;
+    if (!groupId) {
+        throw new Error("GROUPID_MONITOR environment variable not set");
+    }
+
+    await admin.connect();
+
+    const fetchTotalLag = async () => {
+        const partitionCompleteLag = {};
+        const partitionHWM = {};
+        const partitionLag = {};
+        let totalLag = 0n;
+        const operations = [
+            admin.fetchTopicOffsets(topic, { timeout: 30000 }),
+            admin.fetchOffsets({ groupId, topics: [topic], timeout: 30000 }),
+        ]
+        let [topicOffsets, groupOffsets] = await Promise.all(operations);
+        groupOffsets = groupOffsets[0];
+
+        for (const partitionOffset of topicOffsets) {
+            partitionHWM[partitionOffset.partition] = BigInt(partitionOffset.high);
+            partitionCompleteLag[partitionOffset.partition] = BigInt(partitionOffset.high) - BigInt(partitionOffset.low);
+        }
+        
+        if (groupOffsets && groupOffsets.partitions) {
+            for (const partitionOffset of groupOffsets.partitions) {
+                const partition = partitionOffset.partition;
+                const hwm = partitionHWM[partition];
+                if (hwm && partitionOffset.offset && hwm >= BigInt(partitionOffset.offset)) {
+                    const currentLag = hwm - BigInt(partitionOffset.offset);
+                    partitionLag[partition] = currentLag;
+                    totalLag += currentLag;
+                }
+            }
+        } else {
+            throw new Error(`No offsets found for group ${groupId} on topic ${topic}`);
+        }
+        for (const partition of Object.keys(partitionHWM)) {
+            if (partitionLag[partition] === undefined) {
+                const currentLag = partitionCompleteLag[partition];
+                partitionLag[partition] = currentLag;
+                totalLag += currentLag;
+            }
+        }
+        return totalLag;
+    }
+
+    let totalAverageLag = 0n;
+    let maxLag = 0n;
+    let totalMeasurements = 0;
+
+    while (!handlers.terminationRequested) {
+        try {
+            const lag = await fetchTotalLag();
+            console.log(`Total lag for group ${groupId} on topic ${topic} is ${lag} messages`);
+            totalAverageLag += lag;
+            maxLag = lag > maxLag ? lag : maxLag;
+            totalMeasurements++;
+        } catch (e) {
+            console.error(`Error fetching lag: ${e}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const averageLag = totalMeasurements > 0 ? (Number(totalAverageLag) / totalMeasurements) : NaN;
+
+    await admin.disconnect();
+    removeHandlers(handlers);
+    return {
+        averageLag,
+        maxLag
+    };
+}
+
 module.exports = {
     runConsumer,
     runProducer,
+    runLagMonitoring,
     genericProduceToTopic,
     getAutoCommit,
 };
