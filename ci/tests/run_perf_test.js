@@ -44,10 +44,20 @@ function belowTarget(value, target) {
 console.log('Running Confluent Producer/Consumer test...');
 const messageCount = process.env.MESSAGE_COUNT ? +process.env.MESSAGE_COUNT : 50000;
 const skipCtpTest = process.env.SKIP_CTP_TEST ? process.env.SKIP_CTP_TEST === 'true' : false;
-const outputConfluentProducerConsumer = runCommand(`MODE=confluent MESSAGE_COUNT=${messageCount} node performance-consolidated.js --create-topics --consumer --producer`);
+const consumerMode = process.env.CONSUMER_MODE || 'all';
+const consumerModeAll = consumerMode === 'all';
+const consumerModeEachMessage = consumerMode === 'eachMessage';
+const consumerModeEachBatch = consumerMode === 'eachBatch';
+let consumerParam = '--consumer';
+if (consumerModeEachMessage) {
+  consumerParam = '--consumer-each-message';
+} else if (consumerModeEachBatch) {
+  consumerParam = '--consumer-each-batch';
+}
+const outputConfluentProducerConsumer = runCommand(`MODE=confluent MESSAGE_COUNT=${messageCount} node performance-consolidated.js --create-topics ${consumerParam} --producer`);
 
 console.log('Running KafkaJS Producer/Consumer test...');
-const outputKjsProducerConsumer = runCommand(`MODE=kafkajs MESSAGE_COUNT=${messageCount} node performance-consolidated.js --create-topics --consumer --producer`);
+const outputKjsProducerConsumer = runCommand(`MODE=kafkajs MESSAGE_COUNT=${messageCount} node performance-consolidated.js --create-topics ${consumerParam} --producer`);
 
 console.log('Running Confluent CTP test...');
 const outputConfluentCtp = skipCtpTest ? '' :
@@ -59,20 +69,38 @@ const outputKjsCtp = skipCtpTest ? '' :
 
 // Extract Confluent results
 let ctpConfluent, ctpKjs;
+let consumerConfluentMessage;
+let consumerConfluentMessageRate;
+let consumerConfluentMessageAvgLatency;
+let consumerConfluentMessageMaxLatency;
+let consumerConfluentTime;
+let consumerConfluentBatch;
+let consumerConfluentBatchRate;
+let consumerConfluentBatchAvgLatency;
+let consumerConfluentBatchMaxLatency;
+let consumerConfluentBatchTime;
+let consumerConfluentBatchAverageLag;
+let consumerConfluentBatchMaxLag;
+let consumerConfluentBatchAverageSize;
+
 const producerConfluent = extractValue(outputConfluentProducerConsumer, '=== Producer Rate:');
-const consumerConfluentMessage = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate MB/s (eachMessage):');
-const consumerConfluentMessageRate = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate msg/s (eachMessage):');
-const consumerConfluentMessageAvgLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer average E2E latency (eachMessage):');
-const consumerConfluentMessageMaxLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer max E2E latency (eachMessage):');
-const consumerConfluentTime = extractValue(outputConfluentProducerConsumer, '=== Consumption time (eachMessage):');
-const consumerConfluentBatch = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate MB/s (eachBatch):');
-const consumerConfluentBatchRate = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate msg/s (eachBatch):');
-const consumerConfluentBatchAvgLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer average E2E latency (eachBatch):');
-const consumerConfluentBatchMaxLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer max E2E latency (eachBatch):');
-const consumerConfluentBatchTime = extractValue(outputConfluentProducerConsumer, '=== Consumption time (eachBatch):');
-const consumerConfluentBatchAverageLag = extractValue(outputConfluentProducerConsumer, '=== Average eachBatch lag:');
-const consumerConfluentBatchMaxLag = extractValue(outputConfluentProducerConsumer, '=== Max eachBatch lag:');
-const consumerConfluentBatchAverageSize = extractValue(outputConfluentProducerConsumer, '=== Average eachBatch size:');
+if (consumerModeAll || consumerModeEachMessage) {
+  consumerConfluentMessage = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate MB/s (eachMessage):');
+  consumerConfluentMessageRate = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate msg/s (eachMessage):');
+  consumerConfluentMessageAvgLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer average E2E latency (eachMessage):');
+  consumerConfluentMessageMaxLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer max E2E latency (eachMessage):');
+  consumerConfluentTime = extractValue(outputConfluentProducerConsumer, '=== Consumption time (eachMessage):');
+}
+if (consumerModeAll || consumerModeEachBatch) {
+  consumerConfluentBatch = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate MB/s (eachBatch):');
+  consumerConfluentBatchRate = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate msg/s (eachBatch):');
+  consumerConfluentBatchAvgLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer average E2E latency (eachBatch):');
+  consumerConfluentBatchMaxLatency = extractValue(outputConfluentProducerConsumer, '=== Consumer max E2E latency (eachBatch):');
+  consumerConfluentBatchTime = extractValue(outputConfluentProducerConsumer, '=== Consumption time (eachBatch):');
+  consumerConfluentBatchAverageLag = extractValue(outputConfluentProducerConsumer, '=== Average eachBatch lag:');
+  consumerConfluentBatchMaxLag = extractValue(outputConfluentProducerConsumer, '=== Max eachBatch lag:');
+  consumerConfluentBatchAverageSize = extractValue(outputConfluentProducerConsumer, '=== Average eachBatch size:');
+}
 const consumerConfluentAverageRSS = extractValue(outputConfluentProducerConsumer, '=== Max Average RSS across tests:');
 const consumerConfluentMaxRSS = extractValue(outputConfluentProducerConsumer, '=== Max RSS across tests:');
 if (!skipCtpTest) {
@@ -80,20 +108,37 @@ if (!skipCtpTest) {
 }
 
 // Extract KafkaJS results
+let consumerKjsMessage;
+let consumerKjsMessageRate;
+let consumerKjsMessageAvgLatency;
+let consumerKjsMessageMaxLatency;
+let consumerKjsTime;
+let consumerKjsBatch;
+let consumerKjsBatchRate;
+let consumerKjsBatchAvgLatency;
+let consumerKjsBatchMaxLatency;
+let consumerKjsBatchTime;
+let consumerKjsBatchAverageLag;
+let consumerKjsBatchMaxLag;
+let consumerKjsBatchAverageSize;
 const producerKjs = extractValue(outputKjsProducerConsumer, '=== Producer Rate:');
-const consumerKjsMessage = extractValue(outputKjsProducerConsumer, '=== Consumer Rate MB/s (eachMessage):');
-const consumerKjsMessageRate = extractValue(outputKjsProducerConsumer, '=== Consumer Rate msg/s (eachMessage):');
-const consumerKjsMessageAvgLatency = extractValue(outputKjsProducerConsumer, '=== Consumer average E2E latency (eachMessage):');
-const consumerKjsMessageMaxLatency = extractValue(outputKjsProducerConsumer, '=== Consumer max E2E latency (eachMessage):');
-const consumerKjsTime = extractValue(outputKjsProducerConsumer, '=== Consumption time (eachMessage):');
-const consumerKjsBatch = extractValue(outputKjsProducerConsumer, '=== Consumer Rate MB/s (eachBatch):');
-const consumerKjsBatchRate = extractValue(outputKjsProducerConsumer, '=== Consumer Rate msg/s (eachBatch):');
-const consumerKjsBatchAvgLatency = extractValue(outputKjsProducerConsumer, '=== Consumer average E2E latency (eachBatch):');
-const consumerKjsBatchMaxLatency = extractValue(outputKjsProducerConsumer, '=== Consumer max E2E latency (eachBatch):');
-const consumerKjsBatchTime = extractValue(outputKjsProducerConsumer, '=== Consumption time (eachBatch):');
-const consumerKjsBatchAverageLag = extractValue(outputKjsProducerConsumer, '=== Average eachBatch lag:');
-const consumerKjsBatchMaxLag = extractValue(outputKjsProducerConsumer, '=== Max eachBatch lag:');
-const consumerKjsBatchAverageSize = extractValue(outputKjsProducerConsumer, '=== Average eachBatch size:');
+if (consumerModeAll || consumerModeEachMessage) {
+  consumerKjsMessage = extractValue(outputKjsProducerConsumer, '=== Consumer Rate MB/s (eachMessage):');
+  consumerKjsMessageRate = extractValue(outputKjsProducerConsumer, '=== Consumer Rate msg/s (eachMessage):');
+  consumerKjsMessageAvgLatency = extractValue(outputKjsProducerConsumer, '=== Consumer average E2E latency (eachMessage):');
+  consumerKjsMessageMaxLatency = extractValue(outputKjsProducerConsumer, '=== Consumer max E2E latency (eachMessage):');
+}
+if (consumerModeAll || consumerModeEachBatch) {
+  consumerKjsTime = extractValue(outputKjsProducerConsumer, '=== Consumption time (eachMessage):');
+  consumerKjsBatch = extractValue(outputKjsProducerConsumer, '=== Consumer Rate MB/s (eachBatch):');
+  consumerKjsBatchRate = extractValue(outputKjsProducerConsumer, '=== Consumer Rate msg/s (eachBatch):');
+  consumerKjsBatchAvgLatency = extractValue(outputKjsProducerConsumer, '=== Consumer average E2E latency (eachBatch):');
+  consumerKjsBatchMaxLatency = extractValue(outputKjsProducerConsumer, '=== Consumer max E2E latency (eachBatch):');
+  consumerKjsBatchTime = extractValue(outputKjsProducerConsumer, '=== Consumption time (eachBatch):');
+  consumerKjsBatchAverageLag = extractValue(outputKjsProducerConsumer, '=== Average eachBatch lag:');
+  consumerKjsBatchMaxLag = extractValue(outputKjsProducerConsumer, '=== Max eachBatch lag:');
+  consumerKjsBatchAverageSize = extractValue(outputKjsProducerConsumer, '=== Average eachBatch size:');
+}
 const consumerKjsAverageRSS = extractValue(outputKjsProducerConsumer, '=== Max Average RSS across tests:');
 const consumerKjsMaxRSS = extractValue(outputKjsProducerConsumer, '=== Max RSS across tests:');
 if (!skipCtpTest) {
@@ -102,19 +147,23 @@ if (!skipCtpTest) {
 
 // Print results
 console.log(`Producer rates: confluent ${producerConfluent}, kafkajs ${producerKjs}`);
-console.log(`Consumer rates MB/s (eachMessage): confluent ${consumerConfluentMessage}, kafkajs ${consumerKjsMessage}`);
-console.log(`Consumer rates msg/s (eachMessage): confluent ${consumerConfluentMessageRate}, kafkajs ${consumerKjsMessageRate}`);
-console.log(`Consumer average E2E latency (eachMessage): confluent ${consumerConfluentMessageAvgLatency}, kafkajs ${consumerKjsMessageAvgLatency}`);
-console.log(`Consumer max E2E latency (eachMessage): confluent ${consumerConfluentMessageMaxLatency}, kafkajs ${consumerKjsMessageMaxLatency}`);
-console.log(`Consumption time (eachMessage): confluent ${consumerConfluentTime}, kafkajs ${consumerKjsTime}`);
-console.log(`Consumer rates MB/s (eachBatch): confluent ${consumerConfluentBatch}, kafkajs ${consumerKjsBatch}`);
-console.log(`Consumer rates msg/s (eachBatch): confluent ${consumerConfluentBatchRate}, kafkajs ${consumerKjsBatchRate}`);
-console.log(`Consumer average E2E latency (eachBatch): confluent ${consumerConfluentBatchAvgLatency}, kafkajs ${consumerKjsBatchAvgLatency}`);
-console.log(`Consumer max E2E latency (eachBatch): confluent ${consumerConfluentBatchMaxLatency}, kafkajs ${consumerKjsBatchMaxLatency}`);
-console.log(`Consumption time (eachBatch): confluent ${consumerConfluentBatchTime}, kafkajs ${consumerKjsBatchTime}`);
-console.log(`Average eachBatch lag: confluent ${consumerConfluentBatchAverageLag}, kafkajs ${consumerKjsBatchAverageLag}`);
-console.log(`Max eachBatch lag: confluent ${consumerConfluentBatchMaxLag}, kafkajs ${consumerKjsBatchMaxLag}`);
-console.log(`Average eachBatch size: confluent ${consumerConfluentBatchAverageSize}, kafkajs ${consumerKjsBatchAverageSize}`);
+if (consumerModeAll || consumerModeEachMessage) {
+  console.log(`Consumer rates MB/s (eachMessage): confluent ${consumerConfluentMessage}, kafkajs ${consumerKjsMessage}`);
+  console.log(`Consumer rates msg/s (eachMessage): confluent ${consumerConfluentMessageRate}, kafkajs ${consumerKjsMessageRate}`);
+  console.log(`Consumer average E2E latency (eachMessage): confluent ${consumerConfluentMessageAvgLatency}, kafkajs ${consumerKjsMessageAvgLatency}`);
+  console.log(`Consumer max E2E latency (eachMessage): confluent ${consumerConfluentMessageMaxLatency}, kafkajs ${consumerKjsMessageMaxLatency}`);
+  console.log(`Consumption time (eachMessage): confluent ${consumerConfluentTime}, kafkajs ${consumerKjsTime}`);
+}
+if (consumerModeAll || consumerModeEachBatch) {
+  console.log(`Consumer rates MB/s (eachBatch): confluent ${consumerConfluentBatch}, kafkajs ${consumerKjsBatch}`);
+  console.log(`Consumer rates msg/s (eachBatch): confluent ${consumerConfluentBatchRate}, kafkajs ${consumerKjsBatchRate}`);
+  console.log(`Consumer average E2E latency (eachBatch): confluent ${consumerConfluentBatchAvgLatency}, kafkajs ${consumerKjsBatchAvgLatency}`);
+  console.log(`Consumer max E2E latency (eachBatch): confluent ${consumerConfluentBatchMaxLatency}, kafkajs ${consumerKjsBatchMaxLatency}`);
+  console.log(`Consumption time (eachBatch): confluent ${consumerConfluentBatchTime}, kafkajs ${consumerKjsBatchTime}`);
+  console.log(`Average eachBatch lag: confluent ${consumerConfluentBatchAverageLag}, kafkajs ${consumerKjsBatchAverageLag}`);
+  console.log(`Max eachBatch lag: confluent ${consumerConfluentBatchMaxLag}, kafkajs ${consumerKjsBatchMaxLag}`);
+  console.log(`Average eachBatch size: confluent ${consumerConfluentBatchAverageSize}, kafkajs ${consumerKjsBatchAverageSize}`);
+}
 console.log(`Average RSS: confluent ${consumerConfluentAverageRSS}, kafkajs ${consumerKjsAverageRSS}`);
 console.log(`Max RSS: confluent ${consumerConfluentMaxRSS}, kafkajs ${consumerKjsMaxRSS}`);
 if (!skipCtpTest) {
@@ -130,27 +179,31 @@ if (belowThreshold(producerConfluent, producerKjs, maxPerformanceDifference)) {
   errcode = 1;
 }
 
-if (belowThreshold(consumerConfluentMessage, consumerKjsMessage, maxPerformanceDifference)) {
-  console.log(`Consumer rates MB/s (eachMessage) differ by more than 30%: confluent ${consumerConfluentMessage}, kafkajs ${consumerKjsMessage}`);
-  // FIXME: improve consumer performance at least to KafkaJS level
-  errcode = 0;
+if (consumerModeAll || consumerModeEachMessage) {
+  if (belowThreshold(consumerConfluentMessage, consumerKjsMessage, maxPerformanceDifference)) {
+    console.log(`Consumer rates MB/s (eachMessage) differ by more than 30%: confluent ${consumerConfluentMessage}, kafkajs ${consumerKjsMessage}`);
+    // FIXME: improve consumer performance at least to KafkaJS level
+    errcode = 0;
+  }
+
+  // Lower is better for time
+  if (belowThreshold(consumerKjsTime, consumerConfluentTime, maxPerformanceDifference)) {
+    console.log(`Consumption time (eachMessage) differ by more than 30%: confluent ${consumerConfluentTime}, kafkajs ${consumerKjsTime}`);
+    errcode = 0;
+  }
 }
 
-// Lower is better for time
-if (belowThreshold(consumerKjsTime, consumerConfluentTime, maxPerformanceDifference)) {
-  console.log(`Consumption time (eachMessage) differ by more than 30%: confluent ${consumerConfluentTime}, kafkajs ${consumerKjsTime}`);
-  errcode = 0;
-}
+if (consumerModeAll || consumerModeEachBatch) {
+  if (belowThreshold(consumerConfluentBatch, consumerKjsBatch, maxPerformanceDifference)) {
+    console.log(`Consumer rates (eachBatch) differ by more than 30%: confluent ${consumerConfluentBatch}, kafkajs ${consumerKjsBatch}`);
+    errcode = 0;
+  }
 
-if (belowThreshold(consumerConfluentBatch, consumerKjsBatch, maxPerformanceDifference)) {
-  console.log(`Consumer rates (eachBatch) differ by more than 30%: confluent ${consumerConfluentBatch}, kafkajs ${consumerKjsBatch}`);
-  errcode = 0;
-}
-
-// Lower is better for time
-if (belowThreshold(consumerKjsBatchTime, consumerConfluentBatchTime, maxPerformanceDifference)) {
-  console.log(`Consumption time (eachBatch) differ by more than 30%: confluent ${consumerConfluentBatchTime}, kafkajs ${consumerKjsBatchTime}`);
-  errcode = 0;
+  // Lower is better for time
+  if (belowThreshold(consumerKjsBatchTime, consumerConfluentBatchTime, maxPerformanceDifference)) {
+    console.log(`Consumption time (eachBatch) differ by more than 30%: confluent ${consumerConfluentBatchTime}, kafkajs ${consumerKjsBatchTime}`);
+    errcode = 0;
+  }
 }
 
 if (!skipCtpTest && belowThreshold(ctpConfluent, ctpKjs, maxPerformanceDifference)) {
@@ -168,8 +221,13 @@ if (belowTarget(producerConfluent, TARGET_PRODUCE)) {
   errcode = 1;
 }
 
-if (belowTarget(consumerConfluentMessage, TARGET_CONSUME)) {
-  console.log(`Confluent consumer rate is below target: ${consumerConfluentMessage}`);
+if ((consumerModeAll || consumerModeEachMessage) && belowTarget(consumerConfluentMessage, TARGET_CONSUME)) {
+  console.log(`Confluent consumer rate (eachMessage) is below target: ${consumerConfluentMessage}`);
+  errcode = 1;
+}
+
+if ((consumerModeAll || consumerModeEachBatch) && belowTarget(consumerConfluentBatch, TARGET_CONSUME)) {
+  console.log(`Confluent consumer rate (eachBatch) is below target: ${consumerConfluentBatch}`);
   errcode = 1;
 }
 

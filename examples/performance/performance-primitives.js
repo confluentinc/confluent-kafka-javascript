@@ -1,7 +1,11 @@
 const { Kafka, ErrorCodes, CompressionTypes } = require('../../').KafkaJS;
 const { randomBytes } = require('crypto');
 const { hrtime } = require('process');
-const { runConsumer: runConsumerCommon } = require('./performance-primitives-common');
+const {
+    runConsumer: runConsumerCommon,
+    runProducer: runProducerCommon,
+    genericProduceToTopic,
+ } = require('./performance-primitives-common');
 
 module.exports = {
     runProducer,
@@ -60,95 +64,37 @@ async function runCreateTopics(parameters, topic, topic2, numPartitions) {
     await admin.disconnect();
 }
 
-async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness) {
-    let totalMessagesSent = 0;
-    let totalBytesSent = 0;
-
-    const messages = Array(totalMessageCnt);
-    const encoder = new TextEncoder();
-    let staticValueLength = Math.floor(msgSize * (1 - randomness));
-    if (staticValueLength < 13)
-        staticValueLength = 13;
-    let staticValueRemainder = staticValueLength - 13;
-    if (staticValueRemainder > 0) {
-        staticValueRemainder = randomBytes(staticValueRemainder);
-    } else {
-        staticValueRemainder = Buffer.alloc(0);
+class CompatibleProducer {
+    constructor(producer) {
+        this.producer = producer;
     }
 
-    for (let i = 0; i < totalMessageCnt; i++) {
-        /* Generate a different random value for each message */
-        messages[i] = {
-            value: Buffer.concat([staticValueRemainder, randomBytes(msgSize - staticValueLength)]),
-        };
+    async connect() {
+        return this.producer.connect();
     }
 
-    const kafka = new Kafka({
+    async disconnect() {
+        return this.producer.disconnect();
+    }
+
+    isQueueFullError(err) {
+        return err.code === ErrorCodes.ERR__QUEUE_FULL;
+    }
+
+    send(opts) {
+        return this.producer.send(opts);
+    }
+}
+function newCompatibleProducer(parameters, compression) {
+    return new CompatibleProducer(
+        new Kafka({
         ...baseConfiguration(parameters),
         'compression.codec': CompressionTypes[compression],
-    });
+    }).producer());
+}
 
-    const producer = kafka.producer();
-    await producer.connect();
-
-    console.log('Sending ' + warmupMessages + ' warmup messages.');
-    while (warmupMessages > 0) {
-        await producer.send({
-            topic,
-            messages: messages.slice(0, batchSize),
-        });
-        warmupMessages -= batchSize;
-    }
-    console.log('Sent warmup messages');
-
-    // Now that warmup is done, start measuring...
-    let startTime;
-    let promises = [];
-    startTime = hrtime();
-    let messagesDispatched = 0;
-
-    // The double while-loop allows us to send a bunch of messages and then
-    // await them all at once. We need the second while loop to keep sending
-    // in case of queue full errors, which surface only on awaiting.
-    while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
-        let messagesNotAwaited = 0;
-        while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
-            const modifiedMessages = [];
-            for (const msg of messages.slice(messagesDispatched, messagesDispatched + batchSize)) {
-                modifiedMessages.push({ 
-                    value: Buffer.concat([encoder.encode(Date.now().toString()), msg.value])
-                });
-            }
-            promises.push(producer.send({
-                topic,
-                messages: modifiedMessages,
-            }).then(() => {
-                totalMessagesSent += batchSize;
-                totalBytesSent += batchSize * msgSize;
-            }).catch((err) => {
-                if (err.code === ErrorCodes.ERR__QUEUE_FULL) {
-                    /* do nothing, just send them again */
-                    messagesDispatched -= batchSize;
-                } else {
-                    console.error(err);
-                    throw err;
-                }
-            }));
-            messagesDispatched += batchSize;
-            messagesNotAwaited += batchSize;
-            if (messagesNotAwaited >= 10000)
-                break;
-        }
-        await Promise.all(promises);
-        promises = [];
-    }
-    let elapsed = hrtime(startTime);
-    let durationNanos = elapsed[0] * 1e9 + elapsed[1];
-    let rate = (totalBytesSent / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
-    console.log(`Sent ${totalMessagesSent} messages, ${totalBytesSent} bytes; rate is ${rate} MB/s`);
-
-    await producer.disconnect();
-    return rate;
+async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS) {
+    return runProducerCommon(newCompatibleProducer(parameters, compression), topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS);
 }
 
 class CompatibleConsumer {
@@ -191,8 +137,20 @@ function newCompatibleConsumer(parameters) {
     return new CompatibleConsumer(consumer);
 }
 
-async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats) {
-    return runConsumerCommon(newCompatibleConsumer(parameters), topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats);
+
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression) {
+    let actionOnMessages = null;
+    if (produceToTopic) {
+        const producer = newCompatibleProducer(parameters, produceCompression);
+        await producer.connect();
+        actionOnMessages = (messages) =>
+            genericProduceToTopic(producer, produceToTopic, messages);
+    }
+    const ret = await runConsumerCommon(newCompatibleConsumer(parameters), topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages);
+    if (produceToTopic) {
+        await producer.disconnect();
+    }
+    return ret;
 }
 
 async function runConsumeTransformProduce(parameters, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
