@@ -1008,28 +1008,28 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
         await consumer.subscribe({ topic: topicName });
 
         /* Negative value */
-        expect(() => consumer.run({
+        await expect(consumer.run({
             maxBatchSize: -1,
             eachBatch: async () => { }
-        })).toThrow('maxBatchSize must be a positive integer');
+        })).rejects.toThrow('maxBatchSize must be a positive integer');
 
         /* Zero */
-        expect(() => consumer.run({
+        await expect(consumer.run({
             maxBatchSize: 0,
             eachBatch: async () => { }
-        })).toThrow('maxBatchSize must be a positive integer');
+        })).rejects.toThrow('maxBatchSize must be a positive integer');
 
         /* Non-integer */
-        expect(() => consumer.run({
+        await expect(consumer.run({
             maxBatchSize: 3.5,
             eachBatch: async () => { }
-        })).toThrow('maxBatchSize must be a positive integer');
+        })).rejects.toThrow('maxBatchSize must be a positive integer');
 
         /* Non-number */
-        expect(() => consumer.run({
+        await expect(consumer.run({
             maxBatchSize: 'invalid',
             eachBatch: async () => { }
-        })).toThrow('maxBatchSize must be a positive integer');
+        })).rejects.toThrow('maxBatchSize must be a positive integer');
     });
 
     it('maxBatchSize only affects eachBatch, not eachMessage', async () => {
