@@ -29,6 +29,7 @@ const messageProcessTimeMs = process.env.MESSAGE_PROCESS_TIME_MS ? +process.env.
 const ctpConcurrency = process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY ? +process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY : 1;
 const consumerProcessingTime = process.env.CONSUMER_PROCESSING_TIME ? +process.env.CONSUMER_PROCESSING_TIME : 100;
 const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.env.PRODUCER_PROCESSING_TIME : 100;
+const limitRPS = process.env.LIMIT_RPS ? +process.env.LIMIT_RPS : null;
 const parameters = {
     brokers,
     securityProtocol,
@@ -50,6 +51,9 @@ function logParameters(parameters) {
 (async function () {
     const producer = process.argv.includes('--producer');
     const consumer = process.argv.includes('--consumer');
+    const consumerEachMessage = process.argv.includes('--consumer-each-message');
+    const consumerEachBatch = process.argv.includes('--consumer-each-batch');
+    const produceToSecondTopic = process.argv.includes('--produce-to-second-topic');
     const ctp = process.argv.includes('--ctp');
     const produceConsumeLatency = process.argv.includes('--latency');
     const all = process.argv.includes('--all');
@@ -110,15 +114,17 @@ function logParameters(parameters) {
         console.log(`  Message Size: ${messageSize}`);
         console.log(`  Batch Size: ${batchSize}`);
         console.log(`  Compression: ${compression}`);
+        console.log(`  Limit RPS: ${limitRPS}`);
         console.log(`  Warmup Messages: ${warmupMessages}`);
         startTrackingMemory();
         const producerRate = await runProducer(parameters, topic, batchSize,
-            warmupMessages, messageCount, messageSize, compression, randomness);
+            warmupMessages, messageCount, messageSize, compression,
+            randomness, limitRPS);
         endTrackingMemory(`producer-memory-${mode}.json`);
         console.log("=== Producer Rate: ", producerRate);
     }
 
-    if (consumer || all) {
+    if (consumer || consumerEachMessage || all) {
         // If user runs this without --producer then they are responsible for seeding the topic.
         console.log("=== Running Basic Consumer Performance Test (eachMessage):")
         logParameters(parameters);
@@ -128,7 +134,8 @@ function logParameters(parameters) {
         startTrackingMemory();
         const consumerRate = await runConsumer(parameters, topic,
             warmupMessages, messageCount,
-            false, partitionsConsumedConcurrently, stats);
+            false, partitionsConsumedConcurrently, stats,
+            produceToSecondTopic ? topic2 : null, compression);
         endTrackingMemory(`consumer-memory-message-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachMessage): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachMessage): ", stats.messageRate);
@@ -137,7 +144,7 @@ function logParameters(parameters) {
         console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
     }
 
-    if (consumer || all) {
+    if (consumer || consumerEachBatch || all) {
         // If user runs this without --producer then they are responsible for seeding the topic.
         console.log("=== Running Basic Consumer Performance Test (eachBatch):")
         logParameters(parameters);
@@ -147,7 +154,8 @@ function logParameters(parameters) {
         startTrackingMemory();
         const consumerRate = await runConsumer(parameters, topic,
             warmupMessages, messageCount,
-            true, partitionsConsumedConcurrently, stats);
+            true, partitionsConsumedConcurrently, stats,
+            produceToSecondTopic ? topic2 : null, compression);
         endTrackingMemory(`consumer-memory-batch-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachBatch): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachBatch): ", stats.messageRate);
