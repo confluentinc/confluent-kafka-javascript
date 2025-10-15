@@ -907,4 +907,157 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
         await waitFor(() => (messagesConsumed === (partition0ProducedMessages + messages1.length + messages2.length)), () => { }, 100);
     });
 
+    it('uses default maxBatchSize of 32 when not specified', async () => {
+        await producer.connect();
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+
+        const batchSizes = [];
+        consumer.run({
+            partitionsConsumedConcurrently,
+            eachBatch: async ({ batch }) => {
+                batchSizes.push(batch.messages.length);
+            }
+        });
+
+        /* Produce enough messages to see batch size growth pattern */
+        const messages = Array(128)
+            .fill()
+            .map(() => {
+                const value = secureRandom();
+                return { value: `value-${value}`, partition: 0 };
+            });
+
+        await producer.send({ topic: topicName, messages });
+        await waitFor(() => batchSizes.length >= 7, () => { }, 100);
+
+        /* With default batch size of 32, we should see growth pattern:
+         * 1, 1, 2, 2, 4, 4, 8, 8, 16, 16, 32, 32, ...
+         * The maximum batch size should be capped at 32 */
+        const maxBatchSize = Math.max(...batchSizes);
+        expect(maxBatchSize).toBeLessThanOrEqual(32);
+    });
+
+    it('respects custom maxBatchSize value', async () => {
+        await producer.connect();
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+
+        const customMaxBatchSize = 10;
+        const batchSizes = [];
+        consumer.run({
+            partitionsConsumedConcurrently,
+            maxBatchSize: customMaxBatchSize,
+            eachBatch: async ({ batch }) => {
+                batchSizes.push(batch.messages.length);
+            }
+        });
+
+        /* Produce enough messages to exceed the custom batch size */
+        const messages = Array(64)
+            .fill()
+            .map(() => {
+                const value = secureRandom();
+                return { value: `value-${value}`, partition: 0 };
+            });
+
+        await producer.send({ topic: topicName, messages });
+        await waitFor(() => batchSizes.length >= 5, () => { }, 100);
+
+        /* All batches should be at most customMaxBatchSize */
+        const maxBatchSize = Math.max(...batchSizes);
+        expect(maxBatchSize).toBeLessThanOrEqual(customMaxBatchSize);
+    });
+
+    it('handles large maxBatchSize correctly', async () => {
+        await producer.connect();
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+
+        const customMaxBatchSize = 200;
+        const batchSizes = [];
+        let messagesConsumed = 0;
+        consumer.run({
+            partitionsConsumedConcurrently,
+            maxBatchSize: customMaxBatchSize,
+            eachBatch: async ({ batch }) => {
+                batchSizes.push(batch.messages.length);
+                messagesConsumed += batch.messages.length;
+            }
+        });
+
+        const totalMessages = 150;
+        const messages = Array(totalMessages)
+            .fill()
+            .map(() => {
+                const value = secureRandom();
+                return { value: `value-${value}`, partition: 0 };
+            });
+
+        await producer.send({ topic: topicName, messages });
+        await waitFor(() => messagesConsumed >= totalMessages, () => { }, 100);
+
+        /* All batches should be at most customMaxBatchSize */
+        const maxBatchSize = Math.max(...batchSizes);
+        expect(maxBatchSize).toBeLessThanOrEqual(customMaxBatchSize);
+        expect(messagesConsumed).toEqual(totalMessages);
+    });
+
+    it('throws error when maxBatchSize is not a positive integer', async () => {
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+
+        /* Negative value */
+        expect(() => consumer.run({
+            maxBatchSize: -1,
+            eachBatch: async () => { }
+        })).toThrow('maxBatchSize must be a positive integer');
+
+        /* Zero */
+        expect(() => consumer.run({
+            maxBatchSize: 0,
+            eachBatch: async () => { }
+        })).toThrow('maxBatchSize must be a positive integer');
+
+        /* Non-integer */
+        expect(() => consumer.run({
+            maxBatchSize: 3.5,
+            eachBatch: async () => { }
+        })).toThrow('maxBatchSize must be a positive integer');
+
+        /* Non-number */
+        expect(() => consumer.run({
+            maxBatchSize: 'invalid',
+            eachBatch: async () => { }
+        })).toThrow('maxBatchSize must be a positive integer');
+    });
+
+    it('maxBatchSize only affects eachBatch, not eachMessage', async () => {
+        await producer.connect();
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+
+        const messagesConsumed = [];
+        consumer.run({
+            partitionsConsumedConcurrently,
+            maxBatchSize: 5, /* Should be ignored for eachMessage */
+            eachMessage: async (event) => {
+                messagesConsumed.push(event);
+            }
+        });
+
+        const messages = Array(20)
+            .fill()
+            .map(() => {
+                const value = secureRandom();
+                return { value: `value-${value}`, partition: 0 };
+            });
+
+        await producer.send({ topic: topicName, messages });
+        await waitForMessages(messagesConsumed, { number: messages.length });
+
+        /* Each message should be processed individually */
+        expect(messagesConsumed.length).toEqual(messages.length);
+    });
+
 });
