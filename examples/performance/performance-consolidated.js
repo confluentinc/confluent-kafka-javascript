@@ -3,11 +3,13 @@ const mode = process.env.MODE ? process.env.MODE : 'confluent';
 
 let runProducer, runConsumer, runConsumeTransformProduce, runCreateTopics, runProducerConsumerTogether;
 if (mode === 'confluent') {
-    ({ runProducer, runConsumer, runConsumeTransformProduce, runCreateTopics, runProducerConsumerTogether } = require('./performance-primitives'));
+    ({ runProducer, runConsumer, runConsumeTransformProduce,
+        runCreateTopics, runLagMonitoring,
+        runProducerConsumerTogether } = require('./performance-primitives'));
 } else {
     ({ runProducer, runConsumer, runConsumeTransformProduce, runProducerConsumerTogether } = require('./performance-primitives-kafkajs'));
     /* createTopics is more reliable in CKJS */
-    ({ runCreateTopics } = require('./performance-primitives'));
+    ({ runCreateTopics, runLagMonitoring } = require('./performance-primitives'));
 }
 
 const brokers = process.env.KAFKA_BROKERS || 'localhost:9092';
@@ -58,6 +60,7 @@ function logParameters(parameters) {
     const produceConsumeLatency = process.argv.includes('--latency');
     const all = process.argv.includes('--all');
     const createTopics = process.argv.includes('--create-topics');
+    const monitorLag = process.argv.includes('--monitor-lag');
     let maxAverageRSSKB, maxMaxRSSKB;
     const stats = {};
 
@@ -104,6 +107,16 @@ function logParameters(parameters) {
         console.log(`  Topic2: ${topic2}`);
         console.log(`  Partitions: ${numPartitions}`);
         await runCreateTopics(parameters, topic, topic2, numPartitions);
+    }
+
+    if (monitorLag) {
+        console.log("=== Starting Lag Monitoring:");
+        logParameters(parameters);
+        console.log(`  Topic: ${topic}`);
+        const {averageLag, maxLag} = await runLagMonitoring(parameters, topic);
+        const monitoredGroupId = process.env.GROUPID_MONITOR;
+        console.log(`=== Average broker lag (${monitoredGroupId}): `, averageLag);
+        console.log(`=== Max broker lag (${monitoredGroupId}): `, maxLag);
     }
 
     if (producer || all) {
