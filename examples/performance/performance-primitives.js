@@ -4,6 +4,7 @@ const { hrtime } = require('process');
 const {
     runConsumer: runConsumerCommon,
     runProducer: runProducerCommon,
+    runLagMonitoring: runLagMonitoringCommon,
     genericProduceToTopic,
     getAutoCommit,
  } = require('./performance-primitives-common');
@@ -14,6 +15,7 @@ module.exports = {
     runConsumeTransformProduce,
     runCreateTopics,
     runProducerConsumerTogether,
+    runLagMonitoring,
 };
 
 function baseConfiguration(parameters) {
@@ -63,6 +65,13 @@ async function runCreateTopics(parameters, topic, topic2, numPartitions) {
     }
 
     await admin.disconnect();
+}
+
+function runLagMonitoring(parameters, topic) {
+    const kafka = new Kafka(baseConfiguration(parameters));
+    const admin = kafka.admin();
+
+    return runLagMonitoringCommon(admin, topic);
 }
 
 class CompatibleProducer {
