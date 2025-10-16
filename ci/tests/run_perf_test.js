@@ -8,8 +8,7 @@ async function runCommand(command) {
     const output = await exec(command, { encoding: 'utf8', stdio: 'pipe' });
     return output.stdout;
   } catch (error) {
-    const errorOutput = error.stdout || error.stderr || error.message;
-    return errorOutput;
+    return (error.stdout || '') + (error.stderr || '') + (error.message || '');
   }
 }
 
@@ -163,7 +162,7 @@ async function main() {
     consumerConfluentMessageMaxRSS = extractValue(outputConfluentProducerConsumer, '=== Max consumer-each-message RSS KB:');
     consumerConfluentMessageAverageBrokerLag = extractValue(outputConfluentProducerConsumer, `=== Average broker lag (${groupIdEachMessageConfluent}):`);
     consumerConfluentMessageMaxBrokerLag = extractValue(outputConfluentProducerConsumer, `=== Max broker lag (${groupIdEachMessageConfluent}):`);
-    consumerConfluentMessageTotalLagMeasurements = extractValue(outputConfluentProducerConsumer, `=== Total broker lag measurements (${groupIdEachMessageConfluent}):`);
+    consumerConfluentMessageTotalLagMeasurements = extractValue(outputConfluentProducerConsumer, `=== Sample size for broker lag measurement (${groupIdEachMessageConfluent}):`);
   }
   if (consumerModeAll || consumerModeEachBatch) {
     consumerConfluentBatch = extractValue(outputConfluentProducerConsumer, '=== Consumer Rate MB/s (eachBatch):');
@@ -178,7 +177,7 @@ async function main() {
     consumerConfluentBatchMaxRSS = extractValue(outputConfluentProducerConsumer, '=== Max consumer-each-batch RSS KB:');
     consumerConfluentBatchAverageBrokerLag = extractValue(outputConfluentProducerConsumer, `=== Average broker lag (${groupIdEachBatchConfluent}):`);
     consumerConfluentBatchMaxBrokerLag = extractValue(outputConfluentProducerConsumer, `=== Max broker lag (${groupIdEachBatchConfluent}):`);
-    consumerConfluentBatchTotalLagMeasurements = extractValue(outputConfluentProducerConsumer, `=== Total broker lag measurements (${groupIdEachBatchConfluent}):`);
+    consumerConfluentBatchTotalLagMeasurements = extractValue(outputConfluentProducerConsumer, `=== Sample size for broker lag measurement (${groupIdEachBatchConfluent}):`);
   }
   const consumerConfluentAverageRSS = extractValue(outputConfluentProducerConsumer, '=== Max Average RSS across tests:');
   const consumerConfluentMaxRSS = extractValue(outputConfluentProducerConsumer, '=== Max RSS across tests:');
@@ -224,7 +223,7 @@ async function main() {
     consumerKjsMessageMaxRSS = extractValue(outputKjsProducerConsumer, '=== Max consumer-each-message RSS KB:');
     consumerKjsMessageAverageBrokerLag = extractValue(outputKjsProducerConsumer, `=== Average broker lag (${groupIdEachMessageKafkaJS}):`);
     consumerKjsMessageMaxBrokerLag = extractValue(outputKjsProducerConsumer, `=== Max broker lag (${groupIdEachMessageKafkaJS}):`);
-    consumerKjsMessageTotalLagMeasurements = extractValue(outputKjsProducerConsumer, `=== Total broker lag measurements (${groupIdEachMessageKafkaJS}):`);
+    consumerKjsMessageTotalLagMeasurements = extractValue(outputKjsProducerConsumer, `=== Sample size for broker lag measurement (${groupIdEachMessageKafkaJS}):`);
   }
   if (consumerModeAll || consumerModeEachBatch) {
     consumerKjsTime = extractValue(outputKjsProducerConsumer, '=== Consumption time (eachMessage):');
@@ -240,7 +239,7 @@ async function main() {
     consumerKjsBatchMaxRSS = extractValue(outputKjsProducerConsumer, '=== Max consumer-each-batch RSS KB:');
     consumerKjsBatchAverageBrokerLag = extractValue(outputKjsProducerConsumer, `=== Average broker lag (${groupIdEachBatchKafkaJS}):`);
     consumerKjsBatchMaxBrokerLag = extractValue(outputKjsProducerConsumer, `=== Max broker lag (${groupIdEachBatchKafkaJS}):`);
-    consumerKjsBatchTotalLagMeasurements = extractValue(outputKjsProducerConsumer, `=== Total broker lag measurements (${groupIdEachBatchKafkaJS}):`);
+    consumerKjsBatchTotalLagMeasurements = extractValue(outputKjsProducerConsumer, `=== Sample size for broker lag measurement (${groupIdEachBatchKafkaJS}):`);
   }
   const consumerKjsAverageRSS = extractValue(outputKjsProducerConsumer, '=== Max Average RSS across tests:');
   const consumerKjsMaxRSS = extractValue(outputKjsProducerConsumer, '=== Max RSS across tests:');
@@ -262,7 +261,7 @@ async function main() {
     console.log(`Max RSS (eachMessage): confluent ${consumerConfluentMessageMaxRSS}, kafkajs ${consumerKjsMessageMaxRSS}`);
     console.log(`Average broker lag (eachMessage): confluent ${consumerConfluentMessageAverageBrokerLag}, kafkajs ${consumerKjsMessageAverageBrokerLag}`);
     console.log(`Max broker lag (eachMessage): confluent ${consumerConfluentMessageMaxBrokerLag}, kafkajs ${consumerKjsMessageMaxBrokerLag}`);
-    console.log(`Total broker lag measurements (eachMessage): confluent ${consumerConfluentMessageTotalLagMeasurements}, kafkajs ${consumerKjsMessageTotalLagMeasurements}`);
+    console.log(`Sample size for broker lag measurement (eachMessage): confluent ${consumerConfluentMessageTotalLagMeasurements}, kafkajs ${consumerKjsMessageTotalLagMeasurements}`);
   }
   if (consumerModeAll || consumerModeEachBatch) {
     console.log(`Consumer rates MB/s (eachBatch): confluent ${consumerConfluentBatch}, kafkajs ${consumerKjsBatch}`);
@@ -277,7 +276,7 @@ async function main() {
     console.log(`Max RSS (eachBatch): confluent ${consumerConfluentBatchMaxRSS}, kafkajs ${consumerKjsBatchMaxRSS}`);
     console.log(`Average broker lag (eachBatch): confluent ${consumerConfluentBatchAverageBrokerLag}, kafkajs ${consumerKjsBatchAverageBrokerLag}`);
     console.log(`Max broker lag (eachBatch): confluent ${consumerConfluentBatchMaxBrokerLag}, kafkajs ${consumerKjsBatchMaxBrokerLag}`);
-    console.log(`Total broker lag measurements (eachBatch): confluent ${consumerConfluentBatchTotalLagMeasurements}, kafkajs ${consumerKjsBatchTotalLagMeasurements}`);
+    console.log(`Sample size for broker lag measurement (eachBatch): confluent ${consumerConfluentBatchTotalLagMeasurements}, kafkajs ${consumerKjsBatchTotalLagMeasurements}`);
   }
   if (!concurrentRun) {
     console.log(`Average RSS: confluent ${consumerConfluentAverageRSS}, kafkajs ${consumerKjsAverageRSS}`);
