@@ -8,8 +8,7 @@ async function runCommand(command) {
     const output = await exec(command, { encoding: 'utf8', stdio: 'pipe' });
     return output.stdout;
   } catch (error) {
-    const errorOutput = error.stdout || error.stderr || error.message;
-    return errorOutput;
+    return (error.stdout || '') + (error.stderr || '') + (error.message || '');
   }
 }
 
