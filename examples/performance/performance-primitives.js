@@ -18,6 +18,9 @@ module.exports = {
     runLagMonitoring,
 };
 
+
+const MAX_BATCH_SIZE = process.env.MAX_BATCH_SIZE ? +process.env.MAX_BATCH_SIZE : null;
+
 function baseConfiguration(parameters) {
     let ret = {
         'client.id': 'kafka-test-performance',
@@ -141,6 +144,10 @@ function newCompatibleConsumer(parameters, eachBatch) {
     const autoCommitOpts = autoCommit > 0 ? 
         { 'enable.auto.commit': true, 'auto.commit.interval.ms': autoCommit } :
         { 'enable.auto.commit': false };
+    const jsOpts = {};
+    if (eachBatch && MAX_BATCH_SIZE !== null) {
+        jsOpts['js.max.batch.size'] = MAX_BATCH_SIZE;
+    }
 
     let groupId = eachBatch ? process.env.GROUPID_BATCH : process.env.GROUPID_MESSAGE;
     if (!groupId) {
@@ -152,6 +159,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
         'auto.offset.reset': 'earliest',
         'fetch.queue.backoff.ms': '100',
         ...autoCommitOpts,
+        ...jsOpts,
     });
     return new CompatibleConsumer(consumer);
 }
