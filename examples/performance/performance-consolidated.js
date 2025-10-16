@@ -121,7 +121,7 @@ function logParameters(parameters) {
         const monitoredGroupId = process.env.GROUPID_MONITOR;
         console.log(`=== Average broker lag (${monitoredGroupId}): `, averageLag);
         console.log(`=== Max broker lag (${monitoredGroupId}): `, maxLag);
-        console.log(`=== Total broker lag measurements (${monitoredGroupId}): `, totalMeasurements);
+        console.log(`=== Sample size for broker lag measurement (${monitoredGroupId}): `, totalMeasurements);
     }
 
     if (producer || all) {
