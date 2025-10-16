@@ -1,3 +1,12 @@
+# confluent-kafka-javascript 1.6.1
+
+v1.6.1 is a maintenance release. It is supported for all usage.
+
+### Enhancements
+
+1. Configurable batch size through the `js.max.batch.size` property (#389).
+
+
 # confluent-kafka-javascript 1.6.0
 
 v1.6.0 is a feature release. It is supported for all usage.
