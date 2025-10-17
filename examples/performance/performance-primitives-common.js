@@ -3,6 +3,7 @@ const { randomBytes } = require('crypto');
 
 const TERMINATE_TIMEOUT_MS = process.env.TERMINATE_TIMEOUT_MS ? +process.env.TERMINATE_TIMEOUT_MS : 600000;
 const AUTO_COMMIT = process.env.AUTO_COMMIT || 'false';
+const AUTO_COMMIT_ON_BATCH_END = process.env.AUTO_COMMIT_ON_BATCH_END === 'true';
 let autoCommit;
 if (AUTO_COMMIT && AUTO_COMMIT === 'false')
     autoCommit = null;
@@ -136,6 +137,14 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                 await actionOnMessages([message]);
                 updateLatency(Date.now(), messagesMeasured, message, true);
             }
+
+            if (autoCommit !== null && AUTO_COMMIT_ON_BATCH_END) {
+                await consumer.commitOffsetsOnBatchEnd([{
+                    topic,
+                    partition,
+                    offset: (Number(message.offset) + 1).toString(),
+                }]);
+            }
         }
     }
     if (eachBatch) {
@@ -144,6 +153,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
             eachBatch: async ({ batch }) => {
                 const messagesBeforeBatch = messagesReceived;
                 const topic = batch.topic;
+                const partition = batch.partition;
                 let messagesBase;
                 let messages;
                 messagesReceived += batch.messages.length;
@@ -189,6 +199,14 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                             i++;
                         }
                     }
+                }
+
+                if (autoCommit !== null && AUTO_COMMIT_ON_BATCH_END) {
+                    await consumer.commitOffsetsOnBatchEnd([{
+                        topic,
+                        partition,
+                        offset: (Number(batch.lastOffset()) + 1).toString(),
+                    }]);
                 }
             }
         };

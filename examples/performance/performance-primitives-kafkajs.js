@@ -128,6 +128,10 @@ class CompatibleConsumer {
         return this.consumer.pause(topics);
     }
 
+    commitOffsetsOnBatchEnd(offsets) {
+        // do nothing, done by KafkaJS after each* if autoCommit is enabled
+    }
+
     run(opts) {
         const autoCommit = getAutoCommit();
         const autoCommitOpts = autoCommit > 0 ? 
