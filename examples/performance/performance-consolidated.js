@@ -9,7 +9,7 @@ if (mode === 'confluent') {
 } else {
     ({ runProducer, runConsumer, runConsumeTransformProduce, runProducerConsumerTogether } = require('./performance-primitives-kafkajs'));
     /* createTopics is more reliable in CKJS */
-    ({ runCreateTopics, runLagMonitoring } = require('./performance-primitives'));
+    ({ runCreateTopics, runLagMonitoring, runProducer: runProducerCKJS } = require('./performance-primitives'));
 }
 
 const brokers = process.env.KAFKA_BROKERS || 'localhost:9092';
@@ -32,6 +32,7 @@ const ctpConcurrency = process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY ? +proc
 const consumerProcessingTime = process.env.CONSUMER_PROCESSING_TIME ? +process.env.CONSUMER_PROCESSING_TIME : 100;
 const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.env.PRODUCER_PROCESSING_TIME : 100;
 const limitRPS = process.env.LIMIT_RPS ? +process.env.LIMIT_RPS : null;
+const useCKJSProducerEverywhere = process.env.USE_CKJS_PRODUCER_EVERYWHERE === 'true';
 const parameters = {
     brokers,
     securityProtocol,
@@ -134,8 +135,13 @@ function logParameters(parameters) {
         console.log(`  Compression: ${compression}`);
         console.log(`  Limit RPS: ${limitRPS}`);
         console.log(`  Warmup Messages: ${warmupMessages}`);
+        console.log(`  Use CKJS Producer Everywhere: ${useCKJSProducerEverywhere}`);
         startTrackingMemory();
-        const producerRate = await runProducer(parameters, topic, batchSize,
+        let runProducerFunction = runProducer;
+        if (useCKJSProducerEverywhere) {
+            runProducerFunction = runProducerCKJS;
+        }
+        const producerRate = await runProducerFunction(parameters, topic, batchSize,
             warmupMessages, messageCount, messageSize, compression,
             randomness, limitRPS);
         endTrackingMemory('producer', `producer-memory-${mode}.json`);
@@ -153,12 +159,16 @@ function logParameters(parameters) {
         const consumerRate = await runConsumer(parameters, topic,
             warmupMessages, messageCount,
             false, partitionsConsumedConcurrently, stats,
-            produceToSecondTopic ? topic2 : null, compression);
+            produceToSecondTopic ? topic2 : null, compression, useCKJSProducerEverywhere);
         endTrackingMemory('consumer-each-message', `consumer-memory-message-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachMessage): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachMessage): ", stats.messageRate);
-        console.log("=== Consumer average E2E latency (eachMessage): ", stats.avgLatency);
-        console.log("=== Consumer max E2E latency (eachMessage): ", stats.maxLatency);
+        console.log("=== Consumer average E2E latency T0-T1 (eachMessage): ", stats.avgLatencyT0T1);
+        console.log("=== Consumer max E2E latency T0-T1 (eachMessage): ", stats.maxLatencyT0T1);
+        if (produceToSecondTopic) {
+            console.log("=== Consumer average E2E latency T0-T2 (eachMessage): ", stats.avgLatencyT0T2);
+            console.log("=== Consumer max E2E latency T0-T2 (eachMessage): ", stats.maxLatencyT0T2);
+        }
         console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
     }
 
@@ -173,15 +183,19 @@ function logParameters(parameters) {
         const consumerRate = await runConsumer(parameters, topic,
             warmupMessages, messageCount,
             true, partitionsConsumedConcurrently, stats,
-            produceToSecondTopic ? topic2 : null, compression);
+            produceToSecondTopic ? topic2 : null, compression, useCKJSProducerEverywhere);
         endTrackingMemory('consumer-each-batch', `consumer-memory-batch-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachBatch): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachBatch): ", stats.messageRate);
         console.log("=== Average eachBatch lag: ", stats.averageOffsetLag);
         console.log("=== Max eachBatch lag: ", stats.maxOffsetLag);
         console.log("=== Average eachBatch size: ", stats.averageBatchSize);
-        console.log("=== Consumer average E2E latency (eachBatch): ", stats.avgLatency);
-        console.log("=== Consumer max E2E latency (eachBatch): ", stats.maxLatency);
+        console.log("=== Consumer average E2E latency T0-T1 (eachBatch): ", stats.avgLatencyT0T1);
+        console.log("=== Consumer max E2E latency T0-T1 (eachBatch): ", stats.maxLatencyT0T1);
+        if (produceToSecondTopic) {
+            console.log("=== Consumer average E2E latency T0-T2 (eachBatch): ", stats.avgLatencyT0T2);
+            console.log("=== Consumer max E2E latency T0-T2 (eachBatch): ", stats.maxLatencyT0T2);
+        }
         console.log("=== Consumption time (eachBatch): ", stats.durationSeconds);
     }
 
