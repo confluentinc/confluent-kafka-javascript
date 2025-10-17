@@ -73,19 +73,29 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
     const skippedMessages = warmupMessages;
     const decoder = new TextDecoder('utf-8');
 
-    const updateLatency = (receivedAt, numMessages, message) => {
+    const updateLatency = (receivedAt, numMessages, message, isT0T2) => {
         if (!stats)
             return;
 
         const sentAt = Number(decoder.decode(message.value.slice(0, 13)));
         const latency = receivedAt - sentAt;
 
-        if (!stats.maxLatency) {
-            stats.maxLatency = latency;
-            stats.avgLatency = latency;
+        if (!isT0T2) {
+            if (!stats.maxLatencyT0T1) {
+                stats.maxLatencyT0T1 = latency;
+                stats.avgLatencyT0T1 = latency;
+            } else {
+                stats.maxLatencyT0T1 = Math.max(stats.maxLatencyT0T1, latency);
+                stats.avgLatencyT0T1 = ((stats.avgLatencyT0T1 * (numMessages - 1)) + latency) / numMessages;
+            }
         } else {
-            stats.maxLatency = Math.max(stats.maxLatency, latency);
-            stats.avgLatency = ((stats.avgLatency * (numMessages - 1)) + latency) / numMessages;
+            if (!stats.maxLatencyT0T2) {
+                stats.maxLatencyT0T2 = latency;
+                stats.avgLatencyT0T2 = latency;
+            } else {
+                stats.maxLatencyT0T2 = Math.max(stats.maxLatencyT0T2, latency);
+                stats.avgLatencyT0T2 = ((stats.avgLatencyT0T2 * (numMessages - 1)) + latency) / numMessages;
+            }
         }
     };
 
@@ -110,20 +120,21 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         partitionsConsumedConcurrently,
         eachMessage: async ({ topic, partition, message }) => {
             messagesReceived++;
-            if (actionOnMessages) {
-                await actionOnMessages([message]);
-            }
-
             if (messagesReceived >= skippedMessages) {
                 messagesMeasured++;
                 totalMessageSize += message.value.length;
-                updateLatency(Date.now(), messagesMeasured, message);
+                updateLatency(Date.now(), messagesMeasured, message, false);
 
                 if (messagesReceived === skippedMessages) {
                     startTime = hrtime.bigint();
                 } else if (totalMessageCnt > 0 && messagesMeasured === totalMessageCnt) {
                     stopConsuming();
                 }
+            }
+
+            if (actionOnMessages) {
+                await actionOnMessages([message]);
+                updateLatency(Date.now(), messagesMeasured, message, true);
             }
         }
     }
@@ -133,10 +144,8 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
             eachBatch: async ({ batch }) => {
                 const messagesBeforeBatch = messagesReceived;
                 const topic = batch.topic;
-                if (actionOnMessages) {
-                    await actionOnMessages(batch.messages);
-                }
-
+                let messagesBase;
+                let messages;
                 messagesReceived += batch.messages.length;
                 if (messagesReceived >= skippedMessages) {
                     const offsetLag = batch.offsetLag();
@@ -144,16 +153,16 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                     maxOffsetLag = Math.max(offsetLag, maxOffsetLag);
                     totalBatches++;
                     messagesMeasured = messagesReceived - skippedMessages;
-                    let messages = batch.messages;
+                    messages = batch.messages;
                     if (messagesBeforeBatch < skippedMessages) {
                         messages = messages.slice(messages.length - messagesMeasured);
                     }
                     const now = Date.now();
-                    const messagesBase = messagesMeasured - messages.length;
+                    messagesBase = messagesMeasured - messages.length;
                     let i = 1;
                     for (const message of messages) {
                         totalMessageSize += message.value.length;
-                        updateLatency(now, messagesBase + i, message);
+                        updateLatency(now, messagesBase + i, message, false);
                         i++;
                     }
 
@@ -166,6 +175,19 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                             (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
                         console.log(`Recvd ${messagesMeasured} messages in ${durationSeconds} seconds, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
                         consumer.pause([{ topic }]);
+                    }
+                }
+
+                if (actionOnMessages) {
+                    await actionOnMessages(batch.messages);
+                    if (messagesMeasured > 0) {
+                        let i = 1;
+                        const now = Date.now();
+                        for (const message of messages) {
+                            totalMessageSize += message.value.length;
+                            updateLatency(now, messagesBase + i, message, true);
+                            i++;
+                        }
                     }
                 }
             }

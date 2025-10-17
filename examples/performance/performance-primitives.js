@@ -16,6 +16,7 @@ module.exports = {
     runCreateTopics,
     runProducerConsumerTogether,
     runLagMonitoring,
+    newCompatibleProducer,
 };
 
 function baseConfiguration(parameters) {
@@ -157,7 +158,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
 }
 
 
-async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression) {
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression, useCKJSProducerEverywhere) {
     let actionOnMessages = null;
     let producer;
     if (produceToTopic) {
