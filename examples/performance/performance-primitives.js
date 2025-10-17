@@ -129,6 +129,10 @@ class CompatibleConsumer {
         return this.consumer.pause(topics);
     }
 
+    commitOffsetsOnBatchEnd(offsets) {
+        return this.consumer.commitOffsets(offsets);
+    }
+
     run(opts) {
         return this.consumer.run({
             ...opts
