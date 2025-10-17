@@ -8,6 +8,10 @@ const {
     getAutoCommit,
  } = require('./performance-primitives-common');
 
+const {
+  newCompatibleProducer: newCompatibleProducerCKJS,
+} = require('./performance-primitives');
+
 module.exports = {
     runProducer,
     runConsumer,
@@ -152,11 +156,13 @@ function newCompatibleConsumer(parameters, eachBatch) {
 }
 
 
-async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression) {
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression, useCKJSProducerEverywhere) {
     let actionOnMessages = null;
     let producer;
     if (produceToTopic) {
-        producer = newCompatibleProducer(parameters, produceCompression);
+        const newCompatibleProducerFunction = useCKJSProducerEverywhere ?
+            newCompatibleProducerCKJS : newCompatibleProducer;
+        producer = newCompatibleProducerFunction(parameters, produceCompression);
         await producer.connect();
         actionOnMessages = (messages) =>
             genericProduceToTopic(producer, produceToTopic, messages);
