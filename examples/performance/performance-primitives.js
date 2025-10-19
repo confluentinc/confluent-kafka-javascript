@@ -20,7 +20,7 @@ module.exports = {
 };
 
 
-const MAX_BATCH_SIZE = process.env.MAX_BATCH_SIZE ? +process.env.MAX_BATCH_SIZE : null;
+const CONSUMER_MAX_BATCH_SIZE = process.env.CONSUMER_MAX_BATCH_SIZE ? +process.env.CONSUMER_MAX_BATCH_SIZE : null;
 
 function baseConfiguration(parameters) {
     let ret = {
@@ -150,8 +150,8 @@ function newCompatibleConsumer(parameters, eachBatch) {
         { 'enable.auto.commit': true, 'auto.commit.interval.ms': autoCommit } :
         { 'enable.auto.commit': false };
     const jsOpts = {};
-    if (eachBatch && MAX_BATCH_SIZE !== null) {
-        jsOpts['js.max.batch.size'] = MAX_BATCH_SIZE;
+    if (eachBatch && CONSUMER_MAX_BATCH_SIZE !== null) {
+        jsOpts['js.max.batch.size'] = CONSUMER_MAX_BATCH_SIZE;
     }
 
     let groupId = eachBatch ? process.env.GROUPID_BATCH : process.env.GROUPID_MESSAGE;

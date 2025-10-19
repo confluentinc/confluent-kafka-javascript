@@ -47,6 +47,9 @@ async function main() {
   if (concurrentRun) {
     skipCtpTest = true;
   }
+  if (!process.env.CONSUMER_MAX_BATCH_SIZE) {
+    process.env.CONSUMER_MAX_BATCH_SIZE = '-1';
+  }
   const consumerMode = process.env.CONSUMER_MODE || 'all';
   const produceToSecondTopic = process.env.PRODUCE_TO_SECOND_TOPIC ? process.env.PRODUCE_TO_SECOND_TOPIC === 'true' : false;
   const produceToSecondTopicParam = produceToSecondTopic ? '--produce-to-second-topic' : '';
