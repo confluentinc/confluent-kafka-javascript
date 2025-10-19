@@ -438,7 +438,7 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
 
         await waitFor(() => consumer.assignment().length > 0, () => { }, 100);
 
-        const messages = Array(4096 * 3)
+        const messages = Array(4096 * 6)
             .fill()
             .map((_, i) => {
                 const value = secureRandom(512);
