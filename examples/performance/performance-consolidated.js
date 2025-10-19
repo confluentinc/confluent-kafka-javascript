@@ -20,7 +20,7 @@ const saslPassword = process.env.SASL_PASSWORD;
 const topic = process.env.KAFKA_TOPIC || 'test-topic';
 const topic2 = process.env.KAFKA_TOPIC2 || 'test-topic2';
 const messageCount = process.env.MESSAGE_COUNT ? +process.env.MESSAGE_COUNT : 1000000;
-const messageSize = process.env.MESSAGE_SIZE ? +process.env.MESSAGE_SIZE : 256;
+const messageSize = process.env.MESSAGE_SIZE ? +process.env.MESSAGE_SIZE : 4096;
 const batchSize = process.env.BATCH_SIZE ? +process.env.BATCH_SIZE : 100;
 const compression = process.env.COMPRESSION || 'None';
 // Between 0 and 1, percentage of random bytes in each message
@@ -207,7 +207,9 @@ function logParameters(parameters) {
         console.log(`  ProduceTopic: ${topic2}`);
         console.log(`  Message Count: ${messageCount}`);
         // Seed the topic with messages
-        await runProducer(parameters, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        await runProducerCKJS(parameters, topic, batchSize,
+            warmupMessages, messageCount, messageSize, compression,
+            randomness, limitRPS);
         startTrackingMemory();
         const ctpRate = await runConsumeTransformProduce(parameters, topic, topic2, warmupMessages, messageCount, messageProcessTimeMs, ctpConcurrency);
         endTrackingMemory('consume-transform-produce', `consume-transform-produce-${mode}.json`);
