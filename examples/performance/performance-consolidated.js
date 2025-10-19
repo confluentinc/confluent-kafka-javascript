@@ -207,7 +207,9 @@ function logParameters(parameters) {
         console.log(`  ProduceTopic: ${topic2}`);
         console.log(`  Message Count: ${messageCount}`);
         // Seed the topic with messages
-        await runProducer(parameters, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        await runProducerCKJS(parameters, topic, batchSize,
+            warmupMessages, messageCount, messageSize, compression,
+            randomness, limitRPS);
         startTrackingMemory();
         const ctpRate = await runConsumeTransformProduce(parameters, topic, topic2, warmupMessages, messageCount, messageProcessTimeMs, ctpConcurrency);
         endTrackingMemory('consume-transform-produce', `consume-transform-produce-${mode}.json`);
