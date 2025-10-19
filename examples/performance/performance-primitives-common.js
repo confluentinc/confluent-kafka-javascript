@@ -14,7 +14,7 @@ else {
     }
 }
 
-function installHandlers() {
+function installHandlers(useTerminateTimeout) {
     const handlers = {
         terminationRequested: false,
         terminateTimeout: null,
@@ -26,8 +26,10 @@ function installHandlers() {
     process.on('SIGINT', terminationRequestedCallback);
     process.on('SIGTERM', terminationRequestedCallback);
     handlers.terminationRequestedCallback = terminationRequestedCallback;
-    handlers.terminateTimeout = setTimeout(terminationRequestedCallback,
-                                  TERMINATE_TIMEOUT_MS);
+    if (useTerminateTimeout) {
+        handlers.terminateTimeout = setTimeout(terminationRequestedCallback,
+            TERMINATE_TIMEOUT_MS);
+    }
     return handlers;
 }
 
@@ -57,7 +59,7 @@ function genericProduceToTopic(producer, topic, messages) {
 }
 
 async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages) {
-    const handlers = installHandlers();
+    const handlers = installHandlers(totalMessageCnt === -1);
     await consumer.connect();
     await consumer.subscribe({ topic });
 
@@ -179,12 +181,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                     if (!startTime) {
                         startTime = hrtime.bigint();
                     } else if (totalMessageCnt > 0 && messagesMeasured >= totalMessageCnt) {
-                        let durationNanos = Number(hrtime.bigint() - startTime);
-                        durationSeconds = durationNanos / 1e9;
-                        rate = durationNanos === 0 ? Infinity :
-                            (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
-                        console.log(`Recvd ${messagesMeasured} messages in ${durationSeconds} seconds, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
-                        consumer.pause([{ topic }]);
+                        stopConsuming();
                     }
                 }
 
@@ -243,7 +240,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
 }
 
 async function runProducer(producer, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS) {
-    const handlers = installHandlers();
+    const handlers = installHandlers(totalMessageCnt === -1);
     let totalMessagesSent = 0;
     let totalBytesSent = 0;
 
@@ -347,7 +344,7 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
 }
 
 async function runLagMonitoring(admin, topic) {
-    const handlers = installHandlers();
+    const handlers = installHandlers(true);
     let groupId = process.env.GROUPID_MONITOR;
     if (!groupId) {
         throw new Error("GROUPID_MONITOR environment variable not set");
