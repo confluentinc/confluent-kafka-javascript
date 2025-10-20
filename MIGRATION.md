@@ -304,7 +304,7 @@ producerRun().then(consumerRun).catch(console.error);
     Heartbeats are automatically managed by librdkafka.
   - The `partitionsConsumedConcurrently` is supported by both `eachMessage` and `eachBatch`.
   - An API compatible version of `eachBatch` is available, maximum batch size
-    can be configured through the `js.max.batch.size` configuration property
+    can be configured through the `js.consumer.max.batch.size` configuration property
     and defaults to 32.
     The property `eachBatchAutoResolve` is supported.
     Within the `eachBatch` callback, use of `uncommittedOffsets` is unsupported,

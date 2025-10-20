@@ -251,7 +251,7 @@ export interface JSConsumerConfig {
    *
    * @default 32
    */
-  'js.max.batch.size'?: string | number
+  'js.consumer.max.batch.size'?: string | number
 }
 
 export type ConsumerGlobalAndTopicConfig = ConsumerGlobalConfig & ConsumerTopicConfig & JSConsumerConfig;
