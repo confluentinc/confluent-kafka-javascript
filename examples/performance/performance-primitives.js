@@ -151,7 +151,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
         { 'enable.auto.commit': false };
     const jsOpts = {};
     if (eachBatch && CONSUMER_MAX_BATCH_SIZE !== null) {
-        jsOpts['js.max.batch.size'] = CONSUMER_MAX_BATCH_SIZE;
+        jsOpts['js.consumer.max.batch.size'] = CONSUMER_MAX_BATCH_SIZE;
     }
 
     let groupId = eachBatch ? process.env.GROUPID_BATCH : process.env.GROUPID_MESSAGE;
