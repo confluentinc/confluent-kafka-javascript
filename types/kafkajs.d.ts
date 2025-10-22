@@ -244,7 +244,30 @@ export interface ConsumerConfig {
   partitionAssignors?: PartitionAssignors[],
 }
 
-export type ConsumerGlobalAndTopicConfig = ConsumerGlobalConfig & ConsumerTopicConfig;
+export interface JSConsumerConfig {
+  /**
+   * Maximum batch size passed in eachBatch calls.
+   * A value of -1 means no limit.
+   *
+   * @default 32
+   */
+  'js.consumer.max.batch.size'?: string | number,
+  /**
+   * Maximum number of cached batches or messages per worker.
+   * Increasing this value allows to have data for more partitions
+   * to distribute concurrently, in case of larger producer batch sizes,
+   * but it increases the time to process all cached data and slows down
+   * rebalancing in case of rebalance callbacks involved or increases the
+   * likelihood of reaching the `max.poll.interval.ms` limit.
+   * You can also chose to reduce the producer batch size to have more, smaller batches
+   * to better fit your concurrency level.
+   *
+   * @default 10
+   */
+  'js.consumer.max.cached.batches.per.worker'?: string | number,
+}
+
+export type ConsumerGlobalAndTopicConfig = ConsumerGlobalConfig & ConsumerTopicConfig & JSConsumerConfig;
 
 export interface ConsumerConstructorConfig extends ConsumerGlobalAndTopicConfig {
   kafkaJS?: ConsumerConfig;
