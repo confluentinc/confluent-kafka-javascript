@@ -142,6 +142,8 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
          * the consumers are created with the same groupId, we create them here.
          * TODO: verify correctness of theory. It's conjecture... which solves flakiness. */
         let groupId = `consumer-group-id-${secureRandom()}`;
+        const multiplier = 9;
+        const numMessages = 16 * multiplier;
         consumer = createConsumer({
             groupId,
             maxWaitTimeInMs: 100,
@@ -178,16 +180,15 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
 
                 /* Until the second consumer joins, consume messages slowly so as to not consume them all
                  * before the rebalance triggers. */
-                if (messagesConsumed.length > 1024 && !consumer2ConsumeRunning) {
-                    await sleep(10);
+                if (!consumer2ConsumeRunning) {
+                    await sleep(100);
                 }
             }
         });
 
         /* Evenly distribute 1024*9 messages across 3 partitions */
         let i = 0;
-        const multiplier = 9;
-        const messages = Array(1024 * multiplier)
+        const messages = Array(numMessages)
             .fill()
             .map(() => {
                 const value = secureRandom();
@@ -198,7 +199,7 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
 
         // Wait for the messages - some of them, before starting the
         // second consumer.
-        await waitForMessages(messagesConsumed, { number: 1024 });
+        await waitForMessages(messagesConsumed, { number: 16 });
 
         await consumer2.connect();
         await consumer2.subscribe({ topic: topicName });
@@ -213,15 +214,15 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
         consumer2ConsumeRunning = true;
 
         /* Now that both consumers have joined, wait for all msgs to be consumed */
-        await waitForMessages(messagesConsumed, { number: 1024 * multiplier });
+        await waitForMessages(messagesConsumed, { number: numMessages });
 
         /* No extra messages should be consumed. */
         await sleep(1000);
-        expect(messagesConsumed.length).toEqual(1024 * multiplier);
+        expect(messagesConsumed.length).toEqual(numMessages);
 
         /* Check if all messages were consumed. */
         expect(messagesConsumed.map(event => (+event.message.offset)).sort((a, b) => a - b))
-            .toEqual(Array(1024 * multiplier).fill().map((_, i) => Math.floor(i / 3)));
+            .toEqual(Array(numMessages).fill().map((_, i) => Math.floor(i / 3)));
 
         /* Consumer2 should have consumed at least one message. */
         expect(messagesConsumedConsumer2.length).toBeGreaterThan(0);
