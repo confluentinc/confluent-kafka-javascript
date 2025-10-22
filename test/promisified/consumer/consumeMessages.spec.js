@@ -434,9 +434,8 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
                 inProgressMaxValue = Math.max(inProgress, inProgressMaxValue);
                 if (inProgressMaxValue >= expectedMaxConcurrentWorkers) {
                     maxConcurrentWorkersReached.resolve();
-                } else if (messagesConsumed.length > 2048) {
-                    await sleep(1000);
                 }
+                await sleep(100);
                 inProgress--;
             },
         });
