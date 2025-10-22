@@ -306,6 +306,8 @@ producerRun().then(consumerRun).catch(console.error);
   - An API compatible version of `eachBatch` is available, maximum batch size
     can be configured through the `js.consumer.max.batch.size` configuration property
     and defaults to 32.
+    Maximum number of cached batches per worker 
+    is `js.consumer.max.cached.batches.per.worker` and defaults to 10.
     The property `eachBatchAutoResolve` is supported.
     Within the `eachBatch` callback, use of `uncommittedOffsets` is unsupported,
     and within the returned batch, `offsetLag` and `offsetLagLow` are supported.
