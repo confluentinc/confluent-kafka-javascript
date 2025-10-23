@@ -60,8 +60,22 @@ function genericProduceToTopic(producer, topic, messages) {
 
 async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages) {
     const handlers = installHandlers(totalMessageCnt === -1);
-    await consumer.connect();
-    await consumer.subscribe({ topic });
+    while (true) {
+        try {
+            await consumer.connect();
+            break;
+        } catch (e) {
+            console.error(`Error connecting consumer: ${e}`);
+        }
+    }
+    while (true) {
+        try {
+            await consumer.subscribe({ topic });
+            break;
+        } catch (e) {
+            console.error(`Error subscribing consumer: ${e}`);
+        }
+    }
 
     let messagesReceived = 0;
     let messagesMeasured = 0;
@@ -73,6 +87,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
     let startTime;
     let rate;
     let consumptionStopped = false;
+    let lastMessageReceivedAt;
     const skippedMessages = warmupMessages;
     const decoder = new TextDecoder('utf-8');
 
@@ -111,11 +126,16 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         if (consumptionStopped)
             return;
         consumptionStopped = true;
-        let durationNanos = Number(hrtime.bigint() - startTime);
+        const now = lastMessageReceivedAt || hrtime.bigint();
+        let durationNanos = Number(now - startTime);
         durationSeconds = durationNanos / 1e9;
         rate = (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
         console.log(`Recvd ${messagesMeasured} messages in ${durationSeconds} seconds, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
-        consumer.pause([{ topic }]);
+        try {
+            consumer.pause([{ topic }]);
+        } catch (e) {
+            console.error(`Error pausing consumer: ${e}`);
+        }
     }
 
     console.log("Starting consumer.");
@@ -153,6 +173,8 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         consumeMethod = {
             partitionsConsumedConcurrently,
             eachBatch: async ({ batch }) => {
+                if (!batch.messages)
+                    return;
                 const messagesBeforeBatch = messagesReceived;
                 const topic = batch.topic;
                 const partition = batch.partition;
@@ -170,6 +192,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                         messages = messages.slice(messages.length - messagesMeasured);
                     }
                     const now = Date.now();
+                    lastMessageReceivedAt = hrtime.bigint();
                     messagesBase = messagesMeasured - messages.length;
                     let i = 1;
                     for (const message of messages) {
@@ -187,7 +210,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
 
                 if (actionOnMessages) {
                     await actionOnMessages(batch.messages);
-                    if (messagesMeasured > 0 && messages.length > 0) {
+                    if (messagesMeasured > 0 && messages && messages.length > 0) {
                         let i = 1;
                         const now = Date.now();
                         for (const message of messages) {
