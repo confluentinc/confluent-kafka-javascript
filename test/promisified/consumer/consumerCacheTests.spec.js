@@ -90,7 +90,6 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
     });
 
     it('is cleared on seek', async () => {
-        const producer = createProducer({}, {'batch.num.messages': '1'});
         await consumer.connect();
         await producer.connect();
         await consumer.subscribe({ topic: topicName });
@@ -135,8 +134,6 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
         expect(messagesConsumed.filter(m => m.partition === 1).map(m => m.message.offset)).toEqual(Array(1024 * 3).fill().map((_, i) => `${i}`));
         // partition 2
         expect(messagesConsumed.filter(m => m.partition === 2).map(m => m.message.offset)).toEqual(Array(1024 * 3).fill().map((_, i) => `${i}`));
-
-        await producer.disconnect();
     });
 
     it('is cleared before rebalance', async () => {
@@ -145,7 +142,7 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
          * the consumers are created with the same groupId, we create them here.
          * TODO: verify correctness of theory. It's conjecture... which solves flakiness. */
         let groupId = `consumer-group-id-${secureRandom()}`;
-        const multiplier = 9;
+        const multiplier = 18;
         const numMessages = 16 * multiplier;
         consumer = createConsumer({
             groupId,
@@ -161,7 +158,6 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
             autoCommit: isAutoCommit,
             clientId: "consumer2",
         });
-        const producer = createProducer({}, {'batch.num.messages': '1'});
 
         await consumer.connect();
         await producer.connect();
@@ -181,11 +177,14 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
                         { topic: event.topic, partition: event.partition, offset: Number(event.message.offset) + 1 },
                     ]);
 
-                await sleep(100);
+                // Simulate some processing time so we don't poll all messages
+                // and put them in the cache before consumer2 joins.
+                if (messagesConsumedConsumer2.length === 0)
+                    await sleep(100);
             }
         });
 
-        /* Evenly distribute 1024*9 messages across 3 partitions */
+        /* Evenly distribute numMessages messages across 3 partitions */
         let i = 0;
         const messages = Array(numMessages)
             .fill()
@@ -226,7 +225,6 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
         expect(messagesConsumedConsumer2.length).toBeGreaterThan(0);
 
         await consumer2.disconnect();
-        await producer.disconnect();
     }, 60000);
 
     it('does not hold up polling for non-message events', async () => {
