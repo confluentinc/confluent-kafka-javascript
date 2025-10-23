@@ -20,11 +20,12 @@ const saslPassword = process.env.SASL_PASSWORD;
 const topic = process.env.KAFKA_TOPIC || 'test-topic';
 const topic2 = process.env.KAFKA_TOPIC2 || 'test-topic2';
 const messageCount = process.env.MESSAGE_COUNT ? +process.env.MESSAGE_COUNT : 1000000;
-const messageSize = process.env.MESSAGE_SIZE ? +process.env.MESSAGE_SIZE : 256;
-const batchSize = process.env.BATCH_SIZE ? +process.env.BATCH_SIZE : 100;
+const messageSize = process.env.MESSAGE_SIZE ? +process.env.MESSAGE_SIZE : 4096;
+const batchSize = process.env.PRODUCER_BATCH_SIZE ? +process.env.PRODUCER_BATCH_SIZE : 100;
 const compression = process.env.COMPRESSION || 'None';
 // Between 0 and 1, percentage of random bytes in each message
 const randomness = process.env.RANDOMNESS ? +process.env.RANDOMNESS : 0.5;
+const initialDelayMs = process.env.INITIAL_DELAY_MS ? +process.env.INITIAL_DELAY_MS : 0;
 const numPartitions = process.env.PARTITIONS ? +process.env.PARTITIONS : 3;
 const partitionsConsumedConcurrently = process.env.PARTITIONS_CONSUMED_CONCURRENTLY ? +process.env.PARTITIONS_CONSUMED_CONCURRENTLY : 1;
 const warmupMessages = process.env.WARMUP_MESSAGES ? +process.env.WARMUP_MESSAGES : (batchSize * 10);
@@ -101,6 +102,10 @@ function logParameters(parameters) {
     }
 
     console.log(`=== Starting Performance Tests - Mode ${mode} ===`);
+    if (initialDelayMs > 0) {
+        console.log(`=== Initial delay of ${initialDelayMs}ms before starting tests ===`);
+        await new Promise(resolve => setTimeout(resolve, initialDelayMs));
+    }
 
     if (createTopics || all) {
         console.log("=== Creating Topics (deleting if they exist already):");
@@ -207,7 +212,9 @@ function logParameters(parameters) {
         console.log(`  ProduceTopic: ${topic2}`);
         console.log(`  Message Count: ${messageCount}`);
         // Seed the topic with messages
-        await runProducer(parameters, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        await runProducerCKJS(parameters, topic, batchSize,
+            warmupMessages, messageCount, messageSize, compression,
+            randomness, limitRPS);
         startTrackingMemory();
         const ctpRate = await runConsumeTransformProduce(parameters, topic, topic2, warmupMessages, messageCount, messageProcessTimeMs, ctpConcurrency);
         endTrackingMemory('consume-transform-produce', `consume-transform-produce-${mode}.json`);
