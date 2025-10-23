@@ -25,6 +25,7 @@ const batchSize = process.env.PRODUCER_BATCH_SIZE ? +process.env.PRODUCER_BATCH_
 const compression = process.env.COMPRESSION || 'None';
 // Between 0 and 1, percentage of random bytes in each message
 const randomness = process.env.RANDOMNESS ? +process.env.RANDOMNESS : 0.5;
+const initialDelayMs = process.env.INITIAL_DELAY_MS ? +process.env.INITIAL_DELAY_MS : 0;
 const numPartitions = process.env.PARTITIONS ? +process.env.PARTITIONS : 3;
 const partitionsConsumedConcurrently = process.env.PARTITIONS_CONSUMED_CONCURRENTLY ? +process.env.PARTITIONS_CONSUMED_CONCURRENTLY : 1;
 const warmupMessages = process.env.WARMUP_MESSAGES ? +process.env.WARMUP_MESSAGES : (batchSize * 10);
@@ -101,6 +102,10 @@ function logParameters(parameters) {
     }
 
     console.log(`=== Starting Performance Tests - Mode ${mode} ===`);
+    if (initialDelayMs > 0) {
+        console.log(`=== Initial delay of ${initialDelayMs}ms before starting tests ===`);
+        await new Promise(resolve => setTimeout(resolve, initialDelayMs));
+    }
 
     if (createTopics || all) {
         console.log("=== Creating Topics (deleting if they exist already):");
