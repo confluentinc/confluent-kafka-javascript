@@ -328,6 +328,7 @@ export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; replace?: b
 export type ConsumerRunConfig = {
   eachBatchAutoResolve?: boolean,
   partitionsConsumedConcurrently?: number,
+  maxBatchSize?: number,
   eachMessage?: EachMessageHandler
   eachBatch?: EachBatchHandler
 }
