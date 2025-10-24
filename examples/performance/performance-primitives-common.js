@@ -1,5 +1,6 @@
 const { hrtime } = require('process');
 const { randomBytes } = require('crypto');
+const PERCENTILES = [50, 75, 90, 95, 99, 99.9, 99.99, 100];
 
 const TERMINATE_TIMEOUT_MS = process.env.TERMINATE_TIMEOUT_MS ? +process.env.TERMINATE_TIMEOUT_MS : 600000;
 const AUTO_COMMIT = process.env.AUTO_COMMIT || 'false';
@@ -58,8 +59,86 @@ function genericProduceToTopic(producer, topic, messages) {
     });
 }
 
+
+// We use a simple count-sketch for latency percentiles to avoid storing all latencies in memory.
+// because we're also measuring the memory usage of the consumer as part of the performance tests.
+class LatencyCountSketch {
+    #numBuckets;
+    #minValue;
+    #maxValue;
+    #buckets;
+    #counts;
+    #changeBaseLogarithm;
+    #totalCount = 0;
+    #base;
+
+    constructor({
+        error = 0.01, // 1% error
+        minValue = 0.01, // min 10μs latency
+        maxValue = 60000, // max 60s latency
+    }) {
+        // Each bucket represents [x, x * (1 + error))
+        this.#base = 1 + error;
+        // Change base from natural log to log base this.#base
+        this.#changeBaseLogarithm =  Math.log(this.#base);
+        this.#numBuckets = Math.ceil(Math.log(maxValue / minValue) / Math.log(this.#base));
+        this.#maxValue = maxValue;
+
+        this.#buckets = new Array(this.#numBuckets + 2).fill(0);
+        this.#buckets[this.#numBuckets + 1] = Number.POSITIVE_INFINITY;
+        this.#buckets[this.#numBuckets] = this.#maxValue;
+        this.#buckets[0] = 0;
+        let i = this.#numBuckets - 1;
+        let currentValue = maxValue;
+        while (i >= 1) {
+            let nextMinimum = currentValue / this.#base;
+            this.#buckets[i] = nextMinimum;
+            currentValue = nextMinimum;
+            i--;
+        }
+        this.#minValue = this.#buckets[1];
+        this.#counts = new Array(this.#numBuckets + 2).fill(0);
+    }
+
+    add(latency) {
+        let idx = 0;
+        if (latency > 0)
+            idx = Math.ceil(Math.log(latency / this.#minValue) / this.#changeBaseLogarithm);
+        idx = (idx < 0) ? 0 :
+              (idx > this.#buckets.length - 2) ? (this.#buckets.length - 2) :
+               idx;
+        
+        this.#counts[idx]++;
+        this.#totalCount++;
+    }
+
+    percentiles(percentilesArray) {
+        const percentileCounts = percentilesArray.map(p => Math.ceil(this.#totalCount * p / 100));
+        const percentileResults = new Array(percentilesArray.length);
+        var totalCountSoFar = 0;
+        let j = 0;
+        let sum = 0;
+        for (let i = 0; i < this.#counts.length; i++) {
+            sum += this.#counts[i];
+        }
+        for (let i = 0; i < percentileCounts.length; i++) {
+            while ((totalCountSoFar < percentileCounts[i]) && (j < this.#counts.length - 1)) {
+                totalCountSoFar += this.#counts[j];
+                j++;
+            }
+            const bucketIndex = (j < this.#counts.length - 1) ? j : this.#counts.length - 2;
+            percentileResults[i] = [this.#buckets[bucketIndex], totalCountSoFar, this.#totalCount];
+        }
+        return percentileResults;
+    }
+}
+
 async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages) {
     const handlers = installHandlers(totalMessageCnt === -1);
+    if (stats) {
+        stats.percentilesTOT1 = new LatencyCountSketch({});
+        stats.percentilesTOT2 = new LatencyCountSketch({});
+    }
     while (true) {
         try {
             await consumer.connect();
@@ -106,6 +185,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                 stats.maxLatencyT0T1 = Math.max(stats.maxLatencyT0T1, latency);
                 stats.avgLatencyT0T1 = ((stats.avgLatencyT0T1 * (numMessages - 1)) + latency) / numMessages;
             }
+            stats.percentilesTOT1.add(latency);
         } else {
             if (!stats.maxLatencyT0T2) {
                 stats.maxLatencyT0T2 = latency;
@@ -114,6 +194,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                 stats.maxLatencyT0T2 = Math.max(stats.maxLatencyT0T2, latency);
                 stats.avgLatencyT0T2 = ((stats.avgLatencyT0T2 * (numMessages - 1)) + latency) / numMessages;
             }
+            stats.percentilesTOT2.add(latency);
         }
     };
 
@@ -257,6 +338,18 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         stats.messageRate = durationSeconds > 0 ? 
                             (messagesMeasured / durationSeconds) : Infinity;
         stats.durationSeconds = durationSeconds;
+        stats.percentilesTOT1 = stats.percentilesTOT1.percentiles(PERCENTILES).map((value, index) => ({
+            percentile: PERCENTILES[index],
+            value: value[0],
+            count: value[1],
+            total: value[2],
+        }));
+        stats.percentilesTOT2 = stats.percentilesTOT2.percentiles(PERCENTILES).map((value, index) => ({
+            percentile: PERCENTILES[index],
+            value: value[0],
+            count: value[1],
+            total: value[2],
+        }));
     }
     removeHandlers(handlers);
     return rate;
