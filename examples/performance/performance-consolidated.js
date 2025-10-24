@@ -53,6 +53,13 @@ function logParameters(parameters) {
     }
 }
 
+function printPercentiles(percentiles, type) {
+    for (const [percentile, value] of Object.entries(percentiles)) {
+        const percentileStr = `P${percentile}`.padStart(6, ' ');
+        console.log(`=== Consumer ${percentileStr} E2E latency ${type}: ${value.toFixed(2)} ms`);
+    }
+}
+
 (async function () {
     const producer = process.argv.includes('--producer');
     const consumer = process.argv.includes('--consumer');
@@ -169,10 +176,11 @@ function logParameters(parameters) {
         endTrackingMemory('consumer-each-message', `consumer-memory-message-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachMessage): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachMessage): ", stats.messageRate);
-        console.log("=== Consumer average E2E latency T0-T1 (eachMessage): ", stats.avgLatencyT0T1);
+        printPercentiles(stats.percentilesTOT1, 'T0-T1 (eachMessage)');
         console.log("=== Consumer max E2E latency T0-T1 (eachMessage): ", stats.maxLatencyT0T1);
         if (produceToSecondTopic) {
             console.log("=== Consumer average E2E latency T0-T2 (eachMessage): ", stats.avgLatencyT0T2);
+            printPercentiles(stats.percentilesTOT2, 'T0-T2 (eachMessage)');
             console.log("=== Consumer max E2E latency T0-T2 (eachMessage): ", stats.maxLatencyT0T2);
         }
         console.log("=== Consumption time (eachMessage): ", stats.durationSeconds);
@@ -197,9 +205,11 @@ function logParameters(parameters) {
         console.log("=== Max eachBatch lag: ", stats.maxOffsetLag);
         console.log("=== Average eachBatch size: ", stats.averageBatchSize);
         console.log("=== Consumer average E2E latency T0-T1 (eachBatch): ", stats.avgLatencyT0T1);
+        printPercentiles(stats.percentilesTOT1, 'T0-T1 (eachBatch)');
         console.log("=== Consumer max E2E latency T0-T1 (eachBatch): ", stats.maxLatencyT0T1);
         if (produceToSecondTopic) {
             console.log("=== Consumer average E2E latency T0-T2 (eachBatch): ", stats.avgLatencyT0T2);
+            printPercentiles(stats.percentilesTOT2, 'T0-T2 (eachBatch)');
             console.log("=== Consumer max E2E latency T0-T2 (eachBatch): ", stats.maxLatencyT0T2);
         }
         console.log("=== Consumption time (eachBatch): ", stats.durationSeconds);
