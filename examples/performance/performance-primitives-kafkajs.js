@@ -20,6 +20,8 @@ module.exports = {
     runProducerConsumerTogether,
 };
 
+const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'true';
+
 function baseConfiguration(parameters) {
     let ret = {
         clientId: 'kafka-test-performance',
@@ -147,6 +149,9 @@ class CompatibleConsumer {
 
 function newCompatibleConsumer(parameters, eachBatch) {
     const kafka = new Kafka(baseConfiguration(parameters));
+    const higherLatencyClusterOpts = IS_HIGHER_LATENCY_CLUSTER ? {
+        maxBytesPerPartition: 8388608
+    } : {};
 
     let groupId = eachBatch ? process.env.GROUPID_BATCH : process.env.GROUPID_MESSAGE;
     if (!groupId) {
@@ -154,6 +159,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
     }
     console.log(`New KafkaJS group id: ${groupId}`);
     const consumer = kafka.consumer({
+        ...higherLatencyClusterOpts,
         groupId,
     });
     return new CompatibleConsumer(consumer);
