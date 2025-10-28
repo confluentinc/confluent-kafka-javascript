@@ -96,7 +96,7 @@ async function main() {
 
       await runCommand(`MODE=${mode} node performance-consolidated.js --create-topics`);
 
-      console.log(`Waiting 10s ms after topic creation before starting producer and consumers...`);
+      console.log(`Waiting 10s after topic creation before starting producer and consumers...`);
       await new Promise(resolve => setTimeout(resolve, 10000));
 
       console.log(`Starting producer and consumers...`);
