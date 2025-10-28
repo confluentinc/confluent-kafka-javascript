@@ -102,7 +102,10 @@ class CompatibleProducer {
 }
 function newCompatibleProducer(parameters, compression) {
     const higherLatencyBrokerOpts = IS_HIGHER_LATENCY_BROKER ? {
-        'linger.ms': '100'
+        'linger.ms': '200',
+        'sticky.partitioning.linger.ms': '200',
+        'message.max.bytes': '2148352',
+        'batch.size': '2097152',
     } : {};
     return new CompatibleProducer(
         new Kafka({
