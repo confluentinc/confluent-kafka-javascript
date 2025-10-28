@@ -1,4 +1,4 @@
-const { Kafka, CompressionTypes } = require('kafkajs');
+const { Kafka, CompressionTypes, logLevel } = require('kafkajs');
 const { randomBytes } = require('crypto');
 const { hrtime } = require('process');
 const {
@@ -20,10 +20,13 @@ module.exports = {
     runProducerConsumerTogether,
 };
 
+const IS_HIGHER_LATENCY_BROKER = process.env.IS_HIGHER_LATENCY_BROKER === 'true';
+
 function baseConfiguration(parameters) {
     let ret = {
         clientId: 'kafka-test-performance',
         brokers: parameters.brokers.split(','),
+        logLevel: logLevel.WARN,
     };
     if (parameters.securityProtocol &&
         parameters.saslUsername &&
@@ -147,6 +150,9 @@ class CompatibleConsumer {
 
 function newCompatibleConsumer(parameters, eachBatch) {
     const kafka = new Kafka(baseConfiguration(parameters));
+    const higherLatencyBrokerOpts = IS_HIGHER_LATENCY_BROKER ? {
+        maxBytesPerPartition: 8388608
+    } : {};
 
     let groupId = eachBatch ? process.env.GROUPID_BATCH : process.env.GROUPID_MESSAGE;
     if (!groupId) {
@@ -154,6 +160,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
     }
     console.log(`New KafkaJS group id: ${groupId}`);
     const consumer = kafka.consumer({
+        ...higherLatencyBrokerOpts,
         groupId,
     });
     return new CompatibleConsumer(consumer);
