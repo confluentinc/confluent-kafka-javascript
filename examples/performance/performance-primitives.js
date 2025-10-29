@@ -21,7 +21,7 @@ module.exports = {
 
 
 const CONSUMER_MAX_BATCH_SIZE = process.env.CONSUMER_MAX_BATCH_SIZE ? +process.env.CONSUMER_MAX_BATCH_SIZE : null;
-const IS_HIGHER_LATENCY_BROKER = process.env.IS_HIGHER_LATENCY_BROKER === 'true';
+const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'true';
 
 function baseConfiguration(parameters) {
     let ret = {
@@ -101,7 +101,7 @@ class CompatibleProducer {
     }
 }
 function newCompatibleProducer(parameters, compression) {
-    const higherLatencyBrokerOpts = IS_HIGHER_LATENCY_BROKER ? {
+    const higherLatencyClusterOpts = IS_HIGHER_LATENCY_CLUSTER ? {
         'linger.ms': '200',
         'sticky.partitioning.linger.ms': '200',
         'message.max.bytes': '2148352',
@@ -110,7 +110,7 @@ function newCompatibleProducer(parameters, compression) {
     return new CompatibleProducer(
         new Kafka({
         ...baseConfiguration(parameters),
-        ...higherLatencyBrokerOpts,
+        ...higherLatencyClusterOpts,
         'compression.codec': CompressionTypes[compression],
     }).producer());
 }
@@ -160,7 +160,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
     const jsOpts = (eachBatch && CONSUMER_MAX_BATCH_SIZE !== null) ? {
         'js.consumer.max.batch.size': CONSUMER_MAX_BATCH_SIZE
     } : {};
-    const higherLatencyBrokerOpts = IS_HIGHER_LATENCY_BROKER ? {
+    const higherLatencyClusterOpts = IS_HIGHER_LATENCY_CLUSTER ? {
         'max.partition.fetch.bytes': '8388608'
     } : {};
 
@@ -175,7 +175,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
         'fetch.queue.backoff.ms': '100',
         ...autoCommitOpts,
         ...jsOpts,
-        ...higherLatencyBrokerOpts,
+        ...higherLatencyClusterOpts,
     });
     return new CompatibleConsumer(consumer);
 }

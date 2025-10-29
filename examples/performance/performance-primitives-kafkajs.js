@@ -20,7 +20,7 @@ module.exports = {
     runProducerConsumerTogether,
 };
 
-const IS_HIGHER_LATENCY_BROKER = process.env.IS_HIGHER_LATENCY_BROKER === 'true';
+const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'true';
 
 function baseConfiguration(parameters) {
     let ret = {
@@ -150,7 +150,7 @@ class CompatibleConsumer {
 
 function newCompatibleConsumer(parameters, eachBatch) {
     const kafka = new Kafka(baseConfiguration(parameters));
-    const higherLatencyBrokerOpts = IS_HIGHER_LATENCY_BROKER ? {
+    const higherLatencyClusterOpts = IS_HIGHER_LATENCY_CLUSTER ? {
         maxBytesPerPartition: 8388608
     } : {};
 
@@ -160,7 +160,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
     }
     console.log(`New KafkaJS group id: ${groupId}`);
     const consumer = kafka.consumer({
-        ...higherLatencyBrokerOpts,
+        ...higherLatencyClusterOpts,
         groupId,
     });
     return new CompatibleConsumer(consumer);
