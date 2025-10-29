@@ -20,6 +20,7 @@ module.exports = {
 };
 
 
+const CONSUMER_MAX_BATCH_SIZE = process.env.CONSUMER_MAX_BATCH_SIZE ? +process.env.CONSUMER_MAX_BATCH_SIZE : null;
 const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'true';
 
 function baseConfiguration(parameters) {
@@ -156,6 +157,9 @@ function newCompatibleConsumer(parameters, eachBatch) {
     const autoCommitOpts = autoCommit > 0 ? 
         { 'enable.auto.commit': true, 'auto.commit.interval.ms': autoCommit } :
         { 'enable.auto.commit': false };
+    const jsOpts = (eachBatch && CONSUMER_MAX_BATCH_SIZE !== null) ? {
+        'js.consumer.max.batch.size': CONSUMER_MAX_BATCH_SIZE
+    } : {};
     const higherLatencyClusterOpts = IS_HIGHER_LATENCY_CLUSTER ? {
         'max.partition.fetch.bytes': '8388608'
     } : {};
@@ -170,6 +174,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
         'auto.offset.reset': 'earliest',
         'fetch.queue.backoff.ms': '100',
         ...autoCommitOpts,
+        ...jsOpts,
         ...higherLatencyClusterOpts,
     });
     return new CompatibleConsumer(consumer);

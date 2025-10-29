@@ -47,6 +47,9 @@ async function main() {
   if (concurrentRun) {
     skipCtpTest = true;
   }
+  if (!process.env.CONSUMER_MAX_BATCH_SIZE) {
+    process.env.CONSUMER_MAX_BATCH_SIZE = '-1';
+  }
   if (!process.env.PARTITIONS_CONSUMED_CONCURRENTLY) {
     process.env.PARTITIONS_CONSUMED_CONCURRENTLY = '2';
   }
