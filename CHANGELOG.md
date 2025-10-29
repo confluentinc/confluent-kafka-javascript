@@ -6,9 +6,9 @@ v1.6.1 is a maintenance release. It is supported for all usage.
 
 1. Configurable batch size through the `js.consumer.max.batch.size` property 
    and cache size through the `js.consumer.max.cache.size.per.worker.ms` 
-   property (#389).
+   property (#393).
 2. Fix for at-least-once guarantee not ensured in case a seek happens on one
-partition and there are messages being fetched about other partitions (#389).
+partition and there are messages being fetched about other partitions (#393).
 
 
 # confluent-kafka-javascript 1.6.0
