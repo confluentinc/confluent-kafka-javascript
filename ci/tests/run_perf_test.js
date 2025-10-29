@@ -47,6 +47,12 @@ async function main() {
   if (concurrentRun) {
     skipCtpTest = true;
   }
+  if (!process.env.PARTITIONS_CONSUMED_CONCURRENTLY) {
+    process.env.PARTITIONS_CONSUMED_CONCURRENTLY = '2';
+  }
+  if (!process.env.COMPRESSION) {
+    process.env.COMPRESSION = 'GZIP';
+  }
   const consumerMode = process.env.CONSUMER_MODE || 'all';
   const produceToSecondTopic = process.env.PRODUCE_TO_SECOND_TOPIC ? process.env.PRODUCE_TO_SECOND_TOPIC === 'true' : false;
   const produceToSecondTopicParam = produceToSecondTopic ? '--produce-to-second-topic' : '';
