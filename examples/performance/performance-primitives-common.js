@@ -190,7 +190,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
 
                 if (actionOnMessages) {
                     await actionOnMessages(batch.messages);
-                    if (messagesMeasured > 0) {
+                    if (messagesMeasured > 0 && messages.length > 0) {
                         let i = 1;
                         const now = Date.now();
                         for (const message of messages) {
