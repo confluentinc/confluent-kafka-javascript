@@ -9,6 +9,7 @@ v1.6.1 is a maintenance release. It is supported for all usage.
    property (#389).
 2. Fix for at-least-once guarantee not ensured in case a seek happens on one
 partition and there are messages being fetched about other partitions (#389).
+3. Messages passed to the producer `send` method are kept constant (#).
 
 
 # confluent-kafka-javascript 1.6.0
