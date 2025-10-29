@@ -412,6 +412,11 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
             partitions: partitions,
         });
 
+        // If you have a large consume time and consuming one message at a time,
+        // you need to have very small batch sizes to keep the concurrency up.
+        // It's to avoid having a too large cache and postponing the next fetch
+        // and so the rebalance too much.
+        const producer = createProducer({}, {'batch.num.messages': '1'});
         await producer.connect();
         await consumer.connect();
         await consumer.subscribe({ topic: topicName });
@@ -448,6 +453,7 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
         await producer.send({ topic: topicName, messages });
         await maxConcurrentWorkersReached;
         expect(inProgressMaxValue).toBe(expectedMaxConcurrentWorkers);
+        await producer.disconnect();
     });
 
     it('consume GZIP messages', async () => {
@@ -612,6 +618,7 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
         let assigns = 0;
         let revokes = 0;
         let lost = 0;
+        let firstBatchProcessing;
         consumer = createConsumer({
             groupId,
             maxWaitTimeInMs: 100,
@@ -649,14 +656,14 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
                 receivedMessages++;
 
                 try {
-                    if (event.batch.messages.length >= 32) {
-                        expect(event.isStale()).toEqual(false);
-                        await sleep(7500);
-                        /* 7.5s 'processing'
-                         * doesn't exceed max poll interval.
-                         * Cache reset is transparent */
-                        expect(event.isStale()).toEqual(false);
-                    }
+                    expect(event.isStale()).toEqual(false);
+                    await sleep(7500);
+                    /* 7.5s 'processing'
+                     * doesn't exceed max poll interval.
+                     * Cache reset is transparent */
+                    expect(event.isStale()).toEqual(false);
+                    if (firstBatchProcessing === undefined)
+                        firstBatchProcessing = receivedMessages;
                 } catch (e) {
                     console.error(e);
                     errors = true;
@@ -680,6 +687,8 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
         /* Triggers revocation */
         await consumer.disconnect();
 
+        expect(firstBatchProcessing).toBeDefined();
+        expect(receivedMessages).toBeGreaterThan(firstBatchProcessing);
         /* First assignment */
         expect(assigns).toEqual(1);
         /* Revocation on disconnect */
@@ -776,6 +785,9 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
 
         /* Triggers revocation */
         await consumer.disconnect();
+
+        expect(firstLongBatchProcessing).toBeDefined();
+        expect(receivedMessages).toBeGreaterThan(firstLongBatchProcessing);
 
         /* First assignment + assignment after partitions lost */
         expect(assigns).toEqual(2);
