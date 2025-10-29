@@ -310,7 +310,6 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                         let i = 1;
                         const now = Date.now();
                         for (const message of messages) {
-                            totalMessageSize += message.value.length;
                             updateLatency(now, messagesBase + i, message, true);
                             i++;
                         }
