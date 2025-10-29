@@ -232,6 +232,10 @@ describe.each(cases)('Consumer message cache - isAutoCommit = %s - partitionsCon
          * non-message events like rebalances, etc. Internally, this is to make sure that
          * we call poll() at least once within max.poll.interval.ms even if the cache is
          * still full. This depends on us expiring the cache on time. */
+
+        /* FIXME: this test can be flaky when using KIP-848 protocol and
+         * auto-commit. To check if there's something to fix about that case.
+         */
         const impatientConsumer = createConsumer({
             groupId,
             maxWaitTimeInMs: 100,
