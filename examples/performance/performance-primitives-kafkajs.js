@@ -1,4 +1,4 @@
-const { Kafka, CompressionTypes } = require('kafkajs');
+const { Kafka, CompressionTypes, logLevel } = require('kafkajs');
 const { randomBytes } = require('crypto');
 const { hrtime } = require('process');
 const {
@@ -26,6 +26,7 @@ function baseConfiguration(parameters) {
     let ret = {
         clientId: 'kafka-test-performance',
         brokers: parameters.brokers.split(','),
+        logLevel: logLevel.WARN,
     };
     if (parameters.securityProtocol &&
         parameters.saslUsername &&
