@@ -251,7 +251,14 @@ export interface JSConsumerConfig {
    *
    * @default 32
    */
-  'js.consumer.max.batch.size'?: string | number
+  'js.consumer.max.batch.size'?: string | number,
+  /**
+   * Maximum cache size per worker in milliseconds based on the
+   * consume rate estimated through the eachMessage/eachBatch calls.
+   *
+   * @default 1500
+   */
+  'js.consumer.max.cache.size.per.worker.ms'?: string | number
 }
 
 export type ConsumerGlobalAndTopicConfig = ConsumerGlobalConfig & ConsumerTopicConfig & JSConsumerConfig;
