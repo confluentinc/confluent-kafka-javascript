@@ -1,6 +1,16 @@
-const { Kafka, CompressionTypes } = require('kafkajs');
+const { Kafka, CompressionTypes, logLevel } = require('kafkajs');
 const { randomBytes } = require('crypto');
 const { hrtime } = require('process');
+const {
+    runConsumer: runConsumerCommon,
+    runProducer: runProducerCommon,
+    genericProduceToTopic,
+    getAutoCommit,
+ } = require('./performance-primitives-common');
+
+const {
+  newCompatibleProducer: newCompatibleProducerCKJS,
+} = require('./performance-primitives');
 
 module.exports = {
     runProducer,
@@ -10,21 +20,42 @@ module.exports = {
     runProducerConsumerTogether,
 };
 
-async function runCreateTopics(brokers, topic, topic2) {
-    const kafka = new Kafka({
+const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'true';
+
+function baseConfiguration(parameters) {
+    let ret = {
         clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+        brokers: parameters.brokers.split(','),
+        logLevel: logLevel.WARN,
+    };
+    if (parameters.securityProtocol &&
+        parameters.saslUsername &&
+        parameters.saslPassword) {
+        ret = {
+            ...ret,
+            ssl: parameters.securityProtocol.toLowerCase().includes('ssl'),
+            sasl: {
+                mechanism: 'plain',
+                username: parameters.saslUsername,
+                password: parameters.saslPassword
+            }
+        };
+    }
+    return ret;
+}
+
+async function runCreateTopics(parameters, topic, topic2, numPartitions) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const admin = kafka.admin();
     await admin.connect();
 
     for (let t of [topic, topic2]) {
         let topicCreated = await admin.createTopics({
-            topics: [{ topic: t, numPartitions: 3 }],
+            topics: [{ topic: t, numPartitions }],
         }).catch(console.error);
         if (topicCreated) {
-            console.log(`Created topic ${t}`);
+            console.log(`Created topic ${t} with ${numPartitions} partitions`);
             continue;
         }
 
@@ -33,142 +64,129 @@ async function runCreateTopics(brokers, topic, topic2) {
         await new Promise(resolve => setTimeout(resolve, 1000)); /* Propagate. */
         await admin.createTopics({
             topics: [
-                { topic: t, numPartitions: 3 },
+                { topic: t, numPartitions },
             ],
         }).catch(console.error);
-        console.log(`Created topic ${t}`);
+        console.log(`Created topic ${t} with ${numPartitions} partitions`);
     }
 
     await admin.disconnect();
 }
 
-async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression) {
-    let totalMessagesSent = 0;
-    let totalBytesSent = 0;
-
-    const message = {
-        value: randomBytes(msgSize),
+class CompatibleProducer {
+    constructor(producer) {
+        this.producer = producer;
     }
 
-    const messages = Array(batchSize).fill(message);
+    async connect() {
+        return this.producer.connect();
+    }
 
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+    async disconnect() {
+        return this.producer.disconnect();
+    }
 
-    const producer = kafka.producer();
-    await producer.connect();
+    isQueueFullError(err) {
+        return false;
+    }
 
-    console.log('Sending ' + warmupMessages + ' warmup messages.');
-    while (warmupMessages > 0) {
-        await producer.send({
-            topic,
-            messages,
+    send(opts, compression) {
+        return this.producer.send({
+            ...opts,
             compression: CompressionTypes[compression],
         });
-        warmupMessages -= batchSize;
     }
-    console.log('Sent warmup messages');
-
-    // Now that warmup is done, start measuring...
-    let startTime;
-    let promises = [];
-    startTime = hrtime();
-    let messagesDispatched = 0;
-
-    // The double while-loop allows us to send a bunch of messages and then
-    // await them all at once. We need the second while loop to keep sending
-    // in case of queue full errors, which surface only on awaiting.
-    while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
-        while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
-            promises.push(producer.send({
-                topic,
-                messages,
-                compression: CompressionTypes[compression],
-            }).then(() => {
-                totalMessagesSent += batchSize;
-                totalBytesSent += batchSize * msgSize;
-            }).catch((err) => {
-                console.error(err);
-                throw err;
-            }));
-            messagesDispatched += batchSize;
-        }
-        await Promise.all(promises);
-    }
-    let elapsed = hrtime(startTime);
-    let durationNanos = elapsed[0] * 1e9 + elapsed[1];
-    let rate = (totalBytesSent / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
-    console.log(`Sent ${totalMessagesSent} messages, ${totalBytesSent} bytes; rate is ${rate} MB/s`);
-
-    await producer.disconnect();
-    return rate;
+}
+function newCompatibleProducer(parameters, compression) {
+    return new CompatibleProducer(
+        new Kafka(baseConfiguration(parameters)
+    ).producer());
 }
 
-async function runConsumer(brokers, topic, totalMessageCnt) {
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS) {
+    return runProducerCommon(newCompatibleProducer(parameters, compression), topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS);
+}
 
+class CompatibleConsumer {
+    constructor(consumer) {
+        this.consumer = consumer;
+    }
+
+    async connect() {
+        return this.consumer.connect();
+    }
+
+    async disconnect() {
+        return this.consumer.disconnect();
+    }
+
+    async subscribe(opts) {
+        return this.consumer.subscribe({
+            ...opts,
+            fromBeginning: true
+        });
+    }
+
+    pause(topics) {
+        return this.consumer.pause(topics);
+    }
+
+    commitOffsetsOnBatchEnd(offsets) {
+        // do nothing, done by KafkaJS after each* if autoCommit is enabled
+    }
+
+    run(opts) {
+        const autoCommit = getAutoCommit();
+        const autoCommitOpts = autoCommit > 0 ? 
+            { autoCommit: true, autoCommitInterval: autoCommit } :
+            { autoCommit: false };
+        return this.consumer.run({
+            ...opts,
+            ...autoCommitOpts,
+        });
+    }
+}
+
+
+function newCompatibleConsumer(parameters, eachBatch) {
+    const kafka = new Kafka(baseConfiguration(parameters));
+    const higherLatencyClusterOpts = IS_HIGHER_LATENCY_CLUSTER ? {
+        maxBytesPerPartition: 8388608
+    } : {};
+
+    let groupId = eachBatch ? process.env.GROUPID_BATCH : process.env.GROUPID_MESSAGE;
+    if (!groupId) {
+        groupId = 'test-group' + Math.random();
+    }
+    console.log(`New KafkaJS group id: ${groupId}`);
     const consumer = kafka.consumer({
-        groupId: 'test-group' + Math.random(),
+        ...higherLatencyClusterOpts,
+        groupId,
     });
-    await consumer.connect();
-    await consumer.subscribe({ topic, fromBeginning: true });
-
-    let messagesReceived = 0;
-    let messagesMeasured = 0;
-    let totalMessageSize = 0;
-    let startTime;
-    let rate;
-    const skippedMessages = 100;
-
-    console.log("Starting consumer.");
-
-    consumer.run({
-        autoCommit: false,
-        eachMessage: async ({ topic, partition, message }) => {
-            messagesReceived++;
-
-            if (messagesReceived >= skippedMessages) {
-                messagesMeasured++;
-                totalMessageSize += message.value.length;
-
-                if (messagesReceived === skippedMessages) {
-                    startTime = hrtime();
-                } else if (messagesMeasured === totalMessageCnt) {
-                    let elapsed = hrtime(startTime);
-                    let durationNanos = elapsed[0] * 1e9 + elapsed[1];
-                    rate = (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
-                    console.log(`Recvd ${messagesMeasured} messages, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
-                    consumer.pause([{ topic }]);
-                }
-            }
-        }
-    });
-
-    totalMessageSize = 0;
-
-    await new Promise((resolve) => {
-        let interval = setInterval(() => {
-            if (messagesReceived >= totalMessageCnt) {
-                clearInterval(interval);
-                resolve();
-            }
-        }, 1000);
-    });
-
-    await consumer.disconnect();
-    return rate;
+    return new CompatibleConsumer(consumer);
 }
 
-async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression, useCKJSProducerEverywhere) {
+    let actionOnMessages = null;
+    let producer;
+    if (produceToTopic) {
+        const newCompatibleProducerFunction = useCKJSProducerEverywhere ?
+            newCompatibleProducerCKJS : newCompatibleProducer;
+        producer = newCompatibleProducerFunction(parameters, produceCompression);
+        await producer.connect();
+        actionOnMessages = (messages) =>
+            genericProduceToTopic(producer, produceToTopic, messages);
+    }
+    const ret = await runConsumerCommon(newCompatibleConsumer(parameters, eachBatch), topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages);
+    if (producer) {
+        await producer.disconnect();
+    }
+    return ret;
+}
+
+async function runConsumeTransformProduce(parameters, consumeTopic, produceTopic, warmupMessages, totalMessageCnt, messageProcessTimeMs, ctpConcurrency) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const producer = kafka.producer({});
     await producer.connect();
@@ -213,8 +231,9 @@ async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, w
                 if (messagesMeasured === totalMessageCnt) {
                     let elapsed = hrtime(startTime);
                     let durationNanos = elapsed[0] * 1e9 + elapsed[1];
+                    let durationSeconds = durationNanos / 1e9;
                     rate = (totalMessageSize / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
-                    console.log(`Recvd, transformed and sent ${messagesMeasured} messages, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
+                    console.log(`Recvd, transformed and sent ${messagesMeasured} messages in ${durationSeconds}, ${totalMessageSize} bytes; rate is ${rate} MB/s`);
                     consumer.pause([{ topic }]);
                 }
             } else {
@@ -242,11 +261,8 @@ async function runConsumeTransformProduce(brokers, consumeTopic, produceTopic, w
 }
 
 
-async function runProducerConsumerTogether(brokers, topic, totalMessageCnt, msgSize, produceMessageProcessTimeMs, consumeMessageProcessTimeMs) {
-    const kafka = new Kafka({
-        clientId: 'kafka-test-performance',
-        brokers: brokers.split(','),
-    });
+async function runProducerConsumerTogether(parameters, topic, totalMessageCnt, msgSize, produceMessageProcessTimeMs, consumeMessageProcessTimeMs) {
+    const kafka = new Kafka(baseConfiguration(parameters));
 
     const producer = kafka.producer({});
     await producer.connect();
