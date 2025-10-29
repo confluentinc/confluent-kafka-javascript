@@ -5,6 +5,8 @@ const PERCENTILES = [50, 75, 90, 95, 99, 99.9, 99.99, 100];
 const TERMINATE_TIMEOUT_MS = process.env.TERMINATE_TIMEOUT_MS ? +process.env.TERMINATE_TIMEOUT_MS : 600000;
 const AUTO_COMMIT = process.env.AUTO_COMMIT || 'false';
 const AUTO_COMMIT_ON_BATCH_END = process.env.AUTO_COMMIT_ON_BATCH_END === 'true';
+const USE_KEYS = process.env.USE_KEYS === 'true';
+
 let autoCommit;
 if (AUTO_COMMIT && AUTO_COMMIT === 'false')
     autoCommit = null;
@@ -168,13 +170,16 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
     let consumptionStopped = false;
     let lastMessageReceivedAt;
     const skippedMessages = warmupMessages;
-    const decoder = new TextDecoder('utf-8');
 
     const updateLatency = (receivedAt, numMessages, message, isT0T2) => {
         if (!stats)
             return;
 
-        const sentAt = Number(decoder.decode(message.value.slice(0, 13)));
+        if (!message.headers || !message.headers['timestamp']) {
+            console.log('WARN: message without timestamp header received, cannot measure latency');
+            return;
+        }
+        const sentAt = Number(message.headers['timestamp']);
         let latency = receivedAt - sentAt;
 
         if (isNaN(latency)) {
@@ -370,15 +375,11 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     let totalMessagesSent = 0;
     let totalBytesSent = 0;
 
-    const encoder = new TextEncoder();
     let staticValueLength = Math.floor(msgSize * (1 - randomness));
-    if (staticValueLength < 13)
-        staticValueLength = 13;
-    let staticValueRemainder = staticValueLength - 13;
-    if (staticValueRemainder > 0) {
-        staticValueRemainder = randomBytes(staticValueRemainder);
+    if (staticValueLength > 0) {
+        staticValueBytes = randomBytes(staticValueLength);
     } else {
-        staticValueRemainder = Buffer.alloc(0);
+        staticValueBytes = Buffer.alloc(0);
     }
 
     let messageCnt = totalMessageCnt;
@@ -389,8 +390,11 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     for (let i = 0; i < messageCnt; i++) {
         /* Generate a different random value for each message */
         messages[i] = {
-            value: Buffer.concat([staticValueRemainder, randomBytes(msgSize - staticValueLength)]),
+            value: Buffer.concat([staticValueBytes, randomBytes(msgSize - staticValueLength)]),
         };
+        if (USE_KEYS) {
+            messages[i].key = randomBytes(8);
+        }
     }
 
     await producer.connect();
@@ -422,8 +426,12 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             const modifiedMessages = [];
             const batchStart = messagesDispatched % messageCnt;
             for (const msg of messages.slice(batchStart, batchStart + batchSize)) {
-                modifiedMessages.push({ 
-                    value: Buffer.concat([encoder.encode(Date.now().toString()), msg.value])
+                modifiedMessages.push({
+                    key: msg.key,
+                    value: msg.value,
+                    headers: {
+                        'timestamp': Date.now().toString(),
+                    }
                 });
             }
             promises.push(producer.send({
