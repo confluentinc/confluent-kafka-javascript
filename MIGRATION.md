@@ -305,9 +305,12 @@ producerRun().then(consumerRun).catch(console.error);
   - The `partitionsConsumedConcurrently` is supported by both `eachMessage` and `eachBatch`.
   - An API compatible version of `eachBatch` is available, maximum batch size
     can be configured through the `js.consumer.max.batch.size` configuration property
-    and defaults to 32. `js.consumer.max.cache.size.per.worker.ms` allows to
+    and defaults to 32.  It is not dependent on the size of the produced batches
+    present on the broker, as these are constructed client-side. Similar to
+    the Java client configuration `max.poll.records`.
+    `js.consumer.max.cache.size.per.worker.ms` allows to
     configure the cache size estimated based on consumption rate and defaults
-    to 1.5 seconds.
+    to the cache being sized to 1.5s worth of messages.
     The property `eachBatchAutoResolve` is supported.
     Within the `eachBatch` callback, use of `uncommittedOffsets` is unsupported,
     and within the returned batch, `offsetLag` and `offsetLagLow` are supported.

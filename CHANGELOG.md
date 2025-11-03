@@ -1,6 +1,6 @@
-# confluent-kafka-javascript 1.6.1
+# confluent-kafka-javascript 1.7.0
 
-v1.6.1 is a maintenance release. It is supported for all usage.
+v1.7.0 is a feature release. It is supported for all usage.
 
 ### Enhancements
 
