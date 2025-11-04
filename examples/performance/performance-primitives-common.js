@@ -383,7 +383,9 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
 
     let messageCnt = totalMessageCnt;
     if (messageCnt === -1) {
-        messageCnt = batchSize * 10000;
+        if (batchSize > 20000)
+            batchSize = 20000;
+        messageCnt = Math.ceil(20000 / batchSize) * batchSize;
     }
     const messages = Array(messageCnt);
     for (let i = 0; i < messageCnt; i++) {
