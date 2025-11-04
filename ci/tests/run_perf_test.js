@@ -97,7 +97,8 @@ async function main() {
       const TERMINATE_TIMEOUT_MS_CONSUMERS = TERMINATE_TIMEOUT_MS + INITIAL_DELAY_MS + 2000;
       const TERMINATE_TIMEOUT_MS_LAG_MONITORING = TERMINATE_TIMEOUT_MS + 1000;
 
-      await runCommand(`MODE=${mode} node performance-consolidated.js --create-topics`);
+      const createTopicResult = await runCommand(`MODE=${mode} node performance-consolidated.js --create-topics`);
+      let ret = [createTopicResult];
 
       console.log(`Waiting 10s after topic creation before starting producer and consumers...`);
       await new Promise(resolve => setTimeout(resolve, 10000));
@@ -118,7 +119,7 @@ async function main() {
         allPromises.push(runCommand(`MODE=${mode} INITIAL_DELAY_MS=${INITIAL_DELAY_MS} TERMINATE_TIMEOUT_MS=${TERMINATE_TIMEOUT_MS_LAG_MONITORING} GROUPID_MONITOR=${groupIdEachBatch} node performance-consolidated.js --monitor-lag`));
       }
       const results = await Promise.allSettled(allPromises);
-      return results.map(r => r.status === 'fulfilled' ? r.value : '').join('\n');
+      return ret.concat(results.map(r => r.status === 'fulfilled' ? r.value : '')).join('\n');
     } else {
       console.log(`Running ${modeLabel} Producer/Consumer test...`);
       return runCommand(`MODE=${mode} MESSAGE_COUNT=${messageCount} GROUPID_MESSAGE=${groupIdEachMessage} GROUPID_BATCH=${groupIdEachBatch} node performance-consolidated.js --create-topics ${consumerParam} ${produceToSecondTopicParam} --producer`);
