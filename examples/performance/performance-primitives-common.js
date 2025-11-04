@@ -172,7 +172,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
     const skippedMessages = warmupMessages;
 
     const updateLatency = (receivedAt, numMessages, message, isT0T2) => {
-        if (!stats)
+        if (!stats || numMessages < 1)
             return;
 
         if (!message.headers || !message.headers['timestamp']) {
@@ -402,11 +402,18 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
 
     console.log('Sending ' + warmupMessages + ' warmup messages.');
     while (warmupMessages > 0) {
+        const toProduce = Math.min(batchSize, warmupMessages);
         await producer.send({
             topic,
-            messages: messages.slice(0, batchSize)
+            messages: messages.slice(0, toProduce).map((msg) => ({
+                key: msg.key,
+                value: msg.value,
+                headers: {
+                    'timestamp': Date.now().toString(),
+                }
+            }))
         }, compression);
-        warmupMessages -= batchSize;
+        warmupMessages -= toProduce;
     }
     console.log('Sent warmup messages');
 
