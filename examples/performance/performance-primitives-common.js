@@ -433,7 +433,8 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
         while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
             const modifiedMessages = [];
             const batchStart = messagesDispatched % messageCnt;
-            for (const msg of messages.slice(batchStart, batchStart + batchSize)) {
+            for (let i = 0; i < batchSize; i++) {
+                const msg = messages[(batchStart + i) % messages.length];
                 modifiedMessages.push({
                     key: msg.key,
                     value: msg.value,
@@ -441,26 +442,27 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
                         'timestamp': Date.now().toString(),
                     }
                 });
+               if (messagesNotAwaited + i + 1 >= maxToAwait)
+                        break;
             }
+            const toProduce = modifiedMessages.length;
             promises.push(producer.send({
                 topic,
                 messages: modifiedMessages,
             }, compression).then(() => {
-                totalMessagesSent += batchSize;
-                totalBytesSent += batchSize * msgSize;
+                totalMessagesSent += toProduce;
+                totalBytesSent += toProduce * msgSize;
             }).catch((err) => {
                 if (producer.isQueueFullError(err)) {
                     /* do nothing, just send them again */
-                    messagesDispatched -= batchSize;
-                    totalMessagesSent -= batchSize;
-                    totalBytesSent -= batchSize * msgSize;
+                    messagesDispatched -= toProduce;
                 } else {
                     console.error(err);
                     throw err;
                 }
             }));
-            messagesDispatched += batchSize;
-            messagesNotAwaited += batchSize;
+            messagesDispatched += toProduce;
+            messagesNotAwaited += toProduce;
             if (handlers.terminationRequested || messagesNotAwaited >= maxToAwait)
                 break;
         }
