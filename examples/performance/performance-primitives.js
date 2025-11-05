@@ -7,6 +7,7 @@ const {
     runLagMonitoring: runLagMonitoringCommon,
     genericProduceToTopic,
     getAutoCommit,
+    PerformanceLogger,
  } = require('./performance-primitives-common');
 
 module.exports = {
@@ -22,6 +23,9 @@ module.exports = {
 
 const CONSUMER_MAX_BATCH_SIZE = process.env.CONSUMER_MAX_BATCH_SIZE ? +process.env.CONSUMER_MAX_BATCH_SIZE : null;
 const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'true';
+const DEBUG = process.env.DEBUG;
+const STATISTICS_INTERVAL_MS = process.env.STATISTICS_INTERVAL_MS ? +process.env.STATISTICS_INTERVAL_MS : null;
+const ENABLE_LOGGING = DEBUG !== undefined || STATISTICS_INTERVAL_MS !== null;
 
 function baseConfiguration(parameters) {
     let ret = {
@@ -39,11 +43,29 @@ function baseConfiguration(parameters) {
             'sasl.password': parameters.saslPassword,
         };
     }
+    if (DEBUG && !parameters.disableLogging) {
+        ret['debug'] = DEBUG;
+    }
+    if (parameters.logToFile) {
+        ret.kafkaJS = {
+            'logger': new PerformanceLogger(parameters.logToFile),
+        };
+    }
+    if (STATISTICS_INTERVAL_MS !== null) {
+        ret['statistics.interval.ms'] = STATISTICS_INTERVAL_MS;
+        ret['stats_cb'] = function (event) {
+            this.logger().info(event.message);
+        };
+    }
     return ret;
 }
 
 async function runCreateTopics(parameters, topic, topic2, numPartitions) {
-    const kafka = new Kafka(baseConfiguration(parameters));
+    const adminParameters = {
+        ...parameters,
+        disableLogging: true,
+    };
+    const kafka = new Kafka(baseConfiguration(adminParameters));
 
     const admin = kafka.admin();
     await admin.connect();
@@ -73,7 +95,11 @@ async function runCreateTopics(parameters, topic, topic2, numPartitions) {
 }
 
 function runLagMonitoring(parameters, topic) {
-    const kafka = new Kafka(baseConfiguration(parameters));
+    const monitoringParameters = {
+        ...parameters,
+        disableLogging: true,
+    };
+    const kafka = new Kafka(baseConfiguration(monitoringParameters));
     const admin = kafka.admin();
 
     return runLagMonitoringCommon(admin, topic);
@@ -116,6 +142,9 @@ function newCompatibleProducer(parameters, compression) {
 }
 
 async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS) {
+    if (ENABLE_LOGGING && !parameters.logToFile) {
+        parameters.logToFile = './confluent-producer.log';
+    }
     return runProducerCommon(newCompatibleProducer(parameters, compression), topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS);
 }
 
@@ -151,7 +180,8 @@ class CompatibleConsumer {
     }
 }
 
-function newCompatibleConsumer(parameters, eachBatch) {
+function newCompatibleConsumer(parameters, eachBatch, messageSize, limitRPS) {
+    const minFetchBytes = messageSize * limitRPS;
     const kafka = new Kafka(baseConfiguration(parameters));
     const autoCommit = getAutoCommit();
     const autoCommitOpts = autoCommit > 0 ? 
@@ -173,6 +203,7 @@ function newCompatibleConsumer(parameters, eachBatch) {
         'group.id': groupId,
         'auto.offset.reset': 'earliest',
         'fetch.queue.backoff.ms': '100',
+        'fetch.min.bytes': minFetchBytes.toString(),
         ...autoCommitOpts,
         ...jsOpts,
         ...higherLatencyClusterOpts,
@@ -181,16 +212,30 @@ function newCompatibleConsumer(parameters, eachBatch) {
 }
 
 
-async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression, useCKJSProducerEverywhere) {
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression, useCKJSProducerEverywhere,
+                           messageSize, limitRPS) {
     let actionOnMessages = null;
     let producer;
     if (produceToTopic) {
-        producer = newCompatibleProducer(parameters, produceCompression);
+        const producerParameters = {
+            ...parameters,
+        };
+        if (ENABLE_LOGGING)
+            producerParameters.logToFile = './confluent-consumer-producer.log';
+        producer = newCompatibleProducer(producerParameters, produceCompression);
         await producer.connect();
         actionOnMessages = (messages) =>
             genericProduceToTopic(producer, produceToTopic, messages);
     }
-    const ret = await runConsumerCommon(newCompatibleConsumer(parameters, eachBatch), topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages);
+    const consumerParameters = {
+        ...parameters,
+    };
+    if (ENABLE_LOGGING)
+        consumerParameters.logToFile = eachBatch ? './confluent-consumer-batch.log' :
+                                                   './confluent-consumer-message.log';
+    const ret = await runConsumerCommon(
+        newCompatibleConsumer(consumerParameters, eachBatch, messageSize, limitRPS),
+        topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages);
     if (producer) {
         await producer.disconnect();
     }

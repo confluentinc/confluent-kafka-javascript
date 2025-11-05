@@ -172,7 +172,8 @@ function printPercentiles(percentiles, type) {
         const consumerRate = await runConsumer(parameters, topic,
             warmupMessages, messageCount,
             false, partitionsConsumedConcurrently, stats,
-            produceToSecondTopic ? topic2 : null, compression, useCKJSProducerEverywhere);
+            produceToSecondTopic ? topic2 : null, compression, useCKJSProducerEverywhere,
+            messageSize, limitRPS);
         endTrackingMemory('consumer-each-message', `consumer-memory-message-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachMessage): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachMessage): ", stats.messageRate);
@@ -197,7 +198,8 @@ function printPercentiles(percentiles, type) {
         const consumerRate = await runConsumer(parameters, topic,
             warmupMessages, messageCount,
             true, partitionsConsumedConcurrently, stats,
-            produceToSecondTopic ? topic2 : null, compression, useCKJSProducerEverywhere);
+            produceToSecondTopic ? topic2 : null, compression, useCKJSProducerEverywhere,
+            messageSize, limitRPS);
         endTrackingMemory('consumer-each-batch', `consumer-memory-batch-${mode}.json`);
         console.log("=== Consumer Rate MB/s (eachBatch): ", consumerRate);
         console.log("=== Consumer Rate msg/s (eachBatch): ", stats.messageRate);
