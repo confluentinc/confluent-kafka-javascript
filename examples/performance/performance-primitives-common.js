@@ -1,5 +1,7 @@
 const { hrtime } = require('process');
 const { randomBytes } = require('crypto');
+const fs = require('fs');
+const { logLevel } = require('../../').KafkaJS;
 const PERCENTILES = [50, 75, 90, 95, 99, 99.9, 99.99, 100];
 
 const TERMINATE_TIMEOUT_MS = process.env.TERMINATE_TIMEOUT_MS ? +process.env.TERMINATE_TIMEOUT_MS : 600000;
@@ -15,6 +17,41 @@ else {
     if (isNaN(autoCommit)) {
         autoCommit = null;
     }
+}
+
+class PerformanceLogger {
+  constructor(fileName) {
+    this.logLevel = logLevel.INFO;
+    this.writeStream = fs.createWriteStream(fileName);
+  }
+
+  setLogLevel(logLevel) {
+    this.logLevel = logLevel;
+  }
+
+  info(message, extra) {
+    if (this.logLevel >= logLevel.INFO)
+      this.writeStream.write(`INFO: ${message} ${JSON.stringify(extra)}\n`);
+  }
+
+  error(message, extra) {
+    if (this.logLevel >= logLevel.ERROR)
+      this.writeStream.write(`ERROR: ${message} ${JSON.stringify(extra)}\n`);
+  }
+
+  warn(message, extra) {
+    if (this.logLevel >= logLevel.WARN)
+      this.writeStream.write(`WARN: ${message} ${JSON.stringify(extra)}\n`);
+  }
+
+  debug(message, extra) {
+    if (this.logLevel >= logLevel.DEBUG)
+      this.writeStream.write(`DEBUG: ${message} ${JSON.stringify(extra)}\n`);
+  }
+
+  namespace() {
+    return this;
+  }
 }
 
 function installHandlers(useTerminateTimeout) {
@@ -569,4 +606,5 @@ module.exports = {
     runLagMonitoring,
     genericProduceToTopic,
     getAutoCommit,
+    PerformanceLogger,
 };

@@ -6,6 +6,7 @@ const {
     runProducer: runProducerCommon,
     genericProduceToTopic,
     getAutoCommit,
+    PerformanceLogger,
  } = require('./performance-primitives-common');
 
 const {
@@ -21,6 +22,8 @@ module.exports = {
 };
 
 const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'true';
+const DEBUG = process.env.DEBUG;
+const ENABLE_LOGGING = DEBUG !== undefined;
 
 function baseConfiguration(parameters) {
     let ret = {
@@ -41,11 +44,18 @@ function baseConfiguration(parameters) {
             }
         };
     }
+    if (parameters.logToFile) {
+        ret.logger = new PerformanceLogger(parameters.logToFile);
+    }
     return ret;
 }
 
 async function runCreateTopics(parameters, topic, topic2, numPartitions) {
-    const kafka = new Kafka(baseConfiguration(parameters));
+    const adminParameters = {
+        ...parameters,
+        disableLogging: true,
+    };
+    const kafka = new Kafka(baseConfiguration(adminParameters));
 
     const admin = kafka.admin();
     await admin.connect();
@@ -104,6 +114,9 @@ function newCompatibleProducer(parameters, compression) {
 }
 
 async function runProducer(parameters, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS) {
+    if (ENABLE_LOGGING && !parameters.logToFile) {
+        parameters.logToFile = './kafkajs-producer.log';
+    }
     return runProducerCommon(newCompatibleProducer(parameters, compression), topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression, randomness, limitRPS);
 }
 
@@ -167,18 +180,30 @@ function newCompatibleConsumer(parameters, eachBatch) {
 }
 
 
-async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression, useCKJSProducerEverywhere) {
+async function runConsumer(parameters, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, produceToTopic, produceCompression, useCKJSProducerEverywhere,
+                           messageSize, limitRPS) {
     let actionOnMessages = null;
     let producer;
     if (produceToTopic) {
         const newCompatibleProducerFunction = useCKJSProducerEverywhere ?
             newCompatibleProducerCKJS : newCompatibleProducer;
-        producer = newCompatibleProducerFunction(parameters, produceCompression);
+        const producerParameters = {
+            ...parameters,
+        };
+        if (ENABLE_LOGGING)
+            producerParameters.logToFile = './kafkajs-consumer-producer.log';
+        producer = newCompatibleProducerFunction(producerParameters, produceCompression);
         await producer.connect();
         actionOnMessages = (messages) =>
             genericProduceToTopic(producer, produceToTopic, messages);
     }
-    const ret = await runConsumerCommon(newCompatibleConsumer(parameters, eachBatch), topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages);
+    const consumerParameters = {
+        ...parameters,
+    };
+    if (ENABLE_LOGGING)
+        consumerParameters.logToFile = eachBatch ? './kafkajs-consumer-batch.log' :
+                                                   './kafkajs-consumer-message.log';
+    const ret = await runConsumerCommon(newCompatibleConsumer(consumerParameters, eachBatch), topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages);
     if (producer) {
         await producer.disconnect();
     }
