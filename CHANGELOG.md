@@ -1,10 +1,10 @@
-# confluent-kafka-javascript 1.8.0-rc1
+# confluent-kafka-javascript 1.8.0
 
-v1.8.0-rc1 is a release candidate. It is supported for testing and evaluation purposes.
+v1.8.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
 
-1. References librdkafka v2.13.0-RC1. Refer to the [librdkafka v2.13.0-RC1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.13.0-RC1) for more information.
+1. References librdkafka v2.13.0. Refer to the [librdkafka v2.13.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.13.0) for more information.
 2. Export CelExecutor/CelFieldExecutor in schemaregistry index.ts (#412).
 3. Minor improvement to rule failure message (#419).
 
