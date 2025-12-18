@@ -1,5 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
-import {SchemaId} from "../../serde/serde";
+import {RecordNameStrategy, SchemaId, SerdeType, TopicNameStrategy} from "../../serde/serde";
+import {SchemaInfo} from "../../schemaregistry-client";
+import {create, toBinary} from "@bufbuild/protobuf";
+import {FileDescriptorProtoSchema} from "@bufbuild/protobuf/wkt";
 
 describe('SchemaGuid', () => {
   it('schema guid', () => {
@@ -65,5 +68,197 @@ describe('SchemaGuid', () => {
     for (let i = 0; i < output.length; i++) {
       expect(output[i]).toEqual(input[i])
     }
+  })
+})
+
+describe('TopicNameStrategy', () => {
+  it('should create subject with -value suffix', () => {
+    const subject = TopicNameStrategy('test-topic', SerdeType.VALUE)
+    expect(subject).toBe('test-topic-value')
+  })
+
+  it('should create subject with -key suffix', () => {
+    const subject = TopicNameStrategy('test-topic', SerdeType.KEY)
+    expect(subject).toBe('test-topic-key')
+  })
+})
+
+describe('RecordNameStrategy', () => {
+  describe('Avro schema', () => {
+    it('should extract record name with namespace', () => {
+      const schema: SchemaInfo = {
+        schema: JSON.stringify({
+          type: 'record',
+          name: 'User',
+          namespace: 'com.example',
+          fields: [
+            { name: 'name', type: 'string' },
+            { name: 'age', type: 'int' }
+          ]
+        }),
+        schemaType: 'AVRO'
+      }
+
+      const subject = RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      expect(subject).toBe('com.example.User')
+    })
+
+    it('should extract record name without namespace', () => {
+      const schema: SchemaInfo = {
+        schema: JSON.stringify({
+          type: 'record',
+          name: 'User',
+          fields: [
+            { name: 'name', type: 'string' }
+          ]
+        }),
+        schemaType: 'AVRO'
+      }
+
+      const subject = RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      expect(subject).toBe('User')
+    })
+
+    it('should throw on invalid Avro schema', () => {
+      const schema: SchemaInfo = {
+        schema: 'invalid json',
+        schemaType: 'AVRO'
+      }
+
+      expect(() => {
+        RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      }).toThrow('Invalid Avro schema')
+    })
+  })
+
+  describe('JSON schema', () => {
+    it('should extract title from JSON schema', () => {
+      const schema: SchemaInfo = {
+        schema: JSON.stringify({
+          title: 'com.example.User',
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            age: { type: 'number' }
+          }
+        }),
+        schemaType: 'JSON'
+      }
+
+      const subject = RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      expect(subject).toBe('com.example.User')
+    })
+
+    it('should throw on JSON schema without title', () => {
+      const schema: SchemaInfo = {
+        schema: JSON.stringify({
+          type: 'object',
+          properties: {
+            name: { type: 'string' }
+          }
+        }),
+        schemaType: 'JSON'
+      }
+
+      expect(() => {
+        RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      }).toThrow('JSON schema is missing required "title" field')
+    })
+  })
+
+  describe('Protobuf schema', () => {
+    it('should extract message name with package', () => {
+      // Create a simple FileDescriptorProto
+      const fileDescriptor = create(FileDescriptorProtoSchema, {
+        name: 'test.proto',
+        package: 'com.example',
+        messageType: [
+          { name: 'User' }
+        ]
+      })
+
+      const base64Schema = Buffer.from(
+        toBinary(FileDescriptorProtoSchema, fileDescriptor)
+      ).toString('base64')
+
+      const schema: SchemaInfo = {
+        schema: base64Schema,
+        schemaType: 'PROTOBUF'
+      }
+
+      const subject = RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      expect(subject).toBe('com.example.User')
+    })
+
+    it('should extract message name without package', () => {
+      const fileDescriptor = create(FileDescriptorProtoSchema, {
+        name: 'test.proto',
+        messageType: [
+          { name: 'User' }
+        ]
+      })
+
+      const base64Schema = Buffer.from(
+        toBinary(FileDescriptorProtoSchema, fileDescriptor)
+      ).toString('base64')
+
+      const schema: SchemaInfo = {
+        schema: base64Schema,
+        schemaType: 'PROTOBUF'
+      }
+
+      const subject = RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      expect(subject).toBe('User')
+    })
+
+    it('should throw on Protobuf schema without messages', () => {
+      const fileDescriptor = create(FileDescriptorProtoSchema, {
+        name: 'test.proto',
+        package: 'com.example'
+      })
+
+      const base64Schema = Buffer.from(
+        toBinary(FileDescriptorProtoSchema, fileDescriptor)
+      ).toString('base64')
+
+      const schema: SchemaInfo = {
+        schema: base64Schema,
+        schemaType: 'PROTOBUF'
+      }
+
+      expect(() => {
+        RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      }).toThrow('Protobuf schema has no message types defined')
+    })
+
+    it('should throw on invalid base64 Protobuf schema', () => {
+      const schema: SchemaInfo = {
+        schema: 'invalid-base64!!!',
+        schemaType: 'PROTOBUF'
+      }
+
+      expect(() => {
+        RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      }).toThrow('Invalid Protobuf schema')
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should throw when schema is undefined', () => {
+      expect(() => {
+        RecordNameStrategy('test-topic', SerdeType.VALUE, undefined)
+      }).toThrow('Schema is required but was not provided')
+    })
+
+    it('should throw when schema.schema is empty', () => {
+      const schema: SchemaInfo = {
+        schema: '',
+        schemaType: 'AVRO'
+      }
+
+      expect(() => {
+        RecordNameStrategy('test-topic', SerdeType.VALUE, schema)
+      }).toThrow('Schema is required but was not provided')
+    })
   })
 })
