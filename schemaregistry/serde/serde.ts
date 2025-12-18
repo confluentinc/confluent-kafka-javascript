@@ -786,8 +786,8 @@ export const TopicNameStrategy: SubjectNameStrategyFunc = (topic: string, serdeT
 /**
  * RecordNameStrategy creates a subject name using only the record name.
  * This allows schemas to be shared across topics, with compatibility per record type.
- * @param _topic - the topic name (unused)
- * @param _serdeType - the serde type (unused)
+ * @param _topic - the topic name
+ * @param _serdeType - the serde type
  * @param schema - the schema info (used to extract record name)
  * @throws SerializationError if schema is invalid or record name cannot be determined
  */
