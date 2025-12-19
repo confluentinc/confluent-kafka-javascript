@@ -904,4 +904,56 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
         await waitFor(() => (messagesConsumed === (partition0ProducedMessages + messages1.length + messages2.length)), () => { }, 100);
     });
 
+    it.each([true, false])('consume messages even when cache size is set to a low value - useEachMessage: %s', async (useEachMessage) => {
+        const consumer = createConsumer({
+            groupId,
+            maxWaitTimeInMs: 100,
+            fromBeginning: true,
+            autoCommit: true,
+        }, {
+            'js.consumer.max.batch.size': 1,
+            'js.consumer.max.cache.size.per.worker.ms': 1,
+        });
+        await producer.connect();
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+        let messagesConsumed = 0;
+
+        const callback = useEachMessage ? 
+        {
+            eachMessage: async () => {
+                messagesConsumed++;
+                // keep batch duration high so
+                // messagesPerMillisecondSingleWorker is low
+                await sleep(100);
+            }
+        } : {
+            eachBatch: async ({ batch }) => {
+                messagesConsumed += batch.messages.length;
+                // keep batch duration high so
+                // messagesPerMillisecondSingleWorker is low
+                await sleep(100);
+            }
+        };
+
+        consumer.run({
+            partitionsConsumedConcurrently,
+            ...callback,
+        });
+
+        await waitFor(() => consumer.assignment().length > 0, () => { }, 100);
+
+        const messages = Array(9)
+            .fill()
+            .map((_, i) => {
+                const value = secureRandom(512);
+                return { key: `key-${value}`, value: `value-${value}`, partition: i % partitions };
+            });
+
+        await producer.send({ topic: topicName, messages });
+        await waitFor(() => (messagesConsumed === 9), () => { }, 100);
+
+        await consumer.disconnect();
+    });
+
 });
