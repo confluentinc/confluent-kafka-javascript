@@ -7,6 +7,9 @@ v1.8.0 is a feature release. It is supported for all usage.
 1. References librdkafka v2.13.0. Refer to the [librdkafka v2.13.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.13.0) for more information.
 2. Export CelExecutor/CelFieldExecutor in schemaregistry index.ts (#412).
 3. Minor improvement to rule failure message (#419).
+4. Prevent a condition that causes fetch failures when max
+   batch size is set or the default one and there's a low consumption 
+   rate (#418 @LucioFranco, #424).
 
 ## Fixes
 
