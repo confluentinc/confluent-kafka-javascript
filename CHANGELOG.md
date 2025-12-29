@@ -14,6 +14,7 @@ v1.8.0 is a feature release. It is supported for all usage.
 ## Fixes
 
 1. fix(deps): update dependency validator to v13.15.22 [security] (#413).
+2. Prevent max message cache size reaching zero by having a minimum of 1 message per worker after the round up (#424).
 
 # confluent-kafka-javascript 1.7.0
 
