@@ -11,6 +11,8 @@ import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
 import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 import {IHeaders} from "../../types/kafkajs";
+import {fromBinary} from "@bufbuild/protobuf";
+import {FileDescriptorProtoSchema} from "@bufbuild/protobuf/wkt";
 
 export enum SerdeType {
   KEY = 'KEY',
@@ -663,6 +665,112 @@ export type SubjectNameStrategyFunc = (
 ) => string
 
 /**
+ * Extract record name from an Avro schema
+ * @param schemaString - the Avro schema string
+ * @returns the fully qualified record name {namespace}.{name} or {name} if namespace is not present
+ * @throws SerializationError if schema is invalid or name is missing
+ */
+function getAvroRecordName(schemaString: string): string {
+  try {
+    const avroSchema = JSON.parse(schemaString)
+    if (!avroSchema.name) {
+      throw new SerializationError('Avro schema is missing required "name" field')
+    }
+    // Return fully qualified name if namespace exists
+    if (avroSchema.namespace) {
+      return `${avroSchema.namespace}.${avroSchema.name}`
+    }
+    return avroSchema.name
+  } catch (e) {
+    if (e instanceof SerializationError) {
+      throw e
+    }
+    throw new SerializationError(`Invalid Avro schema: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/**
+ * Extract record name from a Protobuf schema
+ * @param schemaString - the Protobuf schema string (base64-encoded)
+ * @returns the fully qualified record name {package}.{messageName}, or {messageName} if package is not present
+ * @throws SerializationError if schema is invalid or has no message types
+ */
+function getProtobufRecordName(schemaString: string): string {
+  try {
+    // Protobuf schemas are stored as base64-encoded FileDescriptorProto
+    const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(schemaString, 'base64'))
+
+    // Get first message name
+    if (!fileDesc.messageType || fileDesc.messageType.length === 0) {
+      throw new SerializationError('Protobuf schema has no message types defined')
+    }
+
+    const messageName = fileDesc.messageType[0].name
+    if (!messageName) {
+      throw new SerializationError('Protobuf message type is missing "name" field')
+    }
+
+    // Get package name
+    const packageName = fileDesc.package || null
+
+    // Return fully qualified name if package exists
+    return packageName ? `${packageName}.${messageName}` : messageName
+  } catch (e) {
+    if (e instanceof SerializationError) {
+      throw e
+    }
+    throw new SerializationError(`Invalid Protobuf schema: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/**
+ * Extract record name from a JSON schema
+ * @param schemaString - the JSON schema string
+ * @returns the title field value
+ * @throws SerializationError if schema is invalid or title is missing
+ */
+function getJsonRecordName(schemaString: string): string {
+  try {
+    const jsonSchema = JSON.parse(schemaString)
+    if (!jsonSchema.title) {
+      throw new SerializationError('JSON schema is missing required "title" field')
+    }
+    // JSON Schema uses "title" as the record name
+    return jsonSchema.title
+  } catch (e) {
+    if (e instanceof SerializationError) {
+      throw e
+    }
+    throw new SerializationError(`Invalid JSON schema: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/**
+ * Helper function to extract the record name from a schema
+ * @param schema - the schema info (schema and its associated information)
+ * @returns the record name
+ * @throws SerializationError if schema is invalid, missing, or lacks required fields
+ */
+function getRecordName(schema?: SchemaInfo): string {
+  if (!schema || !schema.schema) {
+    throw new SerializationError('Schema is required but was not provided')
+  }
+
+  const schemaType = schema.schemaType?.toUpperCase() || 'AVRO'
+
+  switch (schemaType) {
+    case 'AVRO':
+      return getAvroRecordName(schema.schema)
+    case 'PROTOBUF':
+      return getProtobufRecordName(schema.schema)
+    case 'JSON':
+      return getJsonRecordName(schema.schema)
+    default:
+      throw new SerializationError(`Unsupported schema type: ${schemaType}`)
+  }
+}
+
+/**
  * TopicNameStrategy creates a subject name by appending -[key|value] to the topic name.
  * @param topic - the topic name
  * @param serdeType - the serde type
@@ -673,6 +781,22 @@ export const TopicNameStrategy: SubjectNameStrategyFunc = (topic: string, serdeT
     suffix = '-key'
   }
   return topic + suffix
+}
+
+/**
+ * RecordNameStrategy creates a subject name using only the record name.
+ * This allows schemas to be shared across topics, with compatibility per record type.
+ * @param _topic - the topic name
+ * @param _serdeType - the serde type
+ * @param schema - the schema info (used to extract record name)
+ * @throws SerializationError if schema is invalid or record name cannot be determined
+ */
+export const RecordNameStrategy: SubjectNameStrategyFunc = (
+  _topic: string,
+  _serdeType: SerdeType,
+  schema?: SchemaInfo
+) => {
+  return getRecordName(schema)
 }
 
 /**
@@ -1013,7 +1137,7 @@ export class ErrorAction implements RuleAction {
   }
 
   async run(ctx: RuleContext, msg: any, err: Error): Promise<void> {
-    throw new SerializationError(`rule ${ctx.rule.name} failed: ${err.message}`)
+    throw new SerializationError(err.message)
   }
 
   close(): void {
