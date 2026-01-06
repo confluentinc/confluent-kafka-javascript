@@ -194,6 +194,136 @@ blocks:
             - bash -c '../../ci/tests/run_perf_test.sh'
             - rm -rf ./node_modules
 
+  - name: "PR Artifacts: Linux amd64"
+    run:
+      when: "branch != 'master' AND tag !~ '^v[0-9]\\.' AND change_in(['/package.json', '/lib', '/src'])"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu24-04-amd64-1
+      env_vars:
+        - name: ARCHITECTURE
+          value: "x64"
+        - name: PLATFORM
+          value: "linux"
+        - name: LIBC
+          value: "glibc"
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Build PR Artifact"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 20,115
+                - 22,127
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
+            - export PKG_VERSION=$(node -p "require('./package.json').version")
+            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${PKG_VERSION}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - ls build/stage/${PKG_VERSION}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${PKG_VERSION}/${ARTIFACT_KEY}" --destination "pr-artifacts/${PR_ID}/${ARTIFACT_KEY}"
+
+  - name: "PR Artifacts: Linux amd64 (musl)"
+    run:
+      when: "branch != 'master' AND tag !~ '^v[0-9]\\.' AND change_in(['/package.json', '/lib', '/src'])"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu24-04-amd64-1
+      env_vars:
+        - name: ARCHITECTURE
+          value: "x64"
+        - name: PLATFORM
+          value: "linux"
+        - name: LIBC
+          value: "musl"
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Build PR Artifact"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 20,115
+                - 22,127
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
+            - export PKG_VERSION=$(node -p "require('./package.json').version")
+            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${PKG_VERSION}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - ls build/stage/${PKG_VERSION}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${PKG_VERSION}/${ARTIFACT_KEY}" --destination "pr-artifacts/${PR_ID}/${ARTIFACT_KEY}"
+
+  - name: "PR Artifacts: macOS arm64"
+    run:
+      when: "branch != 'master' AND tag !~ '^v[0-9]\\.' AND change_in(['/package.json', '/lib', '/src'])"
+    dependencies: []
+    task:
+      agent:
+        machine:
+          type: s1-macos-15-arm64-8
+      env_vars:
+        - name: ARCHITECTURE
+          value: "arm64"
+        - name: PLATFORM
+          value: "darwin"
+        - name: LIBC
+          value: "unknown"
+      jobs:
+        - name: "Build PR Artifact"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 20,115
+                - 22,127
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - sem-version node $NODE_VERSION
+            - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
+            - export PKG_VERSION=$(node -p "require('./package.json').version")
+            - npm ci
+            - npx node-pre-gyp package
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${PKG_VERSION}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - ls build/stage/${PKG_VERSION}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${PKG_VERSION}/${ARTIFACT_KEY}" --destination "pr-artifacts/${PR_ID}/${ARTIFACT_KEY}"
+
+  - name: "PR Artifacts: Summary"
+    dependencies:
+      - "PR Artifacts: Linux amd64"
+      - "PR Artifacts: Linux amd64 (musl)"
+      - "PR Artifacts: macOS arm64"
+    run:
+      when: "branch != 'master' AND tag !~ '^v[0-9]\\.' AND change_in(['/package.json', '/lib', '/src'])"
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu24-04-amd64-1
+      jobs:
+        - name: "List PR Artifacts"
+          commands:
+            - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
+            - artifact pull workflow pr-artifacts/${PR_ID}
+            - echo "=== PR Artifacts Available for Download ==="
+            - echo "PR ID: ${PR_ID}"
+            - echo "Branch: ${SEMAPHORE_GIT_BRANCH}"
+            - echo "Commit: ${SEMAPHORE_GIT_SHA}"
+            - echo ""
+            - echo "Available artifacts:"
+            - find pr-artifacts/${PR_ID} -name "*.tar.gz" -type f | while read f; do echo "  - $(basename $f)"; done || echo "  No artifacts found (may still be building)"
+            - echo ""
+            - echo "Download artifacts from Semaphore CI workflow artifacts section"
+
   - name: "Linux amd64: Release"
     dependencies: [ ]
     run:
