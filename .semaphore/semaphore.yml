@@ -315,12 +315,12 @@ blocks:
             - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
             - artifact pull workflow pr-artifacts/${PR_ID}
             - echo "=== PR Artifacts Available for Download ==="
-            - echo "PR ID: ${PR_ID}"
-            - echo "Branch: ${SEMAPHORE_GIT_BRANCH}"
-            - echo "Commit: ${SEMAPHORE_GIT_SHA}"
+            - echo "PR ID: $PR_ID"
+            - echo "Branch: $SEMAPHORE_GIT_BRANCH"
+            - echo "Commit: $SEMAPHORE_GIT_SHA"
             - echo ""
             - echo "Available artifacts:"
-            - find pr-artifacts/${PR_ID} -name "*.tar.gz" -type f | while read f; do echo "  - $(basename $f)"; done || echo "  No artifacts found (may still be building)"
+            - bash -c 'if [ -d "pr-artifacts/$PR_ID" ]; then find pr-artifacts/$PR_ID -name "*.tar.gz" -type f -exec basename {} \; | sed "s/^/  - /"; else echo "  No artifacts found (may still be building)"; fi'
             - echo ""
             - echo "Download artifacts from Semaphore CI workflow artifacts section"
 
