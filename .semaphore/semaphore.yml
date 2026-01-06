@@ -223,15 +223,11 @@ blocks:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
-            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
             - export PKG_VERSION=$(node -p "require('./package.json').version")
-            - export ARTIFACT_PATTERN="*-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - export BUILT_ARTIFACT=$(find build/stage/${PKG_VERSION} -name "${ARTIFACT_PATTERN}" -type f | head -1)
-            - if [ -z "$BUILT_ARTIFACT" ]; then echo "Error: Artifact not found"; exit 1; fi
-            - mkdir -p pr-artifacts/${PR_ID}
-            - cp "$BUILT_ARTIFACT" "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
-            - artifact push workflow "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)" --destination "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
-            - echo "Published artifact: pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
+            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${PKG_VERSION}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - ls build/stage/${PKG_VERSION}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${PKG_VERSION}/${ARTIFACT_KEY}" --destination "pr-artifacts/${PR_ID}/${ARTIFACT_KEY}"
 
   - name: "PR Artifacts: Linux amd64 (musl)"
     run:
@@ -262,15 +258,11 @@ blocks:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
-            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
             - export PKG_VERSION=$(node -p "require('./package.json').version")
-            - export ARTIFACT_PATTERN="*-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - export BUILT_ARTIFACT=$(find build/stage/${PKG_VERSION} -name "${ARTIFACT_PATTERN}" -type f | head -1)
-            - if [ -z "$BUILT_ARTIFACT" ]; then echo "Error: Artifact not found"; exit 1; fi
-            - mkdir -p pr-artifacts/${PR_ID}
-            - cp "$BUILT_ARTIFACT" "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
-            - artifact push workflow "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)" --destination "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
-            - echo "Published artifact: pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
+            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${PKG_VERSION}-node-v${NODE_ABI}-linux-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - ls build/stage/${PKG_VERSION}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${PKG_VERSION}/${ARTIFACT_KEY}" --destination "pr-artifacts/${PR_ID}/${ARTIFACT_KEY}"
 
   - name: "PR Artifacts: macOS arm64"
     run:
@@ -299,16 +291,12 @@ blocks:
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - sem-version node $NODE_VERSION
             - export PR_ID="pr-${SEMAPHORE_GIT_BRANCH}-${SEMAPHORE_GIT_SHA:0:7}"
+            - export PKG_VERSION=$(node -p "require('./package.json').version")
             - npm ci
             - npx node-pre-gyp package
-            - export PKG_VERSION=$(node -p "require('./package.json').version")
-            - export ARTIFACT_PATTERN="*-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - export BUILT_ARTIFACT=$(find build/stage/${PKG_VERSION} -name "${ARTIFACT_PATTERN}" -type f | head -1)
-            - if [ -z "$BUILT_ARTIFACT" ]; then echo "Error: Artifact not found"; exit 1; fi
-            - mkdir -p pr-artifacts/${PR_ID}
-            - cp "$BUILT_ARTIFACT" "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
-            - artifact push workflow "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)" --destination "pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
-            - echo "Published artifact: pr-artifacts/${PR_ID}/$(basename $BUILT_ARTIFACT)"
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${PKG_VERSION}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - ls build/stage/${PKG_VERSION}/${ARTIFACT_KEY}
+            - artifact push workflow "build/stage/${PKG_VERSION}/${ARTIFACT_KEY}" --destination "pr-artifacts/${PR_ID}/${ARTIFACT_KEY}"
 
   - name: "PR Artifacts: Summary"
     dependencies:
