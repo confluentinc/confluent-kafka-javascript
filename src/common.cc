@@ -262,10 +262,26 @@ v8::Local<v8::Object> ToV8Object(const rd_kafka_Node_t* node) {
   */
   v8::Local<v8::Object> obj = Nan::New<v8::Object>();
 
+  // Check if node is NULL - can happen during broker restarts/metadata updates
+  if (!node) {
+    Nan::Set(obj, Nan::New("id").ToLocalChecked(), Nan::New<v8::Number>(-1));
+    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::Null());
+    Nan::Set(obj, Nan::New("port").ToLocalChecked(), Nan::New<v8::Number>(-1));
+    return obj;
+  }
+
   Nan::Set(obj, Nan::New("id").ToLocalChecked(),
            Nan::New<v8::Number>(rd_kafka_Node_id(node)));
-  Nan::Set(obj, Nan::New("host").ToLocalChecked(),
-           Nan::New<v8::String>(rd_kafka_Node_host(node)).ToLocalChecked());
+  
+  // Check host for NULL before using - prevents segfault when host is NULL
+  const char* host = rd_kafka_Node_host(node);
+  if (host) {
+    Nan::Set(obj, Nan::New("host").ToLocalChecked(),
+             Nan::New<v8::String>(host).ToLocalChecked());
+  } else {
+    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::Null());
+  }
+  
   Nan::Set(obj, Nan::New("port").ToLocalChecked(),
            Nan::New<v8::Number>(rd_kafka_Node_port(node)));
 
@@ -484,6 +500,7 @@ rd_kafka_topic_partition_list_t* TopicPartitionv8ArrayToTopicPartitionList(
     }
 
     if (!v->IsObject()) {
+      rd_kafka_topic_partition_list_destroy(newList);
       return NULL;  // Return NULL to indicate an error
     }
 
@@ -523,6 +540,7 @@ TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(
     }
 
     if (!v->IsObject()) {
+      rd_kafka_topic_partition_list_destroy(newList);
       return NULL;  // Return NULL to indicate an error
     }
 
@@ -536,10 +554,13 @@ TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(
 
     v8::Local<v8::Value> offsetValue =
         Nan::Get(item, Nan::New("offset").ToLocalChecked()).ToLocalChecked();
-    v8::Local<v8::Object> offsetObject = offsetValue.As<v8::Object>();
-    int64_t offset = GetParameter<int64_t>(offsetObject, "timestamp", 0);
-
-    toppar->offset = offset;
+    if (offsetValue->IsObject()) {
+      v8::Local<v8::Object> offsetObject = offsetValue.As<v8::Object>();
+      int64_t offset = GetParameter<int64_t>(offsetObject, "timestamp", 0);
+      toppar->offset = offset;
+    } else {
+      toppar->offset = 0;
+    }
   }
   return newList;
 }
@@ -1350,7 +1371,7 @@ v8::Local<v8::Array> FromListConsumerGroupOffsetsResult(
       if (partition->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
         RdKafka::ErrorCode code =
             static_cast<RdKafka::ErrorCode>(partition->err);
-        Nan::Set(group_object, Nan::New("error").ToLocalChecked(),
+        Nan::Set(partition_object, Nan::New("error").ToLocalChecked(),
                  RdKafkaError(code, rd_kafka_err2str(partition->err)));
       }
 
@@ -1496,15 +1517,25 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
 
       const rd_kafka_Node_t* leader =
           rd_kafka_TopicPartitionInfo_leader(partition);
-      Nan::Set(partition_object, Nan::New("leader").ToLocalChecked(),
-               Conversion::Util::ToV8Object(leader));
+      // Check leader for NULL - can happen when partition has no leader
+      if (leader) {
+        Nan::Set(partition_object, Nan::New("leader").ToLocalChecked(),
+                 Conversion::Util::ToV8Object(leader));
+      } else {
+        Nan::Set(partition_object, Nan::New("leader").ToLocalChecked(), Nan::Null());
+      }
 
       size_t isr_cnt;
       const rd_kafka_Node_t** isr =
           rd_kafka_TopicPartitionInfo_isr(partition, &isr_cnt);
       v8::Local<v8::Array> isrArray = Nan::New<v8::Array>();
       for (size_t k = 0; k < isr_cnt; k++) {
-        Nan::Set(isrArray, k, Conversion::Util::ToV8Object(isr[k]));
+        // Check for NULL nodes in ISR array - can happen during broker restarts
+        if (isr[k]) {
+          Nan::Set(isrArray, k, Conversion::Util::ToV8Object(isr[k]));
+        } else {
+          Nan::Set(isrArray, k, Nan::Null());
+        }
       }
       Nan::Set(partition_object, Nan::New("isr").ToLocalChecked(), isrArray);
 
@@ -1513,7 +1544,12 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
           rd_kafka_TopicPartitionInfo_replicas(partition, &replicas_cnt);
       v8::Local<v8::Array> replicasArray = Nan::New<v8::Array>();
       for (size_t k = 0; k < replicas_cnt; k++) {
-        Nan::Set(replicasArray, k, Conversion::Util::ToV8Object(replicas[k]));
+        // Check for NULL nodes in replicas array - can happen during broker restarts
+        if (replicas[k]) {
+          Nan::Set(replicasArray, k, Conversion::Util::ToV8Object(replicas[k]));
+        } else {
+          Nan::Set(replicasArray, k, Nan::Null());
+        }
       }
       Nan::Set(partition_object, Nan::New("replicas").ToLocalChecked(),
                replicasArray);
