@@ -500,7 +500,6 @@ rd_kafka_topic_partition_list_t* TopicPartitionv8ArrayToTopicPartitionList(
     }
 
     if (!v->IsObject()) {
-      rd_kafka_topic_partition_list_destroy(newList);
       return NULL;  // Return NULL to indicate an error
     }
 
@@ -540,7 +539,6 @@ TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(
     }
 
     if (!v->IsObject()) {
-      rd_kafka_topic_partition_list_destroy(newList);
       return NULL;  // Return NULL to indicate an error
     }
 
