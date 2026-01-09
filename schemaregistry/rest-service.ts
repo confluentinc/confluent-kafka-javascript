@@ -3,6 +3,7 @@ import { OAuthClient } from './oauth/oauth-client';
 import { RestError } from './rest-error';
 import axiosRetry from "axios-retry";
 import { fullJitter, isRetriable, isSuccess } from './retry-helper';
+import { version } from './package.json';
 /*
  * Confluent-Schema-Registry-TypeScript - Node.js wrapper for Confluent Schema Registry
  *
@@ -76,6 +77,7 @@ export class RestService {
     }
     this.setHeaders({ 'Content-Type': 'application/vnd.schemaregistry.v1+json' });
     this.setHeaders({ 'Confluent-Accept-Unknown-Properties': 'true' });
+    this.setHeaders({ 'Confluent-Client-Version': `javascript/${version}` });
 
     this.handleBasicAuth(basicAuthCredentials);
     this.handleBearerAuth(maxRetries ?? 2, retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, bearerAuthCredentials);
