@@ -162,6 +162,13 @@ export class SerializationError extends Error {
   }
 }
 
+export enum SubjectNameStrategyType {
+  TOPIC = 'TOPIC',
+  RECORD = 'RECORD',
+  TOPIC_RECORD = 'TOPIC_RECORD',
+  ASSOCIATED = 'ASSOCIATED',
+}
+
 export interface SerdeConfig {
   // useLatestVersion specifies whether to use the latest schema version
   useLatestVersion?: boolean
@@ -173,6 +180,10 @@ export interface SerdeConfig {
   cacheLatestTtlSecs?: number
   // ruleConfig specifies configuration options to the rules
   ruleConfig?: { [key: string]: string };
+  // subjectNameStrategyType specifies the type of subject name strategy
+  subjectNameStrategyType?: SubjectNameStrategyType
+  // subjectNameStrategyConfig specifies configuration options for the subject name strategy
+  subjectNameStrategyConfig?: { [key: string]: string };
   // subjectNameStrategy specifies a function to generate a subject name
   subjectNameStrategy?: SubjectNameStrategyFunc
 }
@@ -202,9 +213,42 @@ export abstract class Serde {
     return
   }
 
-  subjectName(topic: string, info?: SchemaInfo): string {
+  async subjectName(topic: string, info?: SchemaInfo): Promise<string> {
     const strategy = this.conf.subjectNameStrategy ?? TopicNameStrategy
-    return strategy(topic, this.serdeType, info)
+    return await strategy(topic, this.serdeType, info)
+  }
+
+  /**
+   * Configures the subject name strategy based on the strategy type.
+   * @param strategyType - the type of subject name strategy (if null/undefined, does nothing)
+   * @param config - configuration options for the strategy
+   * @param getRecordName - function to extract record name from schema
+   */
+  configureSubjectNameStrategy(
+    strategyType: SubjectNameStrategyType | null | undefined,
+    config: { [key: string]: string },
+    getRecordName: RecordNameFunc
+  ): void {
+    if (strategyType == null) {
+      return
+    }
+    switch (strategyType) {
+      case SubjectNameStrategyType.TOPIC:
+        this.conf.subjectNameStrategy = TopicNameStrategy
+        break
+      case SubjectNameStrategyType.RECORD:
+        this.conf.subjectNameStrategy = RecordNameStrategy(getRecordName)
+        break
+      case SubjectNameStrategyType.TOPIC_RECORD:
+        this.conf.subjectNameStrategy = TopicRecordNameStrategy(getRecordName)
+        break
+      case SubjectNameStrategyType.ASSOCIATED:
+        this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config)
+        break
+      default:
+        // Default to TopicNameStrategy
+        this.conf.subjectNameStrategy = TopicNameStrategy
+    }
   }
 
   async resolveReferences(client: Client, schema: SchemaInfo, deps: Map<string, string>, format?: string): Promise<void> {
@@ -426,7 +470,7 @@ export abstract class Serializer extends Serde {
     let normalizeSchema = this.config().normalizeSchemas
 
     let metadata: SchemaMetadata
-    let subject = this.subjectName(topic, info)
+    let subject = await this.subjectName(topic, info)
     if (autoRegister) {
       metadata = await this.client.registerFullResponse(subject, info!, Boolean(normalizeSchema))
     } else if (useSchemaId != null && useSchemaId >= 0) {
@@ -498,7 +542,7 @@ export abstract class Deserializer extends Serde {
     const bytesRead = this.deserializeSchemaId(topic, payload, schemaId, headers)
     let info: SchemaInfo
     if (schemaId.id != null) {
-      let subject = this.subjectName(topic)
+      let subject = await this.subjectName(topic)
       info = await this.client.getBySubjectAndId(subject, schemaId.id!, format)
     } else if (schemaId.guid != null) {
       info = await this.client.getByGuid(schemaId.guid!, format)
@@ -660,7 +704,50 @@ export type SubjectNameStrategyFunc = (
   topic: string,
   serdeType: SerdeType,
   schema?: SchemaInfo,
-) => string
+) => string | Promise<string>
+
+/**
+ * RecordNameFunc extracts the record name from a schema
+ */
+export type RecordNameFunc = (
+  schema?: SchemaInfo
+) => Promise<string>
+
+/**
+ * RecordNameStrategy creates a subject name from the record name.
+ * @param getRecordName - function to extract record name from schema
+ */
+export const RecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
+  return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    const recordName = await getRecordName(schema)
+    const suffix = serdeType === SerdeType.KEY ? '-key' : '-value'
+    return recordName + suffix
+  }
+}
+
+/**
+ * TopicRecordNameStrategy creates a subject name from the topic and record name.
+ * @param getRecordName - function to extract record name from schema
+ */
+export const TopicRecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
+  return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    const recordName = await getRecordName(schema)
+    const suffix = serdeType === SerdeType.KEY ? '-key' : '-value'
+    return topic + '-' + recordName + suffix
+  }
+}
+
+/**
+ * AssociatedNameStrategy returns a strategy that retrieves the associated subject name from schema registry.
+ * @param client - the schema registry client
+ * @param config - configuration options
+ */
+export const AssociatedNameStrategy = (client: Client, config: { [key: string]: string }): SubjectNameStrategyFunc => {
+  return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    // TODO: implement associated name lookup using client and config
+    throw new SerializationError('AssociatedNameStrategy not yet implemented')
+  }
+}
 
 /**
  * TopicNameStrategy creates a subject name by appending -[key|value] to the topic name.
