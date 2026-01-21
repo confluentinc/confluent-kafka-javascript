@@ -1,5 +1,5 @@
-Confluent's JavaScript Client for Apache Kafka<sup>TM</sup>
-=====================================================
+Confluent's JavaScript Client for Apache Kafka®
+===============================================
 
 **confluent-kafka-javascript** is Confluent's JavaScript client for [Apache Kafka](http://kafka.apache.org/) and the
 [Confluent Platform](https://www.confluent.io/product/compare/). The goal is to provide an highly performant, reliable and easy to use JavaScript client that is based on [node-rdkafka](https://github.com/Blizzard/node-rdkafka) yet also API compatible with [KafkaJS](https://github.com/tulios/kafkajs) to provide flexibility to users and streamline migrations from other clients.
