@@ -112,7 +112,8 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     if ((this.conf as JsonSerdeConfig).validate) {
       const validate = await this.toValidateFunction(info)
       if (validate != null && !validate(msg)) {
-        throw new SerializationError('Invalid message')
+        const errorDetails = validate.errors ? `: ${JSON.stringify(validate.errors)}` : '';
+        throw new SerializationError(`Invalid message${errorDetails}`);
       }
     }
     let msgBytes = Buffer.from(JSON.stringify(msg))
@@ -221,8 +222,9 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     msg = await this.executeRules(subject, topic, RuleMode.READ, null, target, msg, null)
     if ((this.conf as JsonSerdeConfig).validate) {
       const validate = await this.toValidateFunction(info)
-      if (validate != null && !validate(JSON.parse(msg))) {
-        throw new SerializationError('Invalid message')
+      if (validate != null && !validate(msg)) {
+        const errorDetails = validate.errors ? `: ${JSON.stringify(validate.errors)}` : '';
+        throw new SerializationError(`Invalid message${errorDetails}`);
       }
     }
     return msg
@@ -269,14 +271,14 @@ async function toValidateFunction(
   const spec = json.$schema
   if (spec === 'http://json-schema.org/draft/2020-12/schema'
     || spec === 'https://json-schema.org/draft/2020-12/schema') {
-    const ajv2020 = new Ajv2020(conf as JsonSerdeConfig)
+    const ajv2020 = new Ajv2020({ ...conf as JsonSerdeConfig, allErrors: true })
     ajv2020.addKeyword("confluent:tags")
     deps.forEach((schema, name) => {
       ajv2020.addSchema(JSON.parse(schema), name)
     })
     fn = ajv2020.compile(json)
   } else {
-    const ajv = new Ajv2019(conf as JsonSerdeConfig)
+    const ajv = new Ajv2019({ ...conf as JsonSerdeConfig, allErrors: true })
     ajv.addKeyword("confluent:tags")
     ajv.addMetaSchema(draft6MetaSchema)
     ajv.addMetaSchema(draft7MetaSchema)
