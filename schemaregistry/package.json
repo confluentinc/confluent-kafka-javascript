@@ -1,6 +1,6 @@
 {
   "name": "@confluentinc/schemaregistry",
-  "version": "1.8.0",
+  "version": "1.8.1-alpha.0",
   "description": "Node.js client for Confluent Schema Registry",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -51,7 +51,7 @@
     "json-stringify-deterministic": "^1.0.12",
     "jsonata": "^2.0.5",
     "lru-cache": "^10.4.3",
-    "node-vault": "^0.10.2",
+    "node-vault": "^0.10.9",
     "simple-oauth2": "^5.1.0",
     "uuid": "^11.0.0",
     "validator": "^13.15.22"

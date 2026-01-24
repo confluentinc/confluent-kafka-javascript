@@ -1,6 +1,6 @@
 {
   "name": "@confluentinc/kafka-javascript",
-  "version": "1.8.0",
+  "version": "1.8.1-alpha.0",
   "description": "Node.js bindings for librdkafka",
   "librdkafka": "2.13.0",
   "librdkafka_win": "2.13.0",
@@ -28,7 +28,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git@github.com:confluentinc/confluent-kafka-javascript.git"
+    "url": "git+ssh://git@github.com/confluentinc/confluent-kafka-javascript.git"
   },
   "license": "MIT",
   "devDependencies": {
