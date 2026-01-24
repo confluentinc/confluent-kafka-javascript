@@ -135,6 +135,31 @@ export interface ServerConfig {
   overrideRuleSet?: RuleSet;
 }
 
+/**
+ * LifecyclePolicy represents the lifecycle policy for an association
+ */
+export enum LifecyclePolicy {
+  NONE = 'NONE',
+  MANAGE = 'MANAGE',
+  ARCHIVE = 'ARCHIVE',
+  DELETE = 'DELETE'
+}
+
+/**
+ * Association represents an association between a subject and a resource
+ */
+export interface Association {
+  subject: string;
+  guid?: string;
+  resourceName: string;
+  resourceNamespace: string;
+  resourceId?: string;
+  resourceType: string;
+  associationType: string;
+  lifecycle?: LifecyclePolicy;
+  frozen?: boolean;
+}
+
 export interface isCompatibleResponse {
   is_compatible: boolean;
 }
@@ -171,6 +196,15 @@ export interface Client {
   updateConfig(subject: string, update: ServerConfig): Promise<ServerConfig>;
   getDefaultConfig(): Promise<ServerConfig>;
   updateDefaultConfig(update: ServerConfig): Promise<ServerConfig>;
+  getAssociationsByResourceName(
+    resourceName: string,
+    resourceNamespace: string,
+    resourceType: string | null,
+    associationTypes: string[],
+    lifecycle: LifecyclePolicy | null,
+    offset: number,
+    limit: number
+  ): Promise<Association[]>;
   clearLatestCaches(): void;
   clearCaches(): void;
   close(): void;
@@ -751,6 +785,58 @@ export class SchemaRegistryClient implements Client {
       `/config`,
       'PUT',
       update
+    );
+    return response.data;
+  }
+
+  /**
+   * Get associations by resource name.
+   * @param resourceName - The resource name to query.
+   * @param resourceNamespace - The resource namespace.
+   * @param resourceType - The resource type (optional).
+   * @param associationTypes - The association types to filter by.
+   * @param lifecycle - The lifecycle policy to filter by (optional).
+   * @param offset - The offset for pagination.
+   * @param limit - The limit for pagination (-1 for no limit).
+   */
+  async getAssociationsByResourceName(
+    resourceName: string,
+    resourceNamespace: string,
+    resourceType: string | null,
+    associationTypes: string[],
+    lifecycle: LifecyclePolicy | null,
+    offset: number,
+    limit: number
+  ): Promise<Association[]> {
+    const encodedNamespace = encodeURIComponent(resourceNamespace);
+    const encodedName = encodeURIComponent(resourceName);
+
+    let path = `/associations/resources/${encodedNamespace}/${encodedName}`;
+    const queryParams: string[] = [];
+
+    if (resourceType != null) {
+      queryParams.push(`resourceType=${encodeURIComponent(resourceType)}`);
+    }
+    for (const associationType of associationTypes) {
+      queryParams.push(`associationType=${encodeURIComponent(associationType)}`);
+    }
+    if (lifecycle != null) {
+      queryParams.push(`lifecycle=${encodeURIComponent(lifecycle)}`);
+    }
+    if (offset > 0) {
+      queryParams.push(`offset=${offset}`);
+    }
+    if (limit >= 1) {
+      queryParams.push(`limit=${limit}`);
+    }
+
+    if (queryParams.length > 0) {
+      path += '?' + queryParams.join('&');
+    }
+
+    const response: AxiosResponse<Association[]> = await this.restService.handleRequest(
+      path,
+      'GET'
     );
     return response.data;
   }
