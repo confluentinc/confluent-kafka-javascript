@@ -23,6 +23,7 @@ deps/librdkafka/config.h
 /proto
 /docs
 
+coverage
 .nyc_output/
 *lcov.info
 **/lcov-report
