@@ -1,7 +1,9 @@
 
 import {
+  Association,
   Client,
   Compatibility,
+  LifecyclePolicy,
   minimize,
   SchemaInfo,
   SchemaMetadata,
@@ -476,6 +478,20 @@ class MockClient implements Client {
   async updateDefaultConfig(config: ServerConfig): Promise<ServerConfig> {
     this.configCache.set(noSubject, config);
     return config;
+  }
+
+  async getAssociationsByResourceName(
+    resourceName: string,
+    resourceNamespace: string,
+    resourceType: string | null,
+    associationTypes: string[],
+    lifecycle: LifecyclePolicy | null,
+    offset: number,
+    limit: number
+  ): Promise<Association[]> {
+    // Mock implementation returns empty list
+    // In a real mock, you would store associations and filter them
+    return [];
   }
 
   clearLatestCaches(): void {
