@@ -165,6 +165,7 @@ export class SerializationError extends Error {
 }
 
 export enum SubjectNameStrategyType {
+  NONE = 'NONE',
   TOPIC = 'TOPIC',
   RECORD = 'RECORD',
   TOPIC_RECORD = 'TOPIC_RECORD',
@@ -234,22 +235,14 @@ export abstract class Serde {
     if (strategyType == null) {
       return
     }
-    switch (strategyType) {
-      case SubjectNameStrategyType.TOPIC:
-        this.conf.subjectNameStrategy = TopicNameStrategy
-        break
-      case SubjectNameStrategyType.RECORD:
-        this.conf.subjectNameStrategy = RecordNameStrategy(getRecordName)
-        break
-      case SubjectNameStrategyType.TOPIC_RECORD:
-        this.conf.subjectNameStrategy = TopicRecordNameStrategy(getRecordName)
-        break
-      case SubjectNameStrategyType.ASSOCIATED:
-        this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config, getRecordName)
-        break
-      default:
-        // Default to TopicNameStrategy
-        this.conf.subjectNameStrategy = TopicNameStrategy
+    // ASSOCIATED requires special handling with client and config
+    if (strategyType === SubjectNameStrategyType.ASSOCIATED) {
+      this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config, getRecordName)
+      return
+    }
+    const strategy = strategyFromType(strategyType, getRecordName)
+    if (strategy != null) {
+      this.conf.subjectNameStrategy = strategy
     }
   }
 
@@ -740,6 +733,38 @@ export const TopicRecordNameStrategy = (getRecordName: RecordNameFunc): SubjectN
 }
 
 /**
+ * Converts a SubjectNameStrategyType to a SubjectNameStrategyFunc.
+ * This helper centralizes strategy resolution logic.
+ *
+ * @param type - the strategy type
+ * @param getRecordName - optional function to extract record name from schema (required for RECORD/TOPIC_RECORD)
+ * @returns the corresponding strategy function, or null for NONE
+ */
+export function strategyFromType(
+  type: SubjectNameStrategyType,
+  getRecordName?: RecordNameFunc
+): SubjectNameStrategyFunc | null {
+  switch (type) {
+    case SubjectNameStrategyType.NONE:
+      return null
+    case SubjectNameStrategyType.TOPIC:
+      return TopicNameStrategy
+    case SubjectNameStrategyType.RECORD:
+      if (getRecordName == null) {
+        throw new SerializationError('RecordNameFunc is required for RECORD strategy')
+      }
+      return RecordNameStrategy(getRecordName)
+    case SubjectNameStrategyType.TOPIC_RECORD:
+      if (getRecordName == null) {
+        throw new SerializationError('RecordNameFunc is required for TOPIC_RECORD strategy')
+      }
+      return TopicRecordNameStrategy(getRecordName)
+    default:
+      return TopicNameStrategy
+  }
+}
+
+/**
  * Configuration key for the Kafka cluster ID.
  * If set, this value will be passed as the resource namespace to schema registry.
  */
@@ -783,38 +808,23 @@ export const AssociatedNameStrategy = (
 ): SubjectNameStrategyFunc => {
   // Parse configuration
   const kafkaClusterId = config[KAFKA_CLUSTER_ID] ?? null
-  const fallbackType = config[FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]?.toUpperCase() ?? 'TOPIC'
+  const fallbackTypeStr = config[FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]?.toUpperCase() ?? 'TOPIC'
 
-  // Determine fallback strategy
-  let fallbackStrategy: SubjectNameStrategyFunc | null = null
-  switch (fallbackType) {
-    case 'TOPIC':
-      fallbackStrategy = TopicNameStrategy
-      break
-    case 'RECORD':
-      if (getRecordName == null) {
-        throw new SerializationError(
-          'RecordNameFunc is required for RECORD fallback strategy in AssociatedNameStrategy'
-        )
-      }
-      fallbackStrategy = RecordNameStrategy(getRecordName)
-      break
-    case 'TOPIC_RECORD':
-      if (getRecordName == null) {
-        throw new SerializationError(
-          'RecordNameFunc is required for TOPIC_RECORD fallback strategy in AssociatedNameStrategy'
-        )
-      }
-      fallbackStrategy = TopicRecordNameStrategy(getRecordName)
-      break
-    case 'NONE':
-      fallbackStrategy = null
-      break
-    default:
-      throw new SerializationError(
-        `Invalid value for ${FALLBACK_SUBJECT_NAME_STRATEGY_TYPE}: ${fallbackType}`
-      )
+  // Parse fallback type string to enum
+  const fallbackTypeEnum = SubjectNameStrategyType[fallbackTypeStr as keyof typeof SubjectNameStrategyType]
+  if (fallbackTypeEnum == null) {
+    throw new SerializationError(
+      `Invalid value for ${FALLBACK_SUBJECT_NAME_STRATEGY_TYPE}: ${fallbackTypeStr}`
+    )
   }
+  if (fallbackTypeEnum === SubjectNameStrategyType.ASSOCIATED) {
+    throw new SerializationError(
+      `ASSOCIATED cannot be used as fallback strategy`
+    )
+  }
+
+  // Determine fallback strategy using helper
+  const fallbackStrategy = strategyFromType(fallbackTypeEnum, getRecordName)
 
   // Create cache and mutex for subject names
   const subjectNameCache = new LRUCache<string, string>({
