@@ -11,6 +11,8 @@ import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
 import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 import {IHeaders} from "../../types/kafkajs";
+import {LRUCache} from "lru-cache";
+import {Mutex} from "async-mutex";
 
 export enum SerdeType {
   KEY = 'KEY',
@@ -243,7 +245,7 @@ export abstract class Serde {
         this.conf.subjectNameStrategy = TopicRecordNameStrategy(getRecordName)
         break
       case SubjectNameStrategyType.ASSOCIATED:
-        this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config)
+        this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config, getRecordName)
         break
       default:
         // Default to TopicNameStrategy
@@ -738,14 +740,144 @@ export const TopicRecordNameStrategy = (getRecordName: RecordNameFunc): SubjectN
 }
 
 /**
+ * Configuration key for the Kafka cluster ID.
+ * If set, this value will be passed as the resource namespace to schema registry.
+ */
+export const KAFKA_CLUSTER_ID = 'kafka.cluster.id'
+
+/**
+ * Wildcard value for namespace when kafka cluster ID is not configured.
+ */
+export const NAMESPACE_WILDCARD = '-'
+
+/**
+ * Configuration key for the fallback subject name strategy type.
+ * Valid values: TOPIC, RECORD, TOPIC_RECORD, NONE.
+ * Defaults to TOPIC if not specified.
+ */
+export const FALLBACK_SUBJECT_NAME_STRATEGY_TYPE = 'fallback.subject.name.strategy.type'
+
+/**
+ * Default cache capacity for the subject name cache.
+ */
+const DEFAULT_CACHE_CAPACITY = 1000
+
+/**
  * AssociatedNameStrategy returns a strategy that retrieves the associated subject name from schema registry.
+ * The topic is passed as the resource name to schema registry. If there is a configuration property
+ * named "kafka.cluster.id", then its value will be passed as the resource namespace; otherwise the
+ * value "-" will be passed as the resource namespace.
+ * If more than one subject is returned from the query, an exception will be thrown.
+ * If no subjects are returned from the query, then the behavior will fall back to TopicNameStrategy,
+ * unless the configuration property "fallback.subject.name.strategy.type" is set to "RECORD",
+ * "TOPIC_RECORD", or "NONE".
+ *
  * @param client - the schema registry client
  * @param config - configuration options
+ * @param getRecordName - optional function to extract record name from schema (required for RECORD/TOPIC_RECORD fallback)
  */
-export const AssociatedNameStrategy = (client: Client, config: { [key: string]: string }): SubjectNameStrategyFunc => {
+export const AssociatedNameStrategy = (
+  client: Client,
+  config: { [key: string]: string },
+  getRecordName?: RecordNameFunc
+): SubjectNameStrategyFunc => {
+  // Parse configuration
+  const kafkaClusterId = config[KAFKA_CLUSTER_ID] ?? null
+  const fallbackType = config[FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]?.toUpperCase() ?? 'TOPIC'
+
+  // Determine fallback strategy
+  let fallbackStrategy: SubjectNameStrategyFunc | null = null
+  switch (fallbackType) {
+    case 'TOPIC':
+      fallbackStrategy = TopicNameStrategy
+      break
+    case 'RECORD':
+      if (getRecordName == null) {
+        throw new SerializationError(
+          'RecordNameFunc is required for RECORD fallback strategy in AssociatedNameStrategy'
+        )
+      }
+      fallbackStrategy = RecordNameStrategy(getRecordName)
+      break
+    case 'TOPIC_RECORD':
+      if (getRecordName == null) {
+        throw new SerializationError(
+          'RecordNameFunc is required for TOPIC_RECORD fallback strategy in AssociatedNameStrategy'
+        )
+      }
+      fallbackStrategy = TopicRecordNameStrategy(getRecordName)
+      break
+    case 'NONE':
+      fallbackStrategy = null
+      break
+    default:
+      throw new SerializationError(
+        `Invalid value for ${FALLBACK_SUBJECT_NAME_STRATEGY_TYPE}: ${fallbackType}`
+      )
+  }
+
+  // Create cache and mutex for subject names
+  const subjectNameCache = new LRUCache<string, string>({
+    max: DEFAULT_CACHE_CAPACITY
+  })
+  const subjectNameMutex = new Mutex()
+
+  // Helper function to create cache key
+  const makeCacheKey = (topic: string, isKey: boolean): string => {
+    return JSON.stringify({ topic, isKey })
+  }
+
+  // Helper function to load subject name from registry
+  const loadSubjectName = async (
+    topic: string,
+    serdeType: SerdeType,
+    schema?: SchemaInfo
+  ): Promise<string> => {
+    const isKey = serdeType === SerdeType.KEY
+    const resourceNamespace = kafkaClusterId ?? NAMESPACE_WILDCARD
+    const associationType = isKey ? 'key' : 'value'
+
+    const associations = await client.getAssociationsByResourceName(
+      topic,
+      resourceNamespace,
+      'topic',
+      [associationType],
+      null,
+      0,
+      -1
+    )
+
+    if (associations.length > 1) {
+      throw new SerializationError(`Multiple associated subjects found for topic ${topic}`)
+    } else if (associations.length === 1) {
+      return associations[0].subject
+    } else if (fallbackStrategy != null) {
+      return await fallbackStrategy(topic, serdeType, schema)
+    } else {
+      throw new SerializationError(`No associated subject found for topic ${topic}`)
+    }
+  }
+
   return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
-    // TODO: implement associated name lookup using client and config
-    throw new SerializationError('AssociatedNameStrategy not yet implemented')
+    if (topic == null) {
+      throw new SerializationError('Topic cannot be null')
+    }
+
+    const isKey = serdeType === SerdeType.KEY
+    const cacheKey = makeCacheKey(topic, isKey)
+
+    return await subjectNameMutex.runExclusive(async () => {
+      // Check cache first
+      const cached = subjectNameCache.get(cacheKey)
+      if (cached != null) {
+        return cached
+      }
+
+      // Load from registry and cache result
+      const subjectName = await loadSubjectName(topic, serdeType, schema)
+      subjectNameCache.set(cacheKey, subjectName)
+      return subjectName
+    })
   }
 }
 

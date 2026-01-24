@@ -6,9 +6,20 @@ import {
   AvroSerializer,
   AvroSerializerConfig
 } from "../../serde/avro";
-import {HeaderSchemaIdSerializer, SerdeType, SerializationError, Serializer} from "../../serde/serde";
 import {
+  AssociatedNameStrategy,
+  FALLBACK_SUBJECT_NAME_STRATEGY_TYPE,
+  HeaderSchemaIdSerializer,
+  KAFKA_CLUSTER_ID,
+  SerdeType,
+  SerializationError,
+  Serializer,
+  SubjectNameStrategyType
+} from "../../serde/serde";
+import {
+  Association,
   Client,
+  LifecyclePolicy,
   Rule,
   RuleMode,
   RuleSet,
@@ -2421,4 +2432,238 @@ describe('AvroSerializer', () => {
     newobj = await deser3.deserialize(topic, bytes)
     expect(stringify(newobj)).toEqual(stringify(newerWidget));
   }
+})
+
+describe('AssociatedNameStrategy', () => {
+  /**
+   * Helper to create a mock client that returns specified associations
+   */
+  function createMockClientWithAssociations(associations: Association[]): Client {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    // Override the getAssociationsByResourceName method
+    client.getAssociationsByResourceName = async (
+      resourceName: string,
+      resourceNamespace: string,
+      resourceType: string | null,
+      associationTypes: string[],
+      lifecycle: LifecyclePolicy | null,
+      offset: number,
+      limit: number
+    ): Promise<Association[]> => {
+      // Filter associations based on parameters
+      return associations.filter(a =>
+        a.resourceName === resourceName &&
+        (resourceType == null || a.resourceType === resourceType) &&
+        (associationTypes.length === 0 || associationTypes.includes(a.associationType))
+      )
+    }
+    return client
+  }
+
+  it('returns associated subject when single association exists', async () => {
+    const associations: Association[] = [{
+      subject: 'my-custom-subject-value',
+      resourceName: topic,
+      resourceNamespace: '-',
+      resourceType: 'topic',
+      associationType: 'value'
+    }]
+    const client = createMockClientWithAssociations(associations)
+    const strategy = AssociatedNameStrategy(client, {})
+
+    const result = await strategy(topic, SerdeType.VALUE)
+    expect(result).toEqual('my-custom-subject-value')
+  })
+
+  it('returns associated subject for key', async () => {
+    const associations: Association[] = [{
+      subject: 'my-custom-subject-key',
+      resourceName: topic,
+      resourceNamespace: '-',
+      resourceType: 'topic',
+      associationType: 'key'
+    }]
+    const client = createMockClientWithAssociations(associations)
+    const strategy = AssociatedNameStrategy(client, {})
+
+    const result = await strategy(topic, SerdeType.KEY)
+    expect(result).toEqual('my-custom-subject-key')
+  })
+
+  it('caches subject name lookups', async () => {
+    let callCount = 0
+    const associations: Association[] = [{
+      subject: 'cached-subject-value',
+      resourceName: topic,
+      resourceNamespace: '-',
+      resourceType: 'topic',
+      associationType: 'value'
+    }]
+    const client = createMockClientWithAssociations(associations)
+
+    // Track calls to the association lookup
+    const originalMethod = client.getAssociationsByResourceName
+    client.getAssociationsByResourceName = async (...args) => {
+      callCount++
+      return originalMethod.apply(client, args)
+    }
+
+    const strategy = AssociatedNameStrategy(client, {})
+
+    // Call multiple times
+    await strategy(topic, SerdeType.VALUE)
+    await strategy(topic, SerdeType.VALUE)
+    await strategy(topic, SerdeType.VALUE)
+
+    // Should only have called the registry once due to caching
+    expect(callCount).toEqual(1)
+  })
+
+  it('falls back to TopicNameStrategy when no association found', async () => {
+    const client = createMockClientWithAssociations([])
+    const strategy = AssociatedNameStrategy(client, {})
+
+    const result = await strategy(topic, SerdeType.VALUE)
+    expect(result).toEqual('topic1-value')
+  })
+
+  it('falls back to TopicNameStrategy for key when no association found', async () => {
+    const client = createMockClientWithAssociations([])
+    const strategy = AssociatedNameStrategy(client, {})
+
+    const result = await strategy(topic, SerdeType.KEY)
+    expect(result).toEqual('topic1-key')
+  })
+
+  it('throws error when multiple associations found', async () => {
+    const associations: Association[] = [
+      {
+        subject: 'subject1-value',
+        resourceName: topic,
+        resourceNamespace: '-',
+        resourceType: 'topic',
+        associationType: 'value'
+      },
+      {
+        subject: 'subject2-value',
+        resourceName: topic,
+        resourceNamespace: '-',
+        resourceType: 'topic',
+        associationType: 'value'
+      }
+    ]
+    const client = createMockClientWithAssociations(associations)
+    const strategy = AssociatedNameStrategy(client, {})
+
+    await expect(strategy(topic, SerdeType.VALUE)).rejects.toThrow(SerializationError)
+    await expect(strategy(topic, SerdeType.VALUE)).rejects.toThrow('Multiple associated subjects found')
+  })
+
+  it('throws error when fallback is NONE and no association found', async () => {
+    const client = createMockClientWithAssociations([])
+    const strategy = AssociatedNameStrategy(client, {
+      [FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]: 'NONE'
+    })
+
+    await expect(strategy(topic, SerdeType.VALUE)).rejects.toThrow(SerializationError)
+    await expect(strategy(topic, SerdeType.VALUE)).rejects.toThrow('No associated subject found')
+  })
+
+  it('uses kafka cluster id as namespace when configured', async () => {
+    let capturedNamespace: string | null = null
+    const associations: Association[] = [{
+      subject: 'cluster-specific-subject',
+      resourceName: topic,
+      resourceNamespace: 'my-cluster-id',
+      resourceType: 'topic',
+      associationType: 'value'
+    }]
+
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    const client = SchemaRegistryClient.newClient(conf)
+    client.getAssociationsByResourceName = async (
+      resourceName: string,
+      resourceNamespace: string,
+      resourceType: string | null,
+      associationTypes: string[],
+      lifecycle: LifecyclePolicy | null,
+      offset: number,
+      limit: number
+    ): Promise<Association[]> => {
+      capturedNamespace = resourceNamespace
+      return associations.filter(a =>
+        a.resourceName === resourceName &&
+        a.resourceNamespace === resourceNamespace
+      )
+    }
+
+    const strategy = AssociatedNameStrategy(client, {
+      [KAFKA_CLUSTER_ID]: 'my-cluster-id'
+    })
+
+    const result = await strategy(topic, SerdeType.VALUE)
+    expect(capturedNamespace).toEqual('my-cluster-id')
+    expect(result).toEqual('cluster-specific-subject')
+  })
+
+  it('throws error for invalid fallback strategy type', () => {
+    const client = createMockClientWithAssociations([])
+
+    expect(() => AssociatedNameStrategy(client, {
+      [FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]: 'INVALID'
+    })).toThrow(SerializationError)
+  })
+
+  it('works with serializer using SubjectNameStrategyType.ASSOCIATED', async () => {
+    const associations: Association[] = [{
+      subject: 'associated-subject-value',
+      resourceName: topic,
+      resourceNamespace: '-',
+      resourceType: 'topic',
+      associationType: 'value'
+    }]
+    const client = createMockClientWithAssociations(associations)
+
+    // Register the schema with the associated subject
+    const info: SchemaInfo = {
+      schemaType: 'AVRO',
+      schema: demoSchema
+    }
+    await client.register('associated-subject-value', info, false)
+
+    const serConfig: AvroSerializerConfig = {
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+
+    const bytes = await ser.serialize(topic, obj)
+    expect(bytes).toBeDefined()
+    expect(bytes.length).toBeGreaterThan(0)
+
+    // Deserialize with the same associated strategy
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.stringField).toEqual(obj.stringField)
+  })
 })
