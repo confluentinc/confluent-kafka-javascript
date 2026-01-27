@@ -139,10 +139,8 @@ export interface ServerConfig {
  * LifecyclePolicy represents the lifecycle policy for an association
  */
 export enum LifecyclePolicy {
-  NONE = 'NONE',
-  MANAGE = 'MANAGE',
-  ARCHIVE = 'ARCHIVE',
-  DELETE = 'DELETE'
+  STRONG = 'STRONG',
+  WEAK = 'WEAK'
 }
 
 /**
