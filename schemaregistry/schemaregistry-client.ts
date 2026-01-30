@@ -158,6 +158,51 @@ export interface Association {
   frozen?: boolean;
 }
 
+/**
+ * AssociationInfo represents association info returned in a response
+ */
+export interface AssociationInfo {
+  subject?: string;
+  associationType?: string;
+  lifecycle?: LifecyclePolicy;
+  frozen?: boolean;
+  schema?: SchemaInfo;
+}
+
+/**
+ * AssociationCreateOrUpdateInfo represents an association to create or update
+ */
+export interface AssociationCreateOrUpdateInfo {
+  subject?: string;
+  associationType?: string;
+  lifecycle?: LifecyclePolicy;
+  frozen?: boolean;
+  schema?: SchemaInfo;
+  normalize?: boolean;
+}
+
+/**
+ * AssociationCreateOrUpdateRequest represents a request to create or update associations
+ */
+export interface AssociationCreateOrUpdateRequest {
+  resourceName?: string;
+  resourceNamespace?: string;
+  resourceId?: string;
+  resourceType?: string;
+  associations?: AssociationCreateOrUpdateInfo[];
+}
+
+/**
+ * AssociationResponse represents a response from creating/updating associations
+ */
+export interface AssociationResponse {
+  resourceName?: string;
+  resourceNamespace?: string;
+  resourceId?: string;
+  resourceType?: string;
+  associations?: AssociationInfo[];
+}
+
 export interface isCompatibleResponse {
   is_compatible: boolean;
 }
@@ -203,6 +248,13 @@ export interface Client {
     offset: number,
     limit: number
   ): Promise<Association[]>;
+  createAssociation(request: AssociationCreateOrUpdateRequest): Promise<AssociationResponse>;
+  deleteAssociations(
+    resourceId: string,
+    resourceType: string | null,
+    associationTypes: string[] | null,
+    cascadeLifecycle: boolean
+  ): Promise<void>;
   clearLatestCaches(): void;
   clearCaches(): void;
   close(): void;
@@ -837,6 +889,53 @@ export class SchemaRegistryClient implements Client {
       'GET'
     );
     return response.data;
+  }
+
+  /**
+   * Create an association between a subject and a resource.
+   * @param request - The association create or update request.
+   */
+  async createAssociation(request: AssociationCreateOrUpdateRequest): Promise<AssociationResponse> {
+    const response: AxiosResponse<AssociationResponse> = await this.restService.handleRequest(
+      '/associations',
+      'POST',
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Delete associations for a resource.
+   * @param resourceId - The resource identifier.
+   * @param resourceType - The type of resource (e.g., "topic"). Can be null.
+   * @param associationTypes - The types of associations to delete (e.g., "key", "value"). Can be null to delete all.
+   * @param cascadeLifecycle - Whether to cascade the lifecycle policy to dependent schemas.
+   */
+  async deleteAssociations(
+    resourceId: string,
+    resourceType: string | null,
+    associationTypes: string[] | null,
+    cascadeLifecycle: boolean
+  ): Promise<void> {
+    const queryParams: string[] = [];
+
+    if (resourceType != null) {
+      queryParams.push(`resourceType=${encodeURIComponent(resourceType)}`);
+    }
+    if (associationTypes != null) {
+      for (const associationType of associationTypes) {
+        queryParams.push(`associationType=${encodeURIComponent(associationType)}`);
+      }
+    }
+    queryParams.push(`cascadeLifecycle=${cascadeLifecycle}`);
+
+    const queryString = queryParams.length > 0 ? '?' + queryParams.join('&') : '';
+    const endpoint = `/associations/resources/${encodeURIComponent(resourceId)}${queryString}`;
+
+    await this.restService.handleRequest(
+      endpoint,
+      'DELETE'
+    );
   }
 
   /**

@@ -18,6 +18,7 @@ import {
 } from "../../serde/serde";
 import {
   Association,
+  AssociationCreateOrUpdateRequest,
   Client,
   LifecyclePolicy,
   Rule,
@@ -2436,31 +2437,55 @@ describe('AvroSerializer', () => {
 
 describe('AssociatedNameStrategy', () => {
   /**
-   * Helper to create a mock client that returns specified associations
+   * Helper to create a mock client and add associations using createAssociation
    */
-  function createMockClientWithAssociations(associations: Association[]): Client {
+  async function createMockClientWithAssociations(associations: Association[]): Promise<Client> {
     let conf: ClientConfig = {
       baseURLs: [baseURL],
       cacheCapacity: 1000
     }
     let client = SchemaRegistryClient.newClient(conf)
-    // Override the getAssociationsByResourceName method
-    client.getAssociationsByResourceName = async (
+
+    // Group associations by resourceName + resourceNamespace + resourceType
+    const groupedAssociations = new Map<string, {
       resourceName: string,
       resourceNamespace: string,
-      resourceType: string | null,
-      associationTypes: string[],
-      lifecycle: LifecyclePolicy | null,
-      offset: number,
-      limit: number
-    ): Promise<Association[]> => {
-      // Filter associations based on parameters
-      return associations.filter(a =>
-        a.resourceName === resourceName &&
-        (resourceType == null || a.resourceType === resourceType) &&
-        (associationTypes.length === 0 || associationTypes.includes(a.associationType))
-      )
+      resourceType: string,
+      resourceId: string,
+      associations: Association[]
+    }>()
+
+    for (const a of associations) {
+      const key = `${a.resourceName}:${a.resourceNamespace}:${a.resourceType}`
+      if (!groupedAssociations.has(key)) {
+        groupedAssociations.set(key, {
+          resourceName: a.resourceName,
+          resourceNamespace: a.resourceNamespace,
+          resourceType: a.resourceType,
+          resourceId: a.resourceId || `mock-resource-id-${groupedAssociations.size + 1}`,
+          associations: []
+        })
+      }
+      groupedAssociations.get(key)!.associations.push(a)
     }
+
+    // Create associations using the new API
+    for (const [_, group] of groupedAssociations) {
+      const request: AssociationCreateOrUpdateRequest = {
+        resourceName: group.resourceName,
+        resourceNamespace: group.resourceNamespace,
+        resourceId: group.resourceId,
+        resourceType: group.resourceType,
+        associations: group.associations.map(a => ({
+          subject: a.subject,
+          associationType: a.associationType,
+          lifecycle: a.lifecycle,
+          frozen: a.frozen
+        }))
+      }
+      await client.createAssociation(request)
+    }
+
     return client
   }
 
@@ -2472,7 +2497,7 @@ describe('AssociatedNameStrategy', () => {
       resourceType: 'topic',
       associationType: 'value'
     }]
-    const client = createMockClientWithAssociations(associations)
+    const client = await createMockClientWithAssociations(associations)
     const strategy = AssociatedNameStrategy(client, {})
 
     const result = await strategy(topic, SerdeType.VALUE)
@@ -2487,7 +2512,7 @@ describe('AssociatedNameStrategy', () => {
       resourceType: 'topic',
       associationType: 'key'
     }]
-    const client = createMockClientWithAssociations(associations)
+    const client = await createMockClientWithAssociations(associations)
     const strategy = AssociatedNameStrategy(client, {})
 
     const result = await strategy(topic, SerdeType.KEY)
@@ -2503,7 +2528,7 @@ describe('AssociatedNameStrategy', () => {
       resourceType: 'topic',
       associationType: 'value'
     }]
-    const client = createMockClientWithAssociations(associations)
+    const client = await createMockClientWithAssociations(associations)
 
     // Track calls to the association lookup
     const originalMethod = client.getAssociationsByResourceName
@@ -2524,7 +2549,7 @@ describe('AssociatedNameStrategy', () => {
   })
 
   it('falls back to TopicNameStrategy when no association found', async () => {
-    const client = createMockClientWithAssociations([])
+    const client = await createMockClientWithAssociations([])
     const strategy = AssociatedNameStrategy(client, {})
 
     const result = await strategy(topic, SerdeType.VALUE)
@@ -2532,7 +2557,7 @@ describe('AssociatedNameStrategy', () => {
   })
 
   it('falls back to TopicNameStrategy for key when no association found', async () => {
-    const client = createMockClientWithAssociations([])
+    const client = await createMockClientWithAssociations([])
     const strategy = AssociatedNameStrategy(client, {})
 
     const result = await strategy(topic, SerdeType.KEY)
@@ -2556,7 +2581,7 @@ describe('AssociatedNameStrategy', () => {
         associationType: 'value'
       }
     ]
-    const client = createMockClientWithAssociations(associations)
+    const client = await createMockClientWithAssociations(associations)
     const strategy = AssociatedNameStrategy(client, {})
 
     await expect(strategy(topic, SerdeType.VALUE)).rejects.toThrow(SerializationError)
@@ -2564,7 +2589,7 @@ describe('AssociatedNameStrategy', () => {
   })
 
   it('throws error when fallback is NONE and no association found', async () => {
-    const client = createMockClientWithAssociations([])
+    const client = await createMockClientWithAssociations([])
     const strategy = AssociatedNameStrategy(client, {
       [FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]: 'NONE'
     })
@@ -2575,19 +2600,28 @@ describe('AssociatedNameStrategy', () => {
 
   it('uses kafka cluster id as namespace when configured', async () => {
     let capturedNamespace: string | null = null
-    const associations: Association[] = [{
-      subject: 'cluster-specific-subject',
-      resourceName: topic,
-      resourceNamespace: 'my-cluster-id',
-      resourceType: 'topic',
-      associationType: 'value'
-    }]
 
     let conf: ClientConfig = {
       baseURLs: [baseURL],
       cacheCapacity: 1000
     }
     const client = SchemaRegistryClient.newClient(conf)
+
+    // Create association with specific namespace
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: topic,
+      resourceNamespace: 'my-cluster-id',
+      resourceId: 'mock-cluster-resource-id',
+      resourceType: 'topic',
+      associations: [{
+        subject: 'cluster-specific-subject',
+        associationType: 'value'
+      }]
+    }
+    await client.createAssociation(request)
+
+    // Track calls to capture namespace
+    const originalMethod = client.getAssociationsByResourceName
     client.getAssociationsByResourceName = async (
       resourceName: string,
       resourceNamespace: string,
@@ -2598,10 +2632,7 @@ describe('AssociatedNameStrategy', () => {
       limit: number
     ): Promise<Association[]> => {
       capturedNamespace = resourceNamespace
-      return associations.filter(a =>
-        a.resourceName === resourceName &&
-        a.resourceNamespace === resourceNamespace
-      )
+      return originalMethod.apply(client, [resourceName, resourceNamespace, resourceType, associationTypes, lifecycle, offset, limit])
     }
 
     const strategy = AssociatedNameStrategy(client, {
@@ -2613,8 +2644,8 @@ describe('AssociatedNameStrategy', () => {
     expect(result).toEqual('cluster-specific-subject')
   })
 
-  it('throws error for invalid fallback strategy type', () => {
-    const client = createMockClientWithAssociations([])
+  it('throws error for invalid fallback strategy type', async () => {
+    const client = await createMockClientWithAssociations([])
 
     expect(() => AssociatedNameStrategy(client, {
       [FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]: 'INVALID'
@@ -2629,7 +2660,7 @@ describe('AssociatedNameStrategy', () => {
       resourceType: 'topic',
       associationType: 'value'
     }]
-    const client = createMockClientWithAssociations(associations)
+    const client = await createMockClientWithAssociations(associations)
 
     // Register the schema with the associated subject
     const info: SchemaInfo = {
