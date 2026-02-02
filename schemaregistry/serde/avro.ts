@@ -97,7 +97,7 @@ export class AvroSerializer extends Serializer implements AvroSerde {
       throw new SerializationError(
         `Invalid message at ${path.join('.')}, expected ${type}, got ${stringify(any)}`)
     }})
-    let msgBytes = avroType.typeName === 'bytes' ? msg : avroType.toBuffer(msg)
+    let msgBytes = avroType.toBuffer(msg)
     msgBytes = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.WRITE, null, info, msgBytes, null)
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
@@ -204,22 +204,18 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     let msg: any
     const msgBytes = payload
     if (migrations.length > 0) {
-      msg = writer.typeName === 'bytes' ? msgBytes : writer.fromBuffer(msgBytes)
+      msg = writer.fromBuffer(msgBytes)
       msg = await this.executeMigrations(migrations, subject, topic, msg)
     } else {
-      if (writer.typeName === 'bytes') {
-        msg = msgBytes
-      } else {
-        if (readerMeta != null) {
-          const [reader, ] = await this.toType(readerMeta)
-          if (reader.equals(writer)) {
-            msg = reader.fromBuffer(msgBytes)
-          } else {
-            msg = reader.fromBuffer(msgBytes, reader.createResolver(writer))
-          }
+      if (readerMeta != null) {
+        const [reader, ] = await this.toType(readerMeta)
+        if (reader.equals(writer)) {
+          msg = reader.fromBuffer(msgBytes)
         } else {
-          msg = writer.fromBuffer(msgBytes)
+          msg = reader.fromBuffer(msgBytes, reader.createResolver(writer))
         }
+      } else {
+        msg = writer.fromBuffer(msgBytes)
       }
     }
     let target: SchemaInfo
@@ -296,15 +292,11 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
   switch (schema.typeName) {
     case 'union:unwrapped':
     case 'union:wrapped':
-      let [subschema, submsg] = resolveUnion(schema, msg)
+      const subschema = resolveUnion(schema, msg)
       if (subschema == null) {
-        return msg
+        return null
       }
-      submsg = await transform(ctx, subschema, submsg, fieldTransform)
-      if (schema.typeName === 'union:wrapped') {
-        return {[subschema.branchName!]: submsg}
-      }
-      return submsg
+      return await transform(ctx, subschema, msg, fieldTransform)
     case 'array':
       const arraySchema = schema as ArrayType
       const array = msg as any[]
@@ -320,9 +312,6 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       const recordSchema = schema as RecordType
       const record = msg as Record<string, any>
       for (const field of recordSchema.fields) {
-        if (!(field.name in record)) {
-          continue
-        }
         await transformField(ctx, recordSchema, field, record, fieldTransform)
       }
       return record
@@ -412,7 +401,7 @@ function disjoint(slice1: Set<string>, map1: Set<string>): boolean {
   return true
 }
 
-function resolveUnion(schema: Type, msg: any): [Type | null, any] {
+function resolveUnion(schema: Type, msg: any): Type | null {
   let unionTypes = null
   if (schema.typeName === 'union:unwrapped') {
     const union = schema as UnwrappedUnionType
@@ -420,7 +409,7 @@ function resolveUnion(schema: Type, msg: any): [Type | null, any] {
     if (unionTypes != null) {
       for (let i = 0; i < unionTypes.length; i++) {
         if (unionTypes[i].isValid(msg)) {
-          return [unionTypes[i], msg]
+          return unionTypes[i]
         }
       }
     }
@@ -433,15 +422,13 @@ function resolveUnion(schema: Type, msg: any): [Type | null, any] {
         let name = keys[0]
         for (let i = 0; i < unionTypes.length; i++) {
           if (unionTypes[i].branchName === name) {
-            return [unionTypes[i], msg[name]]
+            return unionTypes[i]
           }
         }
-      } else {
-        throw new Error('wrapped unions require a name/value pair with the name as the type name')
       }
     }
   }
-  return [null, msg]
+  return null
 }
 
 function getInlineTags(info: SchemaInfo, deps: Map<string, string>): Map<string, Set<string>> {

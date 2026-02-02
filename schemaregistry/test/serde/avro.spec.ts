@@ -75,41 +75,6 @@ const demoSchema = `
   ]
 }
 `
-const demoSchemaWithMissing = `
-{
-  "name": "DemoSchema",
-  "type": "record",
-  "fields": [
-    {
-      "name": "intField",
-      "type": "int"
-    },
-    {
-      "name": "doubleField",
-      "type": "double"
-    },
-    {
-      "name": "stringField",
-      "type": "string",
-      "confluent:tags": [ "PII" ]
-    },
-    {
-      "name": "boolField",
-      "type": "boolean"
-    },
-    {
-      "name": "bytesField",
-      "type": "bytes",
-      "confluent:tags": [ "PII" ]
-    },
-    {
-      "name": "missing",
-      "type": ["null", "string"],
-      "default": null
-    }
-  ]
-}
-`
 const nameSchema = `
 {
   "type": "record",
@@ -357,61 +322,6 @@ const complexNestedSchema = `
   ]
 }`;
 
-const wrappedUnionSchema = `{
-  "fields": [
-    {
-      "name": "id",
-      "type": "int"
-    },
-    {
-      "name": "result",
-      "type": [
-        "null",
-        {
-          "fields": [
-            {
-              "name": "code",
-              "type": "int"
-            },
-            {
-              "confluent:tags": [
-                "PII"
-              ],
-              "name": "secret",
-              "type": [
-                "null",
-                "string"
-              ]
-            }
-          ],
-          "name": "Data",
-          "type": "record"
-        },
-        {
-          "fields": [
-            {
-              "name": "code",
-              "type": "int"
-            },
-            {
-              "name": "reason",
-              "type": [
-                "null",
-                "string"
-              ]
-            }
-          ],
-          "name": "Error",
-          "type": "record"
-        }
-      ]
-    }
-  ],
-  "name": "Result",
-  "namespace": "com.acme",
-  "type": "record"
-}`;
-
 class FakeClock extends Clock {
   fixedNow: number = 0
 
@@ -514,22 +424,6 @@ describe('AvroSerializer', () => {
     expect(obj2.stringField).toEqual(obj.stringField);
     expect(obj2.boolField).toEqual(obj.boolField);
     expect(obj2.bytesField).toEqual(obj.bytesField);
-  })
-  it('serialize bytes', async () => {
-    let conf: ClientConfig = {
-      baseURLs: [baseURL],
-      cacheCapacity: 1000
-    }
-    let client = SchemaRegistryClient.newClient(conf)
-    let ser = new AvroSerializer(client, SerdeType.VALUE, {autoRegisterSchemas: true})
-
-    let obj = Buffer.from([0x02, 0x03, 0x04])
-    let bytes = await ser.serialize(topic, obj)
-    expect(bytes).toEqual(Buffer.from([0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]));
-
-    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
-    let obj2 = await deser.deserialize(topic, bytes)
-    expect(obj2).toEqual(obj);
   })
   it('serialize nested', async () => {
     let conf: ClientConfig = {
@@ -995,58 +889,6 @@ describe('AvroSerializer', () => {
     expect(obj2.intField).toEqual(obj.intField);
     expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
     expect(obj2.stringField).toEqual('hi-suffix');
-    expect(obj2.boolField).toEqual(obj.boolField);
-    expect(obj2.bytesField).toEqual(obj.bytesField);
-  })
-  it('cel field transform missing prop', async () => {
-    let conf: ClientConfig = {
-      baseURLs: [baseURL],
-      cacheCapacity: 1000
-    }
-    let client = SchemaRegistryClient.newClient(conf)
-    let serConfig: AvroSerializerConfig = {
-      useLatestVersion: true,
-    }
-    let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-
-    let encRule: Rule = {
-      name: 'test-cel',
-      kind: 'TRANSFORM',
-      mode: RuleMode.WRITEREAD,
-      type: 'CEL_FIELD',
-      expr: "name == 'stringField' ; value + '-suffix'"
-    }
-    let ruleSet: RuleSet = {
-      domainRules: [encRule]
-    }
-
-    let info: SchemaInfo = {
-      schemaType: 'AVRO',
-      schema: demoSchemaWithMissing,
-      ruleSet
-    }
-
-    await client.register(subject, info, false)
-
-    let obj = {
-      intField: 123,
-      doubleField: 45.67,
-      stringField: 'hi',
-      boolField: true,
-      bytesField: Buffer.from([1, 2]),
-    }
-    let bytes = await ser.serialize(topic, obj)
-
-    let deserConfig: AvroDeserializerConfig = {
-      ruleConfig: {
-        secret: 'mysecret'
-      }
-    }
-    let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    let obj2 = await deser.deserialize(topic, bytes)
-    expect(obj2.intField).toEqual(obj.intField);
-    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001);
-    expect(obj2.stringField).toEqual('hi-suffix-suffix');
     expect(obj2.boolField).toEqual(obj.boolField);
     expect(obj2.bytesField).toEqual(obj.bytesField);
   })
@@ -1527,71 +1369,6 @@ describe('AvroSerializer', () => {
     obj2 = await deser.deserialize(topic, bytes)
     expect(obj2.stringField).not.toEqual("hi");
     expect(obj2.bytesField).not.toEqual(Buffer.from([1, 2]));
-  })
-  it('basic encryption with wrapped union', async () => {
-    let conf: ClientConfig = {
-      baseURLs: [baseURL],
-      cacheCapacity: 1000
-    }
-    let client = SchemaRegistryClient.newClient(conf)
-    let serConfig: AvroSerializerConfig = {
-      useLatestVersion: true,
-      ruleConfig: {
-        secret: 'mysecret'
-      }
-    }
-    let ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-    let dekClient = fieldEncryptionExecutor.executor.client!
-
-    let encRule: Rule = {
-      name: 'test-encrypt',
-      kind: 'TRANSFORM',
-      mode: RuleMode.WRITEREAD,
-      type: 'ENCRYPT',
-      tags: ['PII'],
-      params: {
-        'encrypt.kek.name': 'kek1',
-        'encrypt.kms.type': 'local-kms',
-        'encrypt.kms.key.id': 'mykey',
-      },
-      onFailure: 'ERROR,NONE'
-    }
-    let ruleSet: RuleSet = {
-      domainRules: [encRule]
-    }
-
-    let info: SchemaInfo = {
-      schemaType: 'AVRO',
-      schema: wrappedUnionSchema,
-      ruleSet
-    }
-
-    await client.register(subject, info, false)
-
-    let obj = {
-      id: 123,
-      result: {
-        'com.acme.Data': {
-          code: 456,
-          secret: 'mypii'
-        }
-      }
-    }
-    let bytes = await ser.serialize(topic, obj)
-
-    // reset encrypted field
-    obj.result["com.acme.Data"].secret = 'mypii'
-
-    let deserConfig: AvroDeserializerConfig = {
-      ruleConfig: {
-        secret: 'mysecret'
-      }
-    }
-    let deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
-    fieldEncryptionExecutor.executor.client = dekClient
-    let obj2 = await deser.deserialize(topic, bytes)
-    expect(obj2.result["com.acme.Data"].code).toEqual(obj.result["com.acme.Data"].code);
-    expect(obj2.result["com.acme.Data"].secret).toEqual(obj.result["com.acme.Data"].secret);
   })
   it('basic encryption with logical type', async () => {
     let conf: ClientConfig = {

@@ -112,8 +112,7 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     if ((this.conf as JsonSerdeConfig).validate) {
       const validate = await this.toValidateFunction(info)
       if (validate != null && !validate(msg)) {
-        const errorDetails = validate.errors ? `: ${JSON.stringify(validate.errors)}` : '';
-        throw new SerializationError(`Invalid message${errorDetails}`);
+        throw new SerializationError('Invalid message')
       }
     }
     let msgBytes = Buffer.from(JSON.stringify(msg))
@@ -222,9 +221,8 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     msg = await this.executeRules(subject, topic, RuleMode.READ, null, target, msg, null)
     if ((this.conf as JsonSerdeConfig).validate) {
       const validate = await this.toValidateFunction(info)
-      if (validate != null && !validate(msg)) {
-        const errorDetails = validate.errors ? `: ${JSON.stringify(validate.errors)}` : '';
-        throw new SerializationError(`Invalid message${errorDetails}`);
+      if (validate != null && !validate(JSON.parse(msg))) {
+        throw new SerializationError('Invalid message')
       }
     }
     return msg
@@ -271,14 +269,14 @@ async function toValidateFunction(
   const spec = json.$schema
   if (spec === 'http://json-schema.org/draft/2020-12/schema'
     || spec === 'https://json-schema.org/draft/2020-12/schema') {
-    const ajv2020 = new Ajv2020({ ...conf as JsonSerdeConfig, allErrors: true })
+    const ajv2020 = new Ajv2020(conf as JsonSerdeConfig)
     ajv2020.addKeyword("confluent:tags")
     deps.forEach((schema, name) => {
       ajv2020.addSchema(JSON.parse(schema), name)
     })
     fn = ajv2020.compile(json)
   } else {
-    const ajv = new Ajv2019({ ...conf as JsonSerdeConfig, allErrors: true })
+    const ajv = new Ajv2019(conf as JsonSerdeConfig)
     ajv.addKeyword("confluent:tags")
     ajv.addMetaSchema(draft6MetaSchema)
     ajv.addMetaSchema(draft7MetaSchema)
@@ -406,15 +404,13 @@ async function transformField(ctx: RuleContext, path: string, propName: string, 
   try {
     ctx.enterField(msg, fullName, propName, getType(propSchema), getInlineTags(propSchema))
     let value = msg[propName]
-    if (value != null) {
-      const newVal = await transform(ctx, propSchema, fullName, value, fieldTransform)
-      if (ctx.rule.kind === 'CONDITION') {
-        if (newVal === false) {
-          throw new RuleConditionError(ctx.rule)
-        }
-      } else {
-        msg[propName] = newVal
+    const newVal = await transform(ctx, propSchema, fullName, value, fieldTransform)
+    if (ctx.rule.kind === 'CONDITION') {
+      if (newVal === false) {
+        throw new RuleConditionError(ctx.rule)
       }
+    } else {
+      msg[propName] = newVal
     }
   } finally {
     ctx.leaveField()
@@ -457,9 +453,6 @@ function getType(schema: DereferencedJSONSchema): FieldType {
     return FieldType.NULL
   }
   if (schema.type == null) {
-    if (schema.properties != null && Object.keys(schema.properties).length > 0) {
-      return FieldType.RECORD
-    }
     return FieldType.NULL
   }
   if (Array.isArray(schema.type)) {

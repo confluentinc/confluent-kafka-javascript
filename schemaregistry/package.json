@@ -1,6 +1,6 @@
 {
   "name": "@confluentinc/schemaregistry",
-  "version": "1.8.0",
+  "version": "1.5.0",
   "description": "Node.js client for Confluent Schema Registry",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -33,7 +33,7 @@
     "@aws-sdk/credential-providers": "^3.637.0",
     "@azure/identity": "^4.4.1",
     "@azure/keyvault-keys": "^4.8.0",
-    "@bufbuild/cel": "^0.3.0",
+    "@bufbuild/cel": "^0.1.0",
     "@bufbuild/protobuf": "^2.0.0",
     "@criteria/json-schema": "^0.10.0",
     "@criteria/json-schema-validation": "^0.10.0",
@@ -54,7 +54,7 @@
     "node-vault": "^0.10.2",
     "simple-oauth2": "^5.1.0",
     "uuid": "^11.0.0",
-    "validator": "^13.15.22"
+    "validator": "^13.12.0"
   },
   "scripts": {
     "lint": "make lint",

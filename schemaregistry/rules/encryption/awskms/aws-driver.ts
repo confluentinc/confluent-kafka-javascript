@@ -41,15 +41,13 @@ export class AwsKmsDriver implements KmsDriver {
     if (roleExternalId == null) {
       roleExternalId = process.env['AWS_ROLE_EXTERNAL_ID']
     }
-    let roleWebIdentityTokenFile = process.env['AWS_WEB_IDENTITY_TOKEN_FILE']
     let creds: AwsCredentialIdentity | AwsCredentialIdentityProvider | undefined
     if (key != null && secret != null) {
       creds = {accessKeyId: key, secretAccessKey: secret}
     } else if (profile != null) {
       creds = fromIni({profile})
     }
-    // If roleWebIdentityTokenFile is set, use the DefaultCredentialsProvider
-    if (roleArn != null && roleWebIdentityTokenFile == null) {
+    if (roleArn != null) {
       let keyId = uriPrefix.substring(AwsKmsDriver.PREFIX.length)
       const tokens = keyId.split(':')
       if (tokens.length < 4) {
