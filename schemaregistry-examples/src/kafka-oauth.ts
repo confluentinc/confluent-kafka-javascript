@@ -7,7 +7,9 @@ import { KafkaJS } from '@confluentinc/kafka-javascript';
 import {
   clusterBootstrapUrl,
   baseUrl,
-  issuerEndpointUrl, oauthClientId, oauthClientSecret, scope,
+  issuerEndpointUrl,
+  azureIMDSIssuerEndpointQuery,
+  oauthClientId, oauthClientSecret, scope,
   identityPoolId, schemaRegistryLogicalCluster, kafkaLogicalCluster
 } from "./constants";
 import axios from 'axios';
@@ -134,4 +136,91 @@ async function kafkaProducerAvro() {
   await producer.disconnect();
 }
 
-kafkaProducerAvro();
+async function kafkaProducerAvroAzureIMDS() {
+
+  const createAxiosDefaults: CreateAxiosDefaults = {
+    timeout: 10000
+  };
+
+  const bearerAuthCredentials: BearerAuthCredentials = {
+    credentialsSource: 'OAUTHBEARER_AZURE_IMDS',
+    issuerEndpointQuery: azureIMDSIssuerEndpointQuery,
+    logicalCluster: schemaRegistryLogicalCluster,
+    identityPoolId: identityPoolId,
+  }
+
+  const clientConfig: ClientConfig = {
+    baseURLs: [baseUrl],
+    createAxiosDefaults: createAxiosDefaults,
+    cacheCapacity: 512,
+    cacheLatestTtlSecs: 60,
+    bearerAuthCredentials
+  };
+
+  const schemaRegistryClient = new SchemaRegistryClient(clientConfig);
+
+  const kafka: KafkaJS.Kafka = new KafkaJS.Kafka({
+    'bootstrap.servers': clusterBootstrapUrl,
+    'security.protocol': 'sasl_ssl',
+    'sasl.mechanism': 'OAUTHBEARER',
+    'sasl.oauthbearer.method': 'oidc',
+    'sasl.oauthbearer.metadata.authentication.type': 'azure_imds',
+    'sasl.oauthbearer.config': 'query=' + azureIMDSIssuerEndpointQuery,
+    'sasl.oauthbearer.extensions': `logicalCluster=${kafkaLogicalCluster},identityPoolId=${identityPoolId}`
+  });
+
+  const producer: KafkaJS.Producer = kafka.producer({
+    kafkaJS: {
+      allowAutoTopicCreation: true,
+      acks: 1,
+      compression: KafkaJS.CompressionTypes.GZIP,
+    }
+  });
+
+  console.log("Producer created");
+
+  const schemaString: string = JSON.stringify({
+    type: 'record',
+    name: 'User',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'age', type: 'int' },
+    ],
+  });
+
+  const schemaInfo: SchemaInfo = {
+    schemaType: 'AVRO',
+    schema: schemaString,
+  };
+
+  const userTopic = 'example-user-topic';
+  await schemaRegistryClient.register(userTopic + "-value", schemaInfo);
+
+  const userInfo = { name: 'Alice N Bob', age: 30 };
+
+  const avroSerializerConfig: AvroSerializerConfig = { useLatestVersion: true };
+
+  const serializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
+
+  const outgoingMessage = {
+    key: "1",
+    value: await serializer.serialize(userTopic, userInfo)
+  };
+
+  console.log("Outgoing message: ", outgoingMessage);
+
+  await producer.connect();
+
+  await producer.send({
+    topic: userTopic,
+    messages: [outgoingMessage]
+  });
+
+  await producer.disconnect();
+}
+
+async function main() {
+  await kafkaProducerAvro();
+  await kafkaProducerAvroAzureIMDS();
+}
+main();
