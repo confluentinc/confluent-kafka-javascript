@@ -9,6 +9,7 @@ import {
 } from "../schemaregistry-client";
 import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
+import {RestError} from "../rest-error";
 import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 import {IHeaders} from "../../types/kafkajs";
 import {LRUCache} from "lru-cache";
@@ -847,15 +848,28 @@ export const AssociatedNameStrategy = (
     const resourceNamespace = kafkaClusterId ?? NAMESPACE_WILDCARD
     const associationType = isKey ? 'key' : 'value'
 
-    const associations = await client.getAssociationsByResourceName(
-      topic,
-      resourceNamespace,
-      'topic',
-      [associationType],
-      null,
-      0,
-      -1
-    )
+    let associations: Awaited<ReturnType<typeof client.getAssociationsByResourceName>>
+    try {
+      associations = await client.getAssociationsByResourceName(
+        topic,
+        resourceNamespace,
+        'topic',
+        [associationType],
+        null,
+        0,
+        -1
+      )
+    } catch (err) {
+      if (err instanceof RestError && err.status === 404) {
+        // Resource not found, fall back to the fallback strategy
+        if (fallbackStrategy != null) {
+          return await fallbackStrategy(topic, serdeType, schema)
+        } else {
+          throw new SerializationError(`No associated subject found for topic ${topic}`)
+        }
+      }
+      throw err
+    }
 
     if (associations.length > 1) {
       throw new SerializationError(`Multiple associated subjects found for topic ${topic}`)
