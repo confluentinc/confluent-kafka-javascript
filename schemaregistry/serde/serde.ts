@@ -14,6 +14,7 @@ import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 import {IHeaders} from "../../types/kafkajs";
 import {LRUCache} from "lru-cache";
 import {Mutex} from "async-mutex";
+import stringify from "json-stringify-deterministic";
 
 export enum SerdeType {
   KEY = 'KEY',
@@ -833,9 +834,16 @@ export const AssociatedNameStrategy = (
   })
   const subjectNameMutex = new Mutex()
 
+  // Determine if we need to include record name in cache key
+  const needsRecordName = fallbackTypeEnum === SubjectNameStrategyType.RECORD ||
+    fallbackTypeEnum === SubjectNameStrategyType.TOPIC_RECORD
+
   // Helper function to create cache key
-  const makeCacheKey = (topic: string, isKey: boolean): string => {
-    return JSON.stringify({ topic, isKey })
+  const makeCacheKey = (topic: string, isKey: boolean, schema?: SchemaInfo): string => {
+    const recordName = needsRecordName && schema != null && getRecordName != null
+      ? getRecordName(schema)
+      : undefined
+    return stringify({ topic, isKey, recordName })
   }
 
   // Helper function to load subject name from registry
@@ -861,14 +869,10 @@ export const AssociatedNameStrategy = (
       )
     } catch (err) {
       if (err instanceof RestError && err.status === 404) {
-        // Resource not found, fall back to the fallback strategy
-        if (fallbackStrategy != null) {
-          return await fallbackStrategy(topic, serdeType, schema)
-        } else {
-          throw new SerializationError(`No associated subject found for topic ${topic}`)
-        }
+        associations = []
+      } else {
+        throw err
       }
-      throw err
     }
 
     if (associations.length > 1) {
@@ -888,7 +892,7 @@ export const AssociatedNameStrategy = (
     }
 
     const isKey = serdeType === SerdeType.KEY
-    const cacheKey = makeCacheKey(topic, isKey)
+    const cacheKey = makeCacheKey(topic, isKey, schema)
 
     return await subjectNameMutex.runExclusive(async () => {
       // Check cache first
