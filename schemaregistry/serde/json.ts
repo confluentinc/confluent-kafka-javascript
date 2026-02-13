@@ -13,6 +13,7 @@ import {
 import Ajv, {ErrorObject} from "ajv";
 import Ajv2019 from "ajv/dist/2019";
 import Ajv2020 from "ajv/dist/2020";
+import addFormats from "ajv-formats";
 import * as draft6MetaSchema from 'ajv/dist/refs/json-schema-draft-06.json'
 import * as draft7MetaSchema from 'ajv/dist/refs/json-schema-draft-07.json'
 import {
@@ -272,6 +273,7 @@ async function toValidateFunction(
   if (spec === 'http://json-schema.org/draft/2020-12/schema'
     || spec === 'https://json-schema.org/draft/2020-12/schema') {
     const ajv2020 = new Ajv2020({ ...conf as JsonSerdeConfig, allErrors: true })
+    addFormats(ajv2020)
     ajv2020.addKeyword("confluent:tags")
     deps.forEach((schema, name) => {
       ajv2020.addSchema(JSON.parse(schema), name)
@@ -279,6 +281,7 @@ async function toValidateFunction(
     fn = ajv2020.compile(json)
   } else {
     const ajv = new Ajv2019({ ...conf as JsonSerdeConfig, allErrors: true })
+    addFormats(ajv)
     ajv.addKeyword("confluent:tags")
     ajv.addMetaSchema(draft6MetaSchema)
     ajv.addMetaSchema(draft7MetaSchema)
@@ -504,6 +507,3 @@ function disjoint(tags1: Set<string>, tags2: Set<string>): boolean {
   }
   return true
 }
-
-
-
