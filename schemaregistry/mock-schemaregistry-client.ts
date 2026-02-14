@@ -152,6 +152,17 @@ class MockClient implements Client {
   }
 
   async getBySubjectAndId(subject: string, id: number, format?: string): Promise<SchemaInfo> {
+    if (subject == null || subject === '') {
+      // Search for any entry where the id matches
+      for (const [key, value] of this.idToSchemaCache.entries()) {
+        const parsedKey = JSON.parse(key);
+        if (parsedKey.id === id && !value.softDeleted) {
+          return value.info;
+        }
+      }
+      throw new RestError("Schema not found", 404, 40400);
+    }
+
     const cacheKey = stringify({ subject, id });
     const cacheEntry = this.idToSchemaCache.get(cacheKey);
 

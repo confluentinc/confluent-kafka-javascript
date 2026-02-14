@@ -219,6 +219,12 @@ export abstract class Serde {
   }
 
   async subjectName(topic: string, info?: SchemaInfo): Promise<string> {
+    const strategyType = this.conf.subjectNameStrategyType
+    if (info == null &&
+        (strategyType === SubjectNameStrategyType.RECORD ||
+         strategyType === SubjectNameStrategyType.TOPIC_RECORD)) {
+      return ''
+    }
     const strategy = this.conf.subjectNameStrategy ?? TopicNameStrategy
     return await strategy(topic, this.serdeType, info)
   }

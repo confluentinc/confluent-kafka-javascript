@@ -2435,6 +2435,80 @@ describe('AvroSerializer', () => {
   }
 })
 
+describe('RecordNameStrategy', () => {
+  it('serialization with RecordNameStrategy', async () => {
+    const conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+    expect(obj2.stringField).toEqual(obj.stringField)
+    expect(obj2.boolField).toEqual(obj.boolField)
+    expect(obj2.bytesField).toEqual(obj.bytesField)
+  })
+})
+
+describe('TopicRecordNameStrategy', () => {
+  it('serialization with TopicRecordNameStrategy', async () => {
+    const conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.TOPIC_RECORD
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.TOPIC_RECORD
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+    expect(obj2.stringField).toEqual(obj.stringField)
+    expect(obj2.boolField).toEqual(obj.boolField)
+    expect(obj2.bytesField).toEqual(obj.bytesField)
+  })
+})
+
 describe('AssociatedNameStrategy', () => {
   /**
    * Helper to create a mock client and add associations using createAssociation
