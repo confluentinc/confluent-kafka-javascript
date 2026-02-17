@@ -185,11 +185,11 @@ export type PartitionMetadata = {
   partitionErrorCode: number
   partitionId: number
   leader: number
-  leaderNode?: Node
+  leaderNode?: Node | null
   replicas: number[]
-  replicaNodes?: Node[]
+  replicaNodes?: (Node | null)[]
   isr: number[]
-  isrNodes?: Node[]
+  isrNodes?: (Node | null)[]
   offlineReplicas?: number[]
 }
 
