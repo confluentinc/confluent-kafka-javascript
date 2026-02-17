@@ -308,7 +308,10 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
     case 'array':
       const arraySchema = schema as ArrayType
       const array = msg as any[]
-      return await Promise.all(array.map(item => transform(ctx, arraySchema.itemsType, item, fieldTransform)))
+      for (let i = 0; i < array.length; i++) {
+        array[i] = await transform(ctx, arraySchema.itemsType, array[i], fieldTransform)
+      }
+      return array
     case 'map':
       const mapSchema = schema as MapType
       const map = msg as { [key: string]: any }
