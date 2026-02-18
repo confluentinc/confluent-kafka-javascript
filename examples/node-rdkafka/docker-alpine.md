@@ -1,22 +1,10 @@
-When using docker to install `confluent-kafka-javascript`, you need to make sure you install appropriate library dependencies. Alpine linux is a lighter weight version of linux and does not come with the same base libraries as other distributions (like glibc).
+# Dockerfile for confluent-kafka-javascript
 
-You can see some of the differences here: https://linuxacademy.com/blog/cloud/alpine-linux-and-docker/
+A sample Dockerfile to run the `confluent-kafka-javascript` library using Node.js:
 
 ```dockerfile
-FROM node:14-alpine
-
-RUN apk --no-cache add \
-      bash \
-      g++ \
-      ca-certificates \
-      lz4-dev \
-      musl-dev \
-      cyrus-sasl-dev \
-      openssl-dev \
-      make \
-      python3
-
-RUN apk add --no-cache --virtual .build-deps gcc zlib-dev libc-dev bsd-compat-headers py-setuptools bash
+# The official (Debian-based) and Alpine-based Node.js images are both useable.
+FROM node:24
 
 # Create app directory
 RUN mkdir -p /usr/local/app
@@ -24,7 +12,26 @@ RUN mkdir -p /usr/local/app
 # Move to the app directory
 WORKDIR /usr/local/app
 
-# Install confluent-kafka-javascript
-RUN npm install confluent-kafka-javascript
-# Copy package.json first to check if an npm install is needed
+# Copy relevant files
+COPY . .
+
+# Install application dependencies, if node_modules is not already present.
+RUN npm install
+
+# Rebuild the @confluentinc/kafka-javascript package for this environment. See
+# below for more details on why this is necessary, and if you can skip this step.
+RUN rm -rf node_modules/@confluentinc/kafka-javascript
+RUN npm install @confluentinc/kafka-javascript
+
+# Start application
+CMD ["node", "index.js"]
 ```
+
+`confluent-kafka-javascript` contains platform specific binary code (to talk to the underlying C library).
+Depending on the OS, platform, architecture, and the libc type (glibc or musl), a different binary is required.
+
+The correct binary is downloaded from GitHub when installing the package for the first time, however, if you copy
+the `node_modules` directory from a different environment (e.g., your local machine) into the Docker container, it may not work correctly due to platform differences.
+
+If you can ensure that the `node_modules` directory is not copied into the Docker container, or that the platform
+where the image is built is identical to the Docker container's platform, you can skip the reinstallation step.
