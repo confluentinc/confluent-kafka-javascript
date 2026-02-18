@@ -12,15 +12,20 @@ semaphore:
   enable: true
   pipeline_enable: false
   tasks:
-  - name: post-install
-    scheduled: false
-    branch: "master"
-    pipeline_file: .semaphore/post_install.yml
-    parameters:
-    - name: LIBRARY_VERSION
-      required: true
-      description: "Which library version to install."
-      default_value: "latest"
+    - name: post-install
+      scheduled: false
+      branch: "master"
+      pipeline_file: .semaphore/post_install.yml
+      parameters:
+        - name: LIBRARY_VERSION
+          required: true
+          description: "Which library version to install."
+          default_value: "latest"
+  managed_sections:
+    - version
+    - name
+    - agent
+    - global_job_config
 sonarqube:
   enable: true
   coverage_reports:
