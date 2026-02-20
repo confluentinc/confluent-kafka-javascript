@@ -1,4 +1,4 @@
-import { BasicAuthCredentials } from '@confluentinc/schemaregistry';
+import { BasicAuthCredentials, BearerAuthCredentials } from '@confluentinc/schemaregistry';
 
 const issuerEndpointUrl = '<your-issuer-endpoint-url>'; // e.g. 'https://dev-123456.okta.com/oauth2/default/v1/token';
 const oauthClientId = '<your-client-id>';
@@ -22,7 +22,17 @@ const basicAuthCredentials: BasicAuthCredentials = {
   userInfo: '<client-id>:<client-secret>',
 };
 
+const bearerAuthCredentials: BearerAuthCredentials = {
+  credentialsSource: 'OAUTHBEARER',
+  issuerEndpointUrl: issuerEndpointUrl,
+  clientId: oauthClientId,
+  clientSecret: oauthClientSecret,
+  scope: scope,
+  identityPoolId: identityPoolId,
+  logicalCluster: schemaRegistryLogicalCluster
+};
+
 export {
   issuerEndpointUrl, oauthClientId, oauthClientSecret, scope, identityPoolId, kafkaLogicalCluster, schemaRegistryLogicalCluster, 
-  baseUrl, clusterBootstrapUrl, clusterApiKey, clusterApiSecret, basicAuthCredentials, localAuthCredentials
+  baseUrl, clusterBootstrapUrl, clusterApiKey, clusterApiSecret, basicAuthCredentials, localAuthCredentials, bearerAuthCredentials
 };
