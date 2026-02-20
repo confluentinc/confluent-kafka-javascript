@@ -191,7 +191,7 @@ blocks:
             - export NODE_OPTIONS='--max-old-space-size=1536'
             - cd examples/performance
             - npm install
-            - bash -c '../../ci/tests/run_perf_test.sh'
+            - node '../../ci/tests/run_perf_test.js'
             - rm -rf ./node_modules
 
   - name: "Linux amd64: Release"
