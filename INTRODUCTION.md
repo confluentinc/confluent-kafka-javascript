@@ -1102,7 +1102,11 @@ const producer = new Kafka().producer({
 });
 ```
 
-For a special case of OAuthBearer token authentication, where the token is fetched from an OIDC provider using the `client_credentials` grant type, the library provides a built-in callback, which can be set through just the configuration without any custom function required:
+For special cases of OAuthBearer token authentication, you can fetch the token from an OIDC provider using the `client_credentials` or `jwt_bearer` grant type. The library provides a built-in callback, which can be set through just the configuration without any custom function required.
+
+### Authentication with client_credentials
+
+This example shows how to use `client_credentials` for OAuthBearer token authentication:
 
 ```js
 const producer = new Kafka().producer({
@@ -1114,6 +1118,28 @@ const producer = new Kafka().producer({
     'sasl.oauthbearer.scope': scope,
     'sasl.oauthbearer.client.id': oauthClientId,
     'sasl.oauthbearer.client.secret': oauthClientSecret,
+    'sasl.oauthbearer.extensions': `logicalCluster=${kafkaLogicalCluster},identityPoolId=${identityPoolId}`
+});
+```
+
+### Authentication with jwt_bearer
+
+This example shows how to use a `jwt_bearer` for OAuthBearer token authentication:
+
+```js
+const producer = new Kafka().producer({
+    'bootstrap.servers': '<fill>',
+    'security.protocol': 'sasl_ssl', // or sasl_plain
+    'sasl.mechanisms': 'OAUTHBEARER',
+    'sasl.oauthbearer.method': 'oidc',
+    'sasl.oauthbearer.token.endpoint.url': issuerEndpointUrl,
+    'sasl.oauthbearer.scope': scope,
+    'sasl.oauthbearer.grant.type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    'sasl.oauthbearer.assertion.algorithm': 'RS256', // or 'ES256'
+    'sasl.oauthbearer.assertion.private.key.file': '/path/to/private-key.pem',
+    'sasl.oauthbearer.assertion.claim.aud': tokenAudience,
+    'sasl.oauthbearer.assertion.claim.iss': tokenIssuer,
+    'sasl.oauthbearer.assertion.claim.sub': tokenSubject,
     'sasl.oauthbearer.extensions': `logicalCluster=${kafkaLogicalCluster},identityPoolId=${identityPoolId}`
 });
 ```

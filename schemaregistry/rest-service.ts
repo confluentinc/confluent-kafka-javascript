@@ -33,7 +33,7 @@ export interface BearerAuthCredentials {
   clientSecret?: string,
   scope?: string,
   logicalCluster?: string,
-  identityPoolId?: string,
+  identityPoolId?: string | string[],
 }
 
 export interface ClientConfig {
@@ -48,6 +48,7 @@ export interface ClientConfig {
   retriesWaitMs?: number,
   retriesMaxWaitMs?: number,
 }
+
 
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
 
@@ -119,17 +120,23 @@ export class RestService {
     if (bearerAuthCredentials) {
       delete this.client.defaults.auth;
 
-      const headers = ['logicalCluster', 'identityPoolId'];
-      const missingHeader = headers.find(header => !(header in bearerAuthCredentials));
-
-      if (missingHeader) {
-        throw new Error(`Bearer auth header '${missingHeader}' not provided`);
+      if (!('logicalCluster' in bearerAuthCredentials)) {
+        throw new Error("Bearer auth header 'logicalCluster' not provided");
       }
 
-      this.setHeaders({
-        'Confluent-Identity-Pool-Id': bearerAuthCredentials.identityPoolId!,
+      const headers: Record<string, string> = {
         'target-sr-cluster': bearerAuthCredentials.logicalCluster!
-      });
+      };
+
+      const poolId = Array.isArray(bearerAuthCredentials.identityPoolId)
+        ? bearerAuthCredentials.identityPoolId.join(',')
+        : bearerAuthCredentials.identityPoolId;
+
+      if (poolId) {
+        headers['Confluent-Identity-Pool-Id'] = poolId;
+      }
+
+      this.setHeaders(headers);
 
       switch (bearerAuthCredentials.credentialsSource) {
         case 'STATIC_TOKEN':
