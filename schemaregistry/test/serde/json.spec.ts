@@ -275,6 +275,63 @@ const messageSchema = `
         }
     }
 `
+const schemaWithFormats = `
+{
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "website": {
+      "type": "string",
+      "format": "uri"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ipv4Address": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": ["email", "createdAt"]
+}
+`
+const schemaWithFormats2020_12 = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "website": {
+      "type": "string",
+      "format": "uri"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ipv4Address": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": ["email", "createdAt"]
+}
+`
 
 describe('JsonSerializer', () => {
   afterEach(async () => {
@@ -515,6 +572,142 @@ describe('JsonSerializer', () => {
     }
 
     await expect(() => ser.serialize(topic, diffObj)).rejects.toThrow(SerializationError)
+  })
+  it('format validation', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new JsonSerializer(client, SerdeType.VALUE, {
+      useLatestVersion: true,
+      validate: true
+    })
+
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema: schemaWithFormats
+    }
+
+    await client.register(subject, info, false)
+
+    let validObjectWithCorrectFormats = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z',
+      ipv4Address: '192.168.1.1',
+      uuid: '550e8400-e29b-41d4-a716-446655440000'
+    }
+    let bytes = await ser.serialize(topic, validObjectWithCorrectFormats)
+
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(validObjectWithCorrectFormats)
+
+    let invalidEmailObj = {
+      email: 'not-an-email',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z'
+    }
+    await expect(() => ser.serialize(topic, invalidEmailObj)).rejects.toThrow(SerializationError)
+
+    let invalidUriObj = {
+      email: 'user@example.com',
+      website: 'not a uri',
+      createdAt: '2024-01-15T10:30:00Z'
+    }
+    await expect(() => ser.serialize(topic, invalidUriObj)).rejects.toThrow(SerializationError)
+
+    let invalidDateObj = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: 'not-a-date'
+    }
+    await expect(() => ser.serialize(topic, invalidDateObj)).rejects.toThrow(SerializationError)
+
+    let invalidIpv4Obj = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z',
+      ipv4Address: '999.999.999.999'
+    }
+    await expect(() => ser.serialize(topic, invalidIpv4Obj)).rejects.toThrow(SerializationError)
+
+    let invalidUuidObj = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z',
+      uuid: 'not-a-uuid'
+    }
+    await expect(() => ser.serialize(topic, invalidUuidObj)).rejects.toThrow(SerializationError)
+  })
+  it('format validation 2020-12', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let ser = new JsonSerializer(client, SerdeType.VALUE, {
+      useLatestVersion: true,
+      validate: true
+    })
+
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema: schemaWithFormats2020_12
+    }
+
+    await client.register(subject, info, false)
+
+    let validObjectWithCorrectFormats = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z',
+      ipv4Address: '192.168.1.1',
+      uuid: '550e8400-e29b-41d4-a716-446655440000'
+    }
+    let bytes = await ser.serialize(topic, validObjectWithCorrectFormats)
+
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(validObjectWithCorrectFormats)
+
+    let invalidEmailObj = {
+      email: 'not-an-email',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z'
+    }
+    await expect(() => ser.serialize(topic, invalidEmailObj)).rejects.toThrow(SerializationError)
+
+    let invalidUriObj = {
+      email: 'user@example.com',
+      website: 'not a uri',
+      createdAt: '2024-01-15T10:30:00Z'
+    }
+    await expect(() => ser.serialize(topic, invalidUriObj)).rejects.toThrow(SerializationError)
+
+    let invalidDateObj = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: 'not-a-date'
+    }
+    await expect(() => ser.serialize(topic, invalidDateObj)).rejects.toThrow(SerializationError)
+
+    let invalidIpv4Obj = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z',
+      ipv4Address: '999.999.999.999'
+    }
+    await expect(() => ser.serialize(topic, invalidIpv4Obj)).rejects.toThrow(SerializationError)
+
+    let invalidUuidObj = {
+      email: 'user@example.com',
+      website: 'https://example.com',
+      createdAt: '2024-01-15T10:30:00Z',
+      uuid: 'not-a-uuid'
+    }
+    await expect(() => ser.serialize(topic, invalidUuidObj)).rejects.toThrow(SerializationError)
   })
   it('cel field transform', async () => {
     let conf: ClientConfig = {
