@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
-import { RestService } from '../rest-service';
+import { RestService, BearerAuthCredentials } from '../rest-service';
 import * as retryHelper from '@confluentinc/schemaregistry/retry-helper';
 import { maxRetries, retriesWaitMs, retriesMaxWaitMs } from './test-constants';
 
@@ -67,5 +67,79 @@ describe('RestService Retry Policy', () => {
 
     expect(retryHelper.isRetriable).toHaveBeenCalledTimes(maxRetries);
     expect(retryHelper.isRetriable).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('RestService Bearer Auth', () => {
+  let mock: InstanceType<typeof MockAdapter>;
+
+  beforeEach(() => {
+    mock = new MockAdapter(axios);
+  });
+
+  afterEach(() => {
+    mock.reset();
+  });
+
+  it('should set Confluent-Identity-Pool-Id header when identityPoolId is provided', async () => {
+    const bearerAuth: BearerAuthCredentials = {
+      credentialsSource: 'STATIC_TOKEN',
+      token: 'my-token',
+      logicalCluster: 'lsrc-abc123',
+      identityPoolId: 'pool-Gx30',
+    };
+
+    const restService = new RestService(
+      ['http://localhost'], false, {}, undefined, bearerAuth,
+      maxRetries, retriesWaitMs, retriesMaxWaitMs
+    );
+
+    mock.onGet('/subjects').reply(200, ['subject1']);
+    await restService.handleRequest('/subjects', 'GET');
+
+    const requestHeaders = mock.history.get[0].headers;
+    expect(requestHeaders?.['Confluent-Identity-Pool-Id']).toBe('pool-Gx30');
+    expect(requestHeaders?.['target-sr-cluster']).toBe('lsrc-abc123');
+    expect(requestHeaders?.['Authorization']).toBe('Bearer my-token');
+  });
+
+  it('should join array of identityPoolIds into comma-separated header', async () => {
+    const bearerAuth: BearerAuthCredentials = {
+      credentialsSource: 'STATIC_TOKEN',
+      token: 'my-token',
+      logicalCluster: 'lsrc-abc123',
+      identityPoolId: ['pool-1', 'pool-2', 'pool-3'],
+    };
+
+    const restService = new RestService(
+      ['http://localhost'], false, {}, undefined, bearerAuth,
+      maxRetries, retriesWaitMs, retriesMaxWaitMs
+    );
+
+    mock.onGet('/subjects').reply(200, ['subject1']);
+    await restService.handleRequest('/subjects', 'GET');
+
+    const requestHeaders = mock.history.get[0].headers;
+    expect(requestHeaders?.['Confluent-Identity-Pool-Id']).toBe('pool-1,pool-2,pool-3');
+  });
+
+  it('should not set Confluent-Identity-Pool-Id header when identityPoolId is omitted', async () => {
+    const bearerAuth: BearerAuthCredentials = {
+      credentialsSource: 'STATIC_TOKEN',
+      token: 'my-token',
+      logicalCluster: 'lsrc-abc123',
+    };
+
+    const restService = new RestService(
+      ['http://localhost'], false, {}, undefined, bearerAuth,
+      maxRetries, retriesWaitMs, retriesMaxWaitMs
+    );
+
+    mock.onGet('/subjects').reply(200, ['subject1']);
+    await restService.handleRequest('/subjects', 'GET');
+
+    const requestHeaders = mock.history.get[0].headers;
+    expect(requestHeaders?.['Confluent-Identity-Pool-Id']).toBeUndefined();
+    expect(requestHeaders?.['target-sr-cluster']).toBe('lsrc-abc123');
   });
 });
