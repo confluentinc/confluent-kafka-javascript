@@ -53,14 +53,15 @@ export interface ClientConfig {
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
 
 export class RestService {
+  private static instance: RestService;
   private client: AxiosInstance;
   private baseURLs: string[];
   private oauthClient?: OAuthClient;
   private oauthBearer: boolean = false;
 
   constructor(baseURLs: string[], isForward?: boolean, axiosDefaults?: CreateAxiosDefaults,
-              basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
-              maxRetries?: number, retriesWaitMs?: number, retriesMaxWaitMs?: number) {
+    basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
+    maxRetries?: number, retriesWaitMs?: number, retriesMaxWaitMs?: number) {
     this.client = axios.create(axiosDefaults);
     axiosRetry(this.client, {
       retries: maxRetries ?? 3,
@@ -82,6 +83,16 @@ export class RestService {
 
     this.handleBasicAuth(basicAuthCredentials);
     this.handleBearerAuth(maxRetries ?? 2, retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, bearerAuthCredentials);
+  }
+
+  static getInstance(baseURLs: string[], isForward?: boolean, axiosDefaults?: CreateAxiosDefaults,
+    basicAuthCredentials?: BasicAuthCredentials, bearerAuthCredentials?: BearerAuthCredentials,
+    maxRetries?: number, retriesWaitMs?: number, retriesMaxWaitMs?: number): RestService {
+    if (!this.instance) {
+      this.instance = new RestService(baseURLs, isForward, axiosDefaults, basicAuthCredentials, bearerAuthCredentials,
+        maxRetries, retriesWaitMs, retriesMaxWaitMs);
+    }
+    return this.instance;
   }
 
   handleBasicAuth(basicAuthCredentials?: BasicAuthCredentials): void {

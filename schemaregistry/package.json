@@ -59,6 +59,7 @@
   "scripts": {
     "lint": "make lint",
     "test": "make test",
+    "integtest": "make integtest",
     "build": "rm -rf ./dist && tsc -p tsconfig-build.json"
   },
   "keywords": [
