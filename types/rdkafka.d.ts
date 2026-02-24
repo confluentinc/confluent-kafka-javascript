@@ -396,8 +396,8 @@ export type MemberDescription = {
 export type Node = {
     id: number
     host: string | null
-    port: number | null
-    rack?: string | null
+    port: number
+    rack?: string
 }
 
 export type Uuid = {
