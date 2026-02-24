@@ -279,7 +279,7 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     }
     const schema = await this.toType(info)
     if (typeof schema !== 'boolean') {
-      return schema.title ?? schema.$id ?? ''
+      return schema.title ?? ''
     }
     return ''
   }
