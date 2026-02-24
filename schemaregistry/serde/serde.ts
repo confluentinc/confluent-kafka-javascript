@@ -845,10 +845,11 @@ export const AssociatedNameStrategy = (
     fallbackTypeEnum === SubjectNameStrategyType.TOPIC_RECORD
 
   // Helper function to create cache key
-  const makeCacheKey = (topic: string, isKey: boolean, schema?: SchemaInfo): string => {
-    const recordName = needsRecordName && schema != null && getRecordName != null
-      ? getRecordName(schema)
-      : undefined
+  const makeCacheKey = async (topic: string, isKey: boolean, schema?: SchemaInfo): Promise<string> => {
+    let recordName: string | undefined = undefined
+    if (needsRecordName && schema != null && getRecordName != null) {
+      recordName = await getRecordName(schema)
+    }
     return stringify({ topic, isKey, recordName })
   }
 
@@ -898,7 +899,7 @@ export const AssociatedNameStrategy = (
     }
 
     const isKey = serdeType === SerdeType.KEY
-    const cacheKey = makeCacheKey(topic, isKey, schema)
+    const cacheKey = await makeCacheKey(topic, isKey, schema)
 
     return await subjectNameMutex.runExclusive(async () => {
       // Check cache first
