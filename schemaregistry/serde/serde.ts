@@ -722,9 +722,7 @@ export type RecordNameFunc = (
  */
 export const RecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
   return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
-    const recordName = await getRecordName(schema)
-    const suffix = serdeType === SerdeType.KEY ? '-key' : '-value'
-    return recordName + suffix
+    return await getRecordName(schema)
   }
 }
 
@@ -735,8 +733,7 @@ export const RecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameSt
 export const TopicRecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
   return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
     const recordName = await getRecordName(schema)
-    const suffix = serdeType === SerdeType.KEY ? '-key' : '-value'
-    return topic + '-' + recordName + suffix
+    return topic + '-' + recordName
   }
 }
 
