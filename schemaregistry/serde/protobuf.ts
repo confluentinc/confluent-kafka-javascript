@@ -128,6 +128,11 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
+    this.configureSubjectNameStrategy(
+      conf.subjectNameStrategyType,
+      conf.subjectNameStrategyConfig ?? {},
+      this.getRecordName.bind(this)
+    )
   }
 
   /**
@@ -162,7 +167,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       schema = await this.getSchemaInfo(fileDesc)
     }
     const [schemaId, info] = await this.getSchemaId(PROTOBUF_TYPE, topic, msg, schema, 'serialized')
-    const subject = this.subjectName(topic, info)
+    const subject = await this.subjectName(topic, info)
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
     schemaId.messageIndexes = this.toMessageIndexArray(messageDesc)
     let msgBytes = Buffer.from(toBinary(messageDesc, msg))
@@ -329,6 +334,17 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     }
     throw new SerializationError('message descriptor not found')
   }
+
+  async getRecordName(info?: SchemaInfo): Promise<string> {
+    if (info == null) {
+      return ''
+    }
+    const fileDesc = await this.toFileDesc(this.client, info)
+    if (fileDesc.messages.length > 0) {
+      return fileDesc.messages[0].typeName
+    }
+    return ''
+  }
 }
 
 /**
@@ -360,6 +376,11 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
+    this.configureSubjectNameStrategy(
+      conf.subjectNameStrategyType,
+      conf.subjectNameStrategyConfig ?? {},
+      this.getRecordName.bind(this)
+    )
   }
 
   /**
@@ -382,7 +403,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const fd = await this.toFileDesc(this.client, info)
     const messageDesc = this.toMessageDescFromIndexes(fd, schemaId.messageIndexes!)
 
-    const subject = this.subjectName(topic, info)
+    const subject = await this.subjectName(topic, info)
     payload = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.READ, null, info, payload, null)
     const readerMeta = await this.getReaderSchema(subject, 'serialized')
@@ -454,6 +475,17 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       return parent.nestedMessages[index]
     }
     return this.toNestedMessageDesc(parent.nestedMessages[index], msgIndexes.slice(1))
+  }
+
+  async getRecordName(info?: SchemaInfo): Promise<string> {
+    if (info == null) {
+      return ''
+    }
+    const fileDesc = await this.toFileDesc(this.client, info)
+    if (fileDesc.messages.length > 0) {
+      return fileDesc.messages[0].typeName
+    }
+    return ''
   }
 }
 
