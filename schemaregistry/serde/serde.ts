@@ -219,12 +219,6 @@ export abstract class Serde {
   }
 
   async subjectName(topic: string, info?: SchemaInfo): Promise<string> {
-    const strategyType = this.conf.subjectNameStrategyType
-    if (info == null &&
-        (strategyType === SubjectNameStrategyType.RECORD ||
-         strategyType === SubjectNameStrategyType.TOPIC_RECORD)) {
-      return ''
-    }
     const strategy = this.conf.subjectNameStrategy ?? TopicNameStrategy
     return await strategy(topic, this.serdeType, info)
   }
@@ -722,6 +716,9 @@ export type RecordNameFunc = (
  */
 export const RecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
   return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    if (schema == null) {
+      return ''
+    }
     return await getRecordName(schema)
   }
 }
@@ -732,6 +729,9 @@ export const RecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameSt
  */
 export const TopicRecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
   return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    if (schema == null) {
+      return ''
+    }
     const recordName = await getRecordName(schema)
     return topic + '-' + recordName
   }
@@ -837,17 +837,8 @@ export const AssociatedNameStrategy = (
   })
   const subjectNameMutex = new Mutex()
 
-  // Determine if we need to include record name in cache key
-  const needsRecordName = fallbackTypeEnum === SubjectNameStrategyType.RECORD ||
-    fallbackTypeEnum === SubjectNameStrategyType.TOPIC_RECORD
-
-  // Helper function to create cache key
-  const makeCacheKey = async (topic: string, isKey: boolean, schema?: SchemaInfo): Promise<string> => {
-    let recordName: string | undefined = undefined
-    if (needsRecordName && schema != null && getRecordName != null) {
-      recordName = await getRecordName(schema)
-    }
-    return stringify({ topic, isKey, recordName })
+  const makeCacheKey = (topic: string, isKey: boolean, schema?: SchemaInfo): string => {
+    return stringify({ topic, isKey, schema: schema?.schema })
   }
 
   // Helper function to load subject name from registry
@@ -896,9 +887,9 @@ export const AssociatedNameStrategy = (
     }
 
     const isKey = serdeType === SerdeType.KEY
-    const cacheKey = await makeCacheKey(topic, isKey, schema)
 
     return await subjectNameMutex.runExclusive(async () => {
+      const cacheKey = makeCacheKey(topic, isKey, schema)
       // Check cache first
       const cached = subjectNameCache.get(cacheKey)
       if (cached != null) {
