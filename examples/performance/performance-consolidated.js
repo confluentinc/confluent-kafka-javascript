@@ -45,8 +45,11 @@ const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.e
         console.log(`  Batch Size: ${batchSize}`);
         console.log(`  Compression: ${compression}`);
         console.log(`  Warmup Messages: ${warmupMessages}`);
-        const producerRate = await runProducer(brokers, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
-        console.log("=== Producer Rate: ", producerRate);
+        const producerResult = await runProducer(brokers, topic, batchSize, warmupMessages, messageCount, messageSize, compression);
+        console.log("=== Producer Rate: ", producerResult.rate, "MB/s");
+        if (producerResult.latency) {
+            console.log("=== Delivery Latency: mean=" + producerResult.latency.mean.toFixed(2) + "ms, p50=" + producerResult.latency.p50.toFixed(2) + "ms, p95=" + producerResult.latency.p95.toFixed(2) + "ms");
+        }
     }
 
     if (consumer || all) {

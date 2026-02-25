@@ -1,0 +1,34 @@
+{
+  "name": "@confluentinc/kafka-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Comprehensive benchmarking tool for confluent-kafka-javascript",
+  "main": "index.js",
+  "bin": {
+    "kafka-benchmark": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "producer": "node index.js producer",
+    "consumer": "node index.js consumer",
+    "ctp": "node index.js ctp",
+    "latency": "node index.js latency",
+    "all": "node index.js all",
+    "list-presets": "node index.js list-presets"
+  },
+  "keywords": [
+    "kafka",
+    "benchmark",
+    "performance",
+    "confluent"
+  ],
+  "author": "Confluent Inc.",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.0.0",
+    "js-yaml": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

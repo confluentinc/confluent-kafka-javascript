@@ -1,0 +1,34 @@
+name: eos
+description: Exactly-once semantics configuration for measuring transactional overhead
+
+stopping:
+  mode: count
+  message_count: 10000
+  duration_seconds: 60
+
+producer:
+  batch_size: 100
+  compression: none
+  warmup_messages: 500
+  linger_ms: 5
+  acks: all
+  # EOS specific settings
+  enable_idempotence: true
+  transactional_id: benchmark-eos
+
+consumer:
+  fetch_min_bytes: 1
+  fetch_wait_max_ms: 500
+  auto_commit: false
+  isolation_level: read_committed
+
+message:
+  size: 256
+  key_size: 16
+
+ctp:
+  process_time_ms: 5
+  concurrency: 1
+
+runs: 3
+warmup_runs: 1

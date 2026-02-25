@@ -1,0 +1,35 @@
+name: low_latency
+description: Optimized for minimum end-to-end latency with no batching
+
+stopping:
+  mode: count
+  message_count: 10000
+  duration_seconds: 30
+
+producer:
+  batch_size: 1
+  compression: none
+  warmup_messages: 100
+  linger_ms: 0
+  acks: all
+
+consumer:
+  fetch_min_bytes: 1
+  fetch_wait_max_ms: 10
+  auto_commit: false
+
+message:
+  size: 256
+  key_size: 16
+
+ctp:
+  process_time_ms: 0
+  concurrency: 1
+
+latency:
+  message_count: 500
+  producer_delay_ms: 10
+  consumer_delay_ms: 10
+
+runs: 5
+warmup_runs: 1

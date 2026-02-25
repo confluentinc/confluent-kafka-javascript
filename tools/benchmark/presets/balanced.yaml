@@ -1,0 +1,35 @@
+name: balanced
+description: Balanced configuration for general testing with good throughput and reliability
+
+stopping:
+  mode: count
+  message_count: 100000
+  duration_seconds: 60
+
+producer:
+  batch_size: 100
+  compression: none
+  warmup_messages: 1000
+  linger_ms: 5
+  acks: all
+
+consumer:
+  fetch_min_bytes: 1
+  fetch_wait_max_ms: 500
+  auto_commit: false
+
+message:
+  size: 256
+  key_size: 16
+
+ctp:
+  process_time_ms: 5
+  concurrency: 1
+
+latency:
+  message_count: 1000
+  producer_delay_ms: 10
+  consumer_delay_ms: 10
+
+runs: 3
+warmup_runs: 0

@@ -46,6 +46,7 @@ async function runCreateTopics(brokers, topic, topic2) {
 async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessageCnt, msgSize, compression) {
     let totalMessagesSent = 0;
     let totalBytesSent = 0;
+    let deliveryLatencies = [];  // Track delivery report latencies
 
     const message = {
         value: randomBytes(msgSize),
@@ -83,10 +84,13 @@ async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessa
     // in case of queue full errors, which surface only on awaiting.
     while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
         while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
+            const sendTime = hrtime.bigint();  // Track send time for latency
             promises.push(producer.send({
                 topic,
                 messages,
             }).then(() => {
+                const deliveryTime = hrtime.bigint();
+                deliveryLatencies.push(Number(deliveryTime - sendTime));
                 totalMessagesSent += batchSize;
                 totalBytesSent += batchSize * msgSize;
             }).catch((err) => {
@@ -108,7 +112,24 @@ async function runProducer(brokers, topic, batchSize, warmupMessages, totalMessa
     console.log(`Sent ${totalMessagesSent} messages, ${totalBytesSent} bytes; rate is ${rate} MB/s`);
 
     await producer.disconnect();
-    return rate;
+
+    // Calculate latency statistics
+    let latencyStats = null;
+    if (deliveryLatencies.length > 0) {
+        const sortedLatencies = deliveryLatencies.sort((a, b) => a - b);
+        const len = sortedLatencies.length;
+        latencyStats = {
+            mean: sortedLatencies.reduce((a, b) => a + b, 0) / len / 1e6,  // Convert ns to ms
+            p50: sortedLatencies[Math.floor(len * 0.5)] / 1e6,
+            p95: sortedLatencies[Math.floor(len * 0.95)] / 1e6,
+            p99: sortedLatencies[Math.floor(len * 0.99)] / 1e6,
+            min: sortedLatencies[0] / 1e6,
+            max: sortedLatencies[len - 1] / 1e6,
+        };
+        console.log(`Delivery latency: mean=${latencyStats.mean.toFixed(2)}ms, p50=${latencyStats.p50.toFixed(2)}ms, p95=${latencyStats.p95.toFixed(2)}ms`);
+    }
+
+    return { rate, latency: latencyStats };
 }
 
 async function runConsumer(brokers, topic, totalMessageCnt) {

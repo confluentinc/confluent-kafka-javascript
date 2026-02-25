@@ -1,0 +1,70 @@
+# Custom Benchmark Configuration Template
+# Copy this file to custom.yaml and modify as needed
+#
+# Usage: node tools/benchmark/index.js --preset custom
+
+name: custom
+description: User-customized benchmark configuration
+
+# Stopping configuration
+# mode: 'count' - stop after message_count messages
+# mode: 'time' - stop after duration_seconds
+stopping:
+  mode: count
+  message_count: 100000
+  duration_seconds: 60
+
+# Producer settings
+producer:
+  # Number of messages per batch
+  batch_size: 100
+  # Compression codec: none, gzip, snappy, lz4, zstd
+  compression: none
+  # Messages to send before starting measurement
+  warmup_messages: 1000
+  # Time to wait for batching (ms)
+  linger_ms: 5
+  # Acknowledgment mode: 0, 1, all
+  acks: all
+
+# Consumer settings
+consumer:
+  # Minimum bytes to fetch
+  fetch_min_bytes: 1
+  # Maximum wait time for fetch (ms)
+  fetch_wait_max_ms: 500
+  # Enable auto commit
+  auto_commit: false
+
+# Message settings
+message:
+  # Message payload size in bytes
+  size: 256
+  # Message key size in bytes
+  key_size: 16
+
+# Consume-Transform-Produce settings
+ctp:
+  # Simulated processing time per message (ms)
+  process_time_ms: 5
+  # Concurrent partitions
+  concurrency: 1
+
+# Latency benchmark settings
+latency:
+  # Delay between producing messages (ms)
+  producer_delay_ms: 100
+  # Simulated consumer processing delay (ms)
+  consumer_delay_ms: 100
+
+# Run settings
+# Number of benchmark runs for aggregation
+runs: 3
+# Warmup runs (excluded from results)
+warmup_runs: 0
+
+# Advanced librdkafka settings (passed directly)
+# rdkafka:
+#   queue.buffering.max.messages: 100000
+#   queue.buffering.max.ms: 1000
+#   socket.keepalive.enable: true
