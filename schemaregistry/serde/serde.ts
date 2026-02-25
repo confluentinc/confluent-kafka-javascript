@@ -13,7 +13,6 @@ import {RestError} from "../rest-error";
 import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 import {IHeaders} from "../../types/kafkajs";
 import {LRUCache} from "lru-cache";
-import {Mutex} from "async-mutex";
 import stringify from "json-stringify-deterministic";
 
 export enum SerdeType {
@@ -831,11 +830,9 @@ export const AssociatedNameStrategy = (
   // Determine fallback strategy using helper
   const fallbackStrategy = strategyFromType(fallbackTypeEnum, getRecordName)
 
-  // Create cache and mutex for subject names
   const subjectNameCache = new LRUCache<string, string>({
     max: DEFAULT_CACHE_CAPACITY
   })
-  const subjectNameMutex = new Mutex()
 
   const makeCacheKey = (topic: string, isKey: boolean, schema?: SchemaInfo): string => {
     return stringify({ topic, isKey, schema: schema?.schema })
@@ -887,20 +884,16 @@ export const AssociatedNameStrategy = (
     }
 
     const isKey = serdeType === SerdeType.KEY
+    const cacheKey = makeCacheKey(topic, isKey, schema)
 
-    return await subjectNameMutex.runExclusive(async () => {
-      const cacheKey = makeCacheKey(topic, isKey, schema)
-      // Check cache first
-      const cached = subjectNameCache.get(cacheKey)
-      if (cached != null) {
-        return cached
-      }
+    const cached = subjectNameCache.get(cacheKey)
+    if (cached != null) {
+      return cached
+    }
 
-      // Load from registry and cache result
-      const subjectName = await loadSubjectName(topic, serdeType, schema)
-      subjectNameCache.set(cacheKey, subjectName)
-      return subjectName
-    })
+    const subjectName = await loadSubjectName(topic, serdeType, schema)
+    subjectNameCache.set(cacheKey, subjectName)
+    return subjectName
   }
 }
 
