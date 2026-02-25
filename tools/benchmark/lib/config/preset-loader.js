@@ -140,6 +140,9 @@ function buildConfig(options) {
     // Apply CLI options (highest priority)
     const cliConfig = {};
 
+    // Store preset name
+    if (options.preset) cliConfig.preset = options.preset;
+
     if (options.brokers) cliConfig.brokers = options.brokers;
     if (options.topic) cliConfig.topic = options.topic;
     if (options.topic2) cliConfig.topic2 = options.topic2;

@@ -4,6 +4,9 @@
  * Default configuration values for benchmarks.
  */
 const defaults = {
+    // Preset name (set by CLI)
+    preset: 'custom',
+
     // Connection
     brokers: process.env.KAFKA_BROKERS || 'localhost:9092',
     topic: process.env.KAFKA_TOPIC || 'benchmark-topic',
