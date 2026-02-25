@@ -79,6 +79,11 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
+    this.configureSubjectNameStrategy(
+      conf.subjectNameStrategyType,
+      conf.subjectNameStrategyConfig ?? {},
+      this.getRecordName.bind(this)
+    )
   }
 
   /**
@@ -107,7 +112,7 @@ export class JsonSerializer extends Serializer implements JsonSerde {
       }
     }
     const [schemaId, info] = await this.getSchemaId(JSON_TYPE, topic, msg, schema)
-    const subject = this.subjectName(topic, info)
+    const subject = await this.subjectName(topic, info)
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
     if ((this.conf as JsonSerdeConfig).validate) {
       const validate = await this.toValidateFunction(info)
@@ -147,6 +152,17 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     )
   }
 
+  async getRecordName(info?: SchemaInfo): Promise<string> {
+    if (info == null) {
+      return ''
+    }
+    const schema = await this.toType(info)
+    if (typeof schema !== 'boolean') {
+      return schema.title ?? ''
+    }
+    return ''
+  }
+
   static messageToSchema(msg: any): DereferencedJSONSchema {
     return generateSchema(msg)
   }
@@ -181,6 +197,11 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
+    this.configureSubjectNameStrategy(
+      conf.subjectNameStrategyType,
+      conf.subjectNameStrategyConfig ?? {},
+      this.getRecordName.bind(this)
+    )
   }
 
   /**
@@ -200,7 +221,7 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     const schemaId = new SchemaId(JSON_TYPE)
     const [info, bytesRead] = await this.getWriterSchema(topic, payload, schemaId, headers)
     payload = payload.subarray(bytesRead)
-    const subject = this.subjectName(topic, info)
+    const subject = await this.subjectName(topic, info)
     payload = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.READ, null, info, payload, null)
     const readerMeta = await this.getReaderSchema(subject)
@@ -250,6 +271,17 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
         return deps
       },
     )
+  }
+
+  async getRecordName(info?: SchemaInfo): Promise<string> {
+    if (info == null) {
+      return ''
+    }
+    const schema = await this.toType(info)
+    if (typeof schema !== 'boolean') {
+      return schema.title ?? ''
+    }
+    return ''
   }
 }
 

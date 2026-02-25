@@ -59,6 +59,11 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
+    this.configureSubjectNameStrategy(
+      conf.subjectNameStrategyType,
+      conf.subjectNameStrategyConfig ?? {},
+      this.getRecordName.bind(this)
+    )
   }
 
   /**
@@ -90,7 +95,7 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     let avroType: avro.Type
     let deps: Map<string, string>
     [avroType, deps] = await this.toType(info)
-    const subject = this.subjectName(topic, info)
+    const subject = await this.subjectName(topic, info)
     msg = await this.executeRules(
       subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(info, deps))
     avroType.isValid(msg, {errorHook: (path, any, type) => {
@@ -114,6 +119,17 @@ export class AvroSerializer extends Serializer implements AvroSerde {
       await this.resolveReferences(client, info, deps)
       return deps
     })
+  }
+
+  async getRecordName(info?: SchemaInfo): Promise<string> {
+    if (info == null) {
+      return ''
+    }
+    const [type, ] = await this.toType(info)
+    if (type.typeName === 'record') {
+      return (type as RecordType).name ?? ''
+    }
+    return ''
   }
 
   static messageToSchema(msg: any): avro.Type {
@@ -172,6 +188,11 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     for (const rule of this.ruleRegistry.getExecutors()) {
       rule.configure(client.config(), new Map<string, string>(Object.entries(conf.ruleConfig ?? {})))
     }
+    this.configureSubjectNameStrategy(
+      conf.subjectNameStrategyType,
+      conf.subjectNameStrategyConfig ?? {},
+      this.getRecordName.bind(this)
+    )
   }
 
   /**
@@ -191,7 +212,7 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     const schemaId = new SchemaId(AVRO_TYPE)
     const [info, bytesRead] = await this.getWriterSchema(topic, payload, schemaId, headers)
     payload = payload.subarray(bytesRead)
-    const subject = this.subjectName(topic, info)
+    const subject = await this.subjectName(topic, info)
     payload = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.READ, null, info, payload, null)
     const readerMeta = await this.getReaderSchema(subject)
@@ -244,6 +265,17 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
       await this.resolveReferences(client, info, deps)
       return deps
     })
+  }
+
+  async getRecordName(info?: SchemaInfo): Promise<string> {
+    if (info == null) {
+      return ''
+    }
+    const [type, ] = await this.toType(info)
+    if (type.typeName === 'record') {
+      return (type as RecordType).name ?? ''
+    }
+    return ''
   }
 }
 
