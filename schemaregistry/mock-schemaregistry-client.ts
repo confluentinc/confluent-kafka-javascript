@@ -1,7 +1,12 @@
 
 import {
+  Association,
+  AssociationCreateOrUpdateRequest,
+  AssociationInfo,
+  AssociationResponse,
   Client,
   Compatibility,
+  LifecyclePolicy,
   minimize,
   SchemaInfo,
   SchemaMetadata,
@@ -43,6 +48,13 @@ class Counter {
 
 const noSubject = "";
 
+interface AssociationCacheEntry {
+  resourceName: string;
+  resourceNamespace: string;
+  resourceType: string;
+  associations: Association[];
+}
+
 class MockClient implements Client {
   private clientConfig?: ClientConfig;
   private infoToSchemaCache: Map<string, MetadataCacheEntry>;
@@ -50,6 +62,7 @@ class MockClient implements Client {
   private guidToSchemaCache: Map<string, InfoCacheEntry>;
   private schemaToVersionCache: Map<string, VersionCacheEntry>;
   private configCache: Map<string, ServerConfig>;
+  private associationCache: Map<string, AssociationCacheEntry>;  // keyed by resourceId
   private counter: Counter;
 
   constructor(config?: ClientConfig) {
@@ -59,6 +72,7 @@ class MockClient implements Client {
     this.guidToSchemaCache = new Map();
     this.schemaToVersionCache = new Map();
     this.configCache = new Map();
+    this.associationCache = new Map();
     this.counter = new Counter();
   }
 
@@ -138,6 +152,17 @@ class MockClient implements Client {
   }
 
   async getBySubjectAndId(subject: string, id: number, format?: string): Promise<SchemaInfo> {
+    if (subject == null || subject === '') {
+      // Search for any entry where the id matches
+      for (const [key, value] of this.idToSchemaCache.entries()) {
+        const parsedKey = JSON.parse(key);
+        if (parsedKey.id === id && !value.softDeleted) {
+          return value.info;
+        }
+      }
+      throw new RestError("Schema not found", 404, 40400);
+    }
+
     const cacheKey = stringify({ subject, id });
     const cacheEntry = this.idToSchemaCache.get(cacheKey);
 
@@ -476,6 +501,132 @@ class MockClient implements Client {
   async updateDefaultConfig(config: ServerConfig): Promise<ServerConfig> {
     this.configCache.set(noSubject, config);
     return config;
+  }
+
+  async getAssociationsByResourceName(
+    resourceName: string,
+    resourceNamespace: string,
+    resourceType: string | null,
+    associationTypes: string[],
+    lifecycle: LifecyclePolicy | null,
+    offset: number,
+    limit: number
+  ): Promise<Association[]> {
+    const results: Association[] = [];
+
+    for (const [_, entry] of this.associationCache.entries()) {
+      if (entry.resourceName === resourceName && entry.resourceNamespace === resourceNamespace) {
+        if (resourceType != null && entry.resourceType !== resourceType) {
+          continue;
+        }
+        for (const assoc of entry.associations) {
+          if (associationTypes.length === 0 || associationTypes.includes(assoc.associationType)) {
+            if (lifecycle == null || assoc.lifecycle === lifecycle) {
+              results.push(assoc);
+            }
+          }
+        }
+      }
+    }
+
+    // Apply pagination
+    const start = offset;
+    const end = limit >= 1 ? start + limit : results.length;
+    return results.slice(start, end);
+  }
+
+  async createAssociation(request: AssociationCreateOrUpdateRequest): Promise<AssociationResponse> {
+    const resourceId = request.resourceId || v4();
+    const resourceName = request.resourceName || '';
+    const resourceNamespace = request.resourceNamespace || '-';
+    const resourceType = request.resourceType || 'topic';
+
+    // Get or create association cache entry
+    let cacheEntry = this.associationCache.get(resourceId);
+    if (!cacheEntry) {
+      cacheEntry = {
+        resourceName,
+        resourceNamespace,
+        resourceType,
+        associations: []
+      };
+      this.associationCache.set(resourceId, cacheEntry);
+    }
+
+    const responseAssociations: AssociationInfo[] = [];
+
+    // Process each association in the request
+    for (const assocInfo of request.associations || []) {
+      const association: Association = {
+        subject: assocInfo.subject || '',
+        resourceName,
+        resourceNamespace,
+        resourceId,
+        resourceType,
+        associationType: assocInfo.associationType || 'value',
+        lifecycle: assocInfo.lifecycle,
+        frozen: assocInfo.frozen
+      };
+
+      // Check if association already exists (same subject and associationType)
+      const existingIndex = cacheEntry.associations.findIndex(
+        a => a.subject === association.subject && a.associationType === association.associationType
+      );
+
+      if (existingIndex >= 0) {
+        // Update existing
+        cacheEntry.associations[existingIndex] = association;
+      } else {
+        // Add new
+        cacheEntry.associations.push(association);
+      }
+
+      responseAssociations.push({
+        subject: association.subject,
+        associationType: association.associationType,
+        lifecycle: association.lifecycle,
+        frozen: association.frozen
+      });
+    }
+
+    return {
+      resourceName,
+      resourceNamespace,
+      resourceId,
+      resourceType,
+      associations: responseAssociations
+    };
+  }
+
+  async deleteAssociations(
+    resourceId: string,
+    resourceType: string | null,
+    associationTypes: string[] | null,
+    cascadeLifecycle: boolean
+  ): Promise<void> {
+    const cacheEntry = this.associationCache.get(resourceId);
+    if (!cacheEntry) {
+      return;
+    }
+
+    if (resourceType != null && cacheEntry.resourceType !== resourceType) {
+      return;
+    }
+
+    if (associationTypes == null || associationTypes.length === 0) {
+      // Delete all associations for this resourceId
+      this.associationCache.delete(resourceId);
+    } else {
+      // Filter out specified association types
+      cacheEntry.associations = cacheEntry.associations.filter(
+        a => !associationTypes.includes(a.associationType)
+      );
+
+      // If no associations left, remove the entry
+      if (cacheEntry.associations.length === 0) {
+        this.associationCache.delete(resourceId);
+      }
+    }
   }
 
   clearLatestCaches(): void {
