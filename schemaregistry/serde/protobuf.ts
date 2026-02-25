@@ -341,7 +341,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     }
     const fileDesc = await this.toFileDesc(this.client, info)
     if (fileDesc.messages.length > 0) {
-      return fileDesc.messages[0].typeName
+      return fileDesc.messages[0].typeName.replace(/^\./, '')
     }
     return ''
   }
@@ -483,7 +483,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     }
     const fileDesc = await this.toFileDesc(this.client, info)
     if (fileDesc.messages.length > 0) {
-      return fileDesc.messages[0].typeName
+      return fileDesc.messages[0].typeName.replace(/^\./, '')
     }
     return ''
   }
