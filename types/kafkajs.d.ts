@@ -187,9 +187,9 @@ export type PartitionMetadata = {
   leader: number
   leaderNode?: Node | null
   replicas: number[]
-  replicaNodes?: (Node | null)[]
+  replicaNodes?: Node[]
   isr: number[]
-  isrNodes?: (Node | null)[]
+  isrNodes?: Node[]
   offlineReplicas?: number[]
 }
 

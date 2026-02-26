@@ -395,7 +395,7 @@ export type MemberDescription = {
 
 export type Node = {
     id: number
-    host: string | null
+    host: string
     port: number
     rack?: string
 }
@@ -451,8 +451,8 @@ export type DeleteRecordsResult = {
 export type TopicPartitionInfo = {
     partition: number
     leader: Node | null
-    isr: (Node | null)[]
-    replicas: (Node | null)[]
+    isr: Node[]
+    replicas: Node[]
 }
 
 export type TopicDescription = {

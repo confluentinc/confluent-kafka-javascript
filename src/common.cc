@@ -265,7 +265,7 @@ v8::Local<v8::Object> ToV8Object(const rd_kafka_Node_t* node) {
   // Check if node is NULL - can happen during broker restarts/metadata updates
   if (!node) {
     Nan::Set(obj, Nan::New("id").ToLocalChecked(), Nan::New<v8::Number>(-1));
-    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::Null());
+    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::New<v8::String>("").ToLocalChecked());
     Nan::Set(obj, Nan::New("port").ToLocalChecked(), Nan::New<v8::Number>(-1));
     return obj;
   }
@@ -279,7 +279,7 @@ v8::Local<v8::Object> ToV8Object(const rd_kafka_Node_t* node) {
     Nan::Set(obj, Nan::New("host").ToLocalChecked(),
              Nan::New<v8::String>(host).ToLocalChecked());
   } else {
-    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::Null());
+    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::New<v8::String>("").ToLocalChecked());
   }
   
   Nan::Set(obj, Nan::New("port").ToLocalChecked(),
@@ -1528,12 +1528,7 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
           rd_kafka_TopicPartitionInfo_isr(partition, &isr_cnt);
       v8::Local<v8::Array> isrArray = Nan::New<v8::Array>();
       for (size_t k = 0; k < isr_cnt; k++) {
-        // Check for NULL nodes in ISR array - can happen during broker restarts
-        if (isr[k]) {
-          Nan::Set(isrArray, k, Conversion::Util::ToV8Object(isr[k]));
-        } else {
-          Nan::Set(isrArray, k, Nan::Null());
-        }
+        Nan::Set(isrArray, k, Conversion::Util::ToV8Object(isr[k]));
       }
       Nan::Set(partition_object, Nan::New("isr").ToLocalChecked(), isrArray);
 
@@ -1542,12 +1537,7 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
           rd_kafka_TopicPartitionInfo_replicas(partition, &replicas_cnt);
       v8::Local<v8::Array> replicasArray = Nan::New<v8::Array>();
       for (size_t k = 0; k < replicas_cnt; k++) {
-        // Check for NULL nodes in replicas array - can happen during broker restarts
-        if (replicas[k]) {
-          Nan::Set(replicasArray, k, Conversion::Util::ToV8Object(replicas[k]));
-        } else {
-          Nan::Set(replicasArray, k, Nan::Null());
-        }
+        Nan::Set(replicasArray, k, Conversion::Util::ToV8Object(replicas[k]));
       }
       Nan::Set(partition_object, Nan::New("replicas").ToLocalChecked(),
                replicasArray);
