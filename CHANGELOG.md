@@ -1,27 +1,18 @@
-# confluent-kafka-javascript 1.8.2
+# confluent-kafka-javascript 1.8.1
 
-v1.8.2 is a maintenance release. It is supported for all usage.
+v1.8.1 is a maintenance release. It is supported for all usage.
 
 ## Enhancements
 
 1. Minor enhancement to JSON Schema validation reporting (#434)
-2. MINOR upgrade axios to 1.13.5 (#447)
+2. Minor upgrade axios to 1.13.5 (#447)
 3. Allow id-pool header to be optional for union-of-pools (#452)
 
 ## Fixes
 
 1. Fix security vulnerabilities in dependencies (#437)
 2. Process Avro arrays sequentially to avoid race conditions (#445)
-3. Add NULL checks to prevent segfaults when Kafka metadata contains NULL (#428)
-
-
-# confluent-kafka-javascript 1.8.1
-
-v1.8.1 is a maintenance release. It is supported for all usage.
-
-## Fixes
-
-1. Add NULL checks to prevent segfaults when Kafka metadata contains NULL values during broker restarts. This fix adds comprehensive NULL safety checks for node pointers, partition leaders, ISR arrays, and replica arrays in the native C++ code, JavaScript wrapper, and TypeScript definitions.
+3. Add NULL checks to prevent segfaults when Kafka metadata contains NULL values during broker restarts. This fix adds comprehensive NULL safety checks for node pointers, partition leaders, ISR arrays, and replica arrays in the native C++ code, JavaScript wrapper, and TypeScript definitions.
 
 # confluent-kafka-javascript 1.8.0
 
