@@ -28,6 +28,8 @@ CHANGELOG_FILE = Path(__file__).parent.parent / "CHANGELOG.md"
 # Stable release tag pattern (e.g. v1.8.0 — no RC, dev, alpha, beta suffixes)
 STABLE_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
 # Skip purely housekeeping commits (CHANGELOG updates, version bumps, CI chores)
 SKIP_SUBJECT_RE = re.compile(
     r"^(update changelog|bump version|update version|chore(\([^)]*\))?:)",
@@ -137,6 +139,8 @@ def main():
     raw_ver = args.new_version if args.new_version else next_version(tag)
     # Strip v prefix — JS CHANGELOG uses bare version numbers (e.g. 1.8.3)
     version = raw_ver.lstrip("v")
+    if not SEMVER_RE.match(version):
+        sys.exit(f"Error: {raw_ver!r} is not a valid version; expected X.Y.Z")
     print(f"New version:       {version}")
 
     rtype = args.release_type or derive_release_type(tag, version)
