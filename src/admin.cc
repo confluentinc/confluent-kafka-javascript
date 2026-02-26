@@ -136,6 +136,7 @@ void AdminClient::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "disconnect", NodeDisconnect);
   Nan::SetPrototypeMethod(tpl, "setSaslCredentials", NodeSetSaslCredentials);
   Nan::SetPrototypeMethod(tpl, "getMetadata", NodeGetMetadata);
+  Nan::SetPrototypeMethod(tpl, "getClusterId", NodeGetClusterId);
   Nan::SetPrototypeMethod(tpl, "setOAuthBearerToken", NodeSetOAuthBearerToken);
   Nan::SetPrototypeMethod(tpl, "setOAuthBearerTokenFailure",
                           NodeSetOAuthBearerTokenFailure);
