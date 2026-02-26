@@ -265,23 +265,25 @@ v8::Local<v8::Object> ToV8Object(const rd_kafka_Node_t* node) {
   // Check if node is NULL - can happen during broker restarts/metadata updates
   if (!node) {
     Nan::Set(obj, Nan::New("id").ToLocalChecked(), Nan::New<v8::Number>(-1));
-    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::New<v8::String>("").ToLocalChecked());
+    Nan::Set(obj, Nan::New("host").ToLocalChecked(),
+             Nan::New<v8::String>("").ToLocalChecked());
     Nan::Set(obj, Nan::New("port").ToLocalChecked(), Nan::New<v8::Number>(-1));
     return obj;
   }
 
   Nan::Set(obj, Nan::New("id").ToLocalChecked(),
            Nan::New<v8::Number>(rd_kafka_Node_id(node)));
-  
+
   // Check host for NULL before using - prevents segfault when host is NULL
   const char* host = rd_kafka_Node_host(node);
   if (host) {
     Nan::Set(obj, Nan::New("host").ToLocalChecked(),
              Nan::New<v8::String>(host).ToLocalChecked());
   } else {
-    Nan::Set(obj, Nan::New("host").ToLocalChecked(), Nan::New<v8::String>("").ToLocalChecked());
+    Nan::Set(obj, Nan::New("host").ToLocalChecked(),
+             Nan::New<v8::String>("").ToLocalChecked());
   }
-  
+
   Nan::Set(obj, Nan::New("port").ToLocalChecked(),
            Nan::New<v8::Number>(rd_kafka_Node_port(node)));
 
@@ -1520,7 +1522,8 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
         Nan::Set(partition_object, Nan::New("leader").ToLocalChecked(),
                  Conversion::Util::ToV8Object(leader));
       } else {
-        Nan::Set(partition_object, Nan::New("leader").ToLocalChecked(), Nan::Null());
+        Nan::Set(partition_object, Nan::New("leader").ToLocalChecked(),
+                 Nan::Null());
       }
 
       size_t isr_cnt;
