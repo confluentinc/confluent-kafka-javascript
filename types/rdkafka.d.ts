@@ -450,7 +450,7 @@ export type DeleteRecordsResult = {
 
 export type TopicPartitionInfo = {
     partition: number
-    leader: Node
+    leader: Node | null
     isr: Node[]
     replicas: Node[]
 }
