@@ -771,7 +771,7 @@ export function strategyFromType(
  * Configuration key for the Kafka cluster ID.
  * If set, this value will be passed as the resource namespace to schema registry.
  */
-export const KAFKA_CLUSTER_ID = 'kafka.cluster.id'
+export const KAFKA_CLUSTER_ID = 'subject.name.strategy.kafka.cluster.id'
 
 /**
  * Wildcard value for namespace when kafka cluster ID is not configured.
@@ -783,7 +783,7 @@ export const NAMESPACE_WILDCARD = '-'
  * Valid values: TOPIC, RECORD, TOPIC_RECORD, NONE.
  * Defaults to TOPIC if not specified.
  */
-export const FALLBACK_SUBJECT_NAME_STRATEGY_TYPE = 'fallback.subject.name.strategy.type'
+export const FALLBACK_TYPE = 'subject.name.strategy.fallback.type'
 
 /**
  * Default cache capacity for the subject name cache.
@@ -793,11 +793,11 @@ const DEFAULT_CACHE_CAPACITY = 1000
 /**
  * AssociatedNameStrategy returns a strategy that retrieves the associated subject name from schema registry.
  * The topic is passed as the resource name to schema registry. If there is a configuration property
- * named "kafka.cluster.id", then its value will be passed as the resource namespace; otherwise the
- * value "-" will be passed as the resource namespace.
+ * named "subject.name.strategy.kafka.cluster.id", then its value will be passed as the resource namespace;
+ * otherwise the value "-" will be passed as the resource namespace.
  * If more than one subject is returned from the query, an exception will be thrown.
  * If no subjects are returned from the query, then the behavior will fall back to TopicNameStrategy,
- * unless the configuration property "fallback.subject.name.strategy.type" is set to "RECORD",
+ * unless the configuration property "subject.name.strategy.fallback.type" is set to "RECORD",
  * "TOPIC_RECORD", or "NONE".
  *
  * @param client - the schema registry client
@@ -811,13 +811,13 @@ export const AssociatedNameStrategy = (
 ): SubjectNameStrategyFunc => {
   // Parse configuration
   const kafkaClusterId = config[KAFKA_CLUSTER_ID] ?? null
-  const fallbackTypeStr = config[FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]?.toUpperCase() ?? 'TOPIC'
+  const fallbackTypeStr = config[FALLBACK_TYPE]?.toUpperCase() ?? 'TOPIC'
 
   // Parse fallback type string to enum
   const fallbackTypeEnum = SubjectNameStrategyType[fallbackTypeStr as keyof typeof SubjectNameStrategyType]
   if (fallbackTypeEnum == null) {
     throw new SerializationError(
-      `Invalid value for ${FALLBACK_SUBJECT_NAME_STRATEGY_TYPE}: ${fallbackTypeStr}`
+      `Invalid value for ${FALLBACK_TYPE}: ${fallbackTypeStr}`
     )
   }
   if (fallbackTypeEnum === SubjectNameStrategyType.ASSOCIATED) {
