@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, it} from '@jest/globals';
 import {ClientConfig} from "../../rest-service";
 import {
-  FALLBACK_SUBJECT_NAME_STRATEGY_TYPE,
+  FALLBACK_TYPE,
   HeaderSchemaIdSerializer,
   KAFKA_CLUSTER_ID,
   SerdeType,
@@ -1445,7 +1445,7 @@ describe('JsonSerdeWithAssociatedNameStrategy', () => {
       autoRegisterSchemas: false,
       useLatestVersion: true,
       subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
-      subjectNameStrategyConfig: { [FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]: 'NONE' }
+      subjectNameStrategyConfig: { [FALLBACK_TYPE]: 'NONE' }
     }
     const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
 

@@ -5,7 +5,7 @@ import {
   ProtobufSerializer, ProtobufSerializerConfig,
 } from "../../serde/protobuf";
 import {
-  FALLBACK_SUBJECT_NAME_STRATEGY_TYPE,
+  FALLBACK_TYPE,
   HeaderSchemaIdSerializer,
   KAFKA_CLUSTER_ID,
   SerdeType,
@@ -402,7 +402,7 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
     const serConfig: ProtobufSerializerConfig = {
       autoRegisterSchemas: true,
       subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
-      subjectNameStrategyConfig: { [FALLBACK_SUBJECT_NAME_STRATEGY_TYPE]: 'NONE' }
+      subjectNameStrategyConfig: { [FALLBACK_TYPE]: 'NONE' }
     }
     const ser = new ProtobufSerializer(client, SerdeType.VALUE, serConfig)
     ser.registry.add(AuthorSchema)
