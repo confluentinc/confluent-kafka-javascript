@@ -6,8 +6,17 @@ import {
   AvroSerializer,
   AvroSerializerConfig
 } from "../../serde/avro";
-import {HeaderSchemaIdSerializer, SerdeType, SerializationError, Serializer} from "../../serde/serde";
 import {
+  FALLBACK_TYPE,
+  HeaderSchemaIdSerializer,
+  KAFKA_CLUSTER_ID,
+  SerdeType,
+  SerializationError,
+  Serializer,
+  SubjectNameStrategyType
+} from "../../serde/serde";
+import {
+  AssociationCreateOrUpdateRequest,
   Client,
   Rule,
   RuleMode,
@@ -2421,4 +2430,333 @@ describe('AvroSerializer', () => {
     newobj = await deser3.deserialize(topic, bytes)
     expect(stringify(newobj)).toEqual(stringify(newerWidget));
   }
+})
+
+describe('RecordNameStrategy', () => {
+  it('serialization with RecordNameStrategy', async () => {
+    const conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+    expect(obj2.stringField).toEqual(obj.stringField)
+    expect(obj2.boolField).toEqual(obj.boolField)
+    expect(obj2.bytesField).toEqual(obj.bytesField)
+  })
+})
+
+describe('TopicRecordNameStrategy', () => {
+  it('serialization with TopicRecordNameStrategy', async () => {
+    const conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.TOPIC_RECORD
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.TOPIC_RECORD
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+    expect(obj2.stringField).toEqual(obj.stringField)
+    expect(obj2.boolField).toEqual(obj.boolField)
+    expect(obj2.bytesField).toEqual(obj.bytesField)
+  })
+})
+
+describe('AvroSerdeWithAssociatedNameStrategy', () => {
+  it('serializes and deserializes with associated name strategy', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id = await client.register('my-custom-subject', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+    expect(obj2.stringField).toEqual(obj.stringField)
+    expect(obj2.boolField).toEqual(obj.boolField)
+    expect(obj2.bytesField).toEqual(obj.bytesField)
+  })
+
+  it('falls back to topic name strategy when no association found', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id = await client.register('topic1-value', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    // No association created - should fall back to TopicNameStrategy
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+    expect(obj2.stringField).toEqual(obj.stringField)
+    expect(obj2.boolField).toEqual(obj.boolField)
+    expect(obj2.bytesField).toEqual(obj.bytesField)
+  })
+
+  it('throws error when no association found and fallback is NONE', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id = await client.register('topic1-value', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    // No association created, and fallback is NONE - should error
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [FALLBACK_TYPE]: 'NONE' }
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    await expect(ser.serialize(topic, obj)).rejects.toThrow()
+  })
+
+  it('throws error when multiple associations found', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info1: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id1 = await client.register('subject1', info1, false)
+    expect(id1).toBeGreaterThan(0)
+
+    const info2: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id2 = await client.register('subject2', info2, false)
+    expect(id2).toBeGreaterThan(0)
+
+    // Create first association
+    const request1: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'subject1', associationType: 'value' }]
+    }
+    await client.createAssociation(request1)
+
+    // Create second association for same topic and association type
+    const request2: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-456:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'subject2', associationType: 'value' }]
+    }
+    await client.createAssociation(request2)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    await expect(ser.serialize(topic, obj)).rejects.toThrow()
+  })
+
+  it('uses kafka cluster id as namespace when configured', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id = await client.register('my-custom-subject', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: 'lkc-my-cluster',
+      resourceId: 'lkc-my-cluster:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [KAFKA_CLUSTER_ID]: 'lkc-my-cluster' }
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [KAFKA_CLUSTER_ID]: 'lkc-my-cluster' }
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+    expect(obj2.stringField).toEqual(obj.stringField)
+    expect(obj2.boolField).toEqual(obj.boolField)
+    expect(obj2.bytesField).toEqual(obj.bytesField)
+  })
+
+  it('serializes and deserializes correctly across multiple calls with caching', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id = await client.register('my-cached-subject', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-cached-subject', associationType: 'value' }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: AvroSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+
+    const deserConfig: AvroDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    // Serialize multiple times - should use cache after first call
+    for (let i = 0; i < 5; i++) {
+      const bytes = await ser.serialize(topic, obj)
+      const obj2 = await deser.deserialize(topic, bytes)
+      expect(obj2.intField).toEqual(obj.intField)
+      expect(obj2.doubleField).toBeCloseTo(obj.doubleField, 0.001)
+      expect(obj2.stringField).toEqual(obj.stringField)
+      expect(obj2.boolField).toEqual(obj.boolField)
+      expect(obj2.bytesField).toEqual(obj.bytesField)
+    }
+  })
 })

@@ -1,12 +1,16 @@
 import {afterEach, describe, expect, it} from '@jest/globals';
 import {ClientConfig} from "../../rest-service";
 import {
+  FALLBACK_TYPE,
   HeaderSchemaIdSerializer,
+  KAFKA_CLUSTER_ID,
   SerdeType,
   SerializationError,
-  Serializer
+  Serializer,
+  SubjectNameStrategyType
 } from "../../serde/serde";
 import {
+  AssociationCreateOrUpdateRequest,
   Client,
   Rule,
   RuleMode,
@@ -1354,4 +1358,241 @@ describe('JsonSerializer', () => {
     newobj = await deser3.deserialize(topic, bytes)
     expect(stringify(newobj)).toEqual(stringify(newerWidget));
   }
+})
+
+describe('JsonSerdeWithAssociatedNameStrategy', () => {
+  it('serializes and deserializes with associated name strategy', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id = await client.register('my-custom-subject', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: JsonDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+
+  it('falls back to topic name strategy when no association found', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id = await client.register('topic1-value', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    // No association created - should fall back to TopicNameStrategy
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, {})
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+
+  it('throws error when no association found and fallback is NONE', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id = await client.register('topic1-value', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    // No association created, and fallback is NONE - should error
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [FALLBACK_TYPE]: 'NONE' }
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    await expect(ser.serialize(topic, obj)).rejects.toThrow()
+  })
+
+  it('throws error when multiple associations found', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info1: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id1 = await client.register('subject1', info1, false)
+    expect(id1).toBeGreaterThan(0)
+
+    const info2: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id2 = await client.register('subject2', info2, false)
+    expect(id2).toBeGreaterThan(0)
+
+    // Create first association
+    const request1: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'subject1', associationType: 'value' }]
+    }
+    await client.createAssociation(request1)
+
+    // Create second association for same topic and association type
+    const request2: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-456:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'subject2', associationType: 'value' }]
+    }
+    await client.createAssociation(request2)
+
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    await expect(ser.serialize(topic, obj)).rejects.toThrow()
+  })
+
+  it('uses kafka cluster id as namespace when configured', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id = await client.register('my-custom-subject', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: 'lkc-my-cluster',
+      resourceId: 'lkc-my-cluster:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [KAFKA_CLUSTER_ID]: 'lkc-my-cluster' }
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: JsonDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [KAFKA_CLUSTER_ID]: 'lkc-my-cluster' }
+    }
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+
+  it('serializes and deserializes correctly across multiple calls with caching', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id = await client.register('my-cached-subject', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-cached-subject', associationType: 'value' }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+
+    const deserConfig: JsonDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    // Serialize multiple times - should use cache after first call
+    for (let i = 0; i < 5; i++) {
+      const bytes = await ser.serialize(topic, obj)
+      const obj2 = await deser.deserialize(topic, bytes)
+      expect(obj2).toEqual(obj)
+    }
+  })
 })

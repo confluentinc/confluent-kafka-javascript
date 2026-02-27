@@ -9,8 +9,11 @@ import {
 } from "../schemaregistry-client";
 import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
+import {RestError} from "../rest-error";
 import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 import {IHeaders} from "../../types/kafkajs";
+import {LRUCache} from "lru-cache";
+import stringify from "json-stringify-deterministic";
 
 export enum SerdeType {
   KEY = 'KEY',
@@ -162,6 +165,14 @@ export class SerializationError extends Error {
   }
 }
 
+export enum SubjectNameStrategyType {
+  NONE = 'NONE',
+  TOPIC = 'TOPIC',
+  RECORD = 'RECORD',
+  TOPIC_RECORD = 'TOPIC_RECORD',
+  ASSOCIATED = 'ASSOCIATED',
+}
+
 export interface SerdeConfig {
   // useLatestVersion specifies whether to use the latest schema version
   useLatestVersion?: boolean
@@ -173,6 +184,10 @@ export interface SerdeConfig {
   cacheLatestTtlSecs?: number
   // ruleConfig specifies configuration options to the rules
   ruleConfig?: { [key: string]: string };
+  // subjectNameStrategyType specifies the type of subject name strategy
+  subjectNameStrategyType?: SubjectNameStrategyType
+  // subjectNameStrategyConfig specifies configuration options for the subject name strategy
+  subjectNameStrategyConfig?: { [key: string]: string };
   // subjectNameStrategy specifies a function to generate a subject name
   subjectNameStrategy?: SubjectNameStrategyFunc
 }
@@ -202,9 +217,33 @@ export abstract class Serde {
     return
   }
 
-  subjectName(topic: string, info?: SchemaInfo): string {
-    const strategy = this.conf.subjectNameStrategy ?? TopicNameStrategy
-    return strategy(topic, this.serdeType, info)
+  async subjectName(topic: string, info?: SchemaInfo): Promise<string> {
+    const strategy = this.conf.subjectNameStrategy!
+    return await strategy(topic, this.serdeType, info)
+  }
+
+  /**
+   * Configures the subject name strategy based on the strategy type.
+   * Defaults to ASSOCIATED (with TOPIC fallback) when no type is specified.
+   * @param strategyType - the type of subject name strategy
+   * @param config - configuration options for the strategy
+   * @param getRecordName - function to extract record name from schema
+   */
+  configureSubjectNameStrategy(
+    strategyType: SubjectNameStrategyType | null | undefined,
+    config: { [key: string]: string },
+    getRecordName: RecordNameFunc
+  ): void {
+    const effectiveType = strategyType ?? SubjectNameStrategyType.ASSOCIATED
+    // ASSOCIATED requires special handling with client and config
+    if (effectiveType === SubjectNameStrategyType.ASSOCIATED) {
+      this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config, getRecordName)
+      return
+    }
+    const strategy = strategyFromType(effectiveType, getRecordName)
+    if (strategy != null) {
+      this.conf.subjectNameStrategy = strategy
+    }
   }
 
   async resolveReferences(client: Client, schema: SchemaInfo, deps: Map<string, string>, format?: string): Promise<void> {
@@ -426,7 +465,7 @@ export abstract class Serializer extends Serde {
     let normalizeSchema = this.config().normalizeSchemas
 
     let metadata: SchemaMetadata
-    let subject = this.subjectName(topic, info)
+    let subject = await this.subjectName(topic, info)
     if (autoRegister) {
       metadata = await this.client.registerFullResponse(subject, info!, Boolean(normalizeSchema))
     } else if (useSchemaId != null && useSchemaId >= 0) {
@@ -498,7 +537,7 @@ export abstract class Deserializer extends Serde {
     const bytesRead = this.deserializeSchemaId(topic, payload, schemaId, headers)
     let info: SchemaInfo
     if (schemaId.id != null) {
-      let subject = this.subjectName(topic)
+      let subject = await this.subjectName(topic)
       info = await this.client.getBySubjectAndId(subject, schemaId.id!, format)
     } else if (schemaId.guid != null) {
       info = await this.client.getByGuid(schemaId.guid!, format)
@@ -660,7 +699,202 @@ export type SubjectNameStrategyFunc = (
   topic: string,
   serdeType: SerdeType,
   schema?: SchemaInfo,
-) => string
+) => string | Promise<string>
+
+/**
+ * RecordNameFunc extracts the record name from a schema
+ */
+export type RecordNameFunc = (
+  schema?: SchemaInfo
+) => Promise<string>
+
+/**
+ * RecordNameStrategy creates a subject name from the record name.
+ * @param getRecordName - function to extract record name from schema
+ */
+export const RecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
+  return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    if (schema == null) {
+      return ''
+    }
+    return await getRecordName(schema)
+  }
+}
+
+/**
+ * TopicRecordNameStrategy creates a subject name from the topic and record name.
+ * @param getRecordName - function to extract record name from schema
+ */
+export const TopicRecordNameStrategy = (getRecordName: RecordNameFunc): SubjectNameStrategyFunc => {
+  return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    if (schema == null) {
+      return ''
+    }
+    const recordName = await getRecordName(schema)
+    return topic + '-' + recordName
+  }
+}
+
+/**
+ * Converts a SubjectNameStrategyType to a SubjectNameStrategyFunc.
+ * This helper centralizes strategy resolution logic.
+ *
+ * @param type - the strategy type
+ * @param getRecordName - optional function to extract record name from schema (required for RECORD/TOPIC_RECORD)
+ * @returns the corresponding strategy function, or null for NONE
+ */
+export function strategyFromType(
+  type: SubjectNameStrategyType,
+  getRecordName?: RecordNameFunc
+): SubjectNameStrategyFunc | null {
+  switch (type) {
+    case SubjectNameStrategyType.NONE:
+      return null
+    case SubjectNameStrategyType.TOPIC:
+      return TopicNameStrategy
+    case SubjectNameStrategyType.RECORD:
+      if (getRecordName == null) {
+        throw new SerializationError('RecordNameFunc is required for RECORD strategy')
+      }
+      return RecordNameStrategy(getRecordName)
+    case SubjectNameStrategyType.TOPIC_RECORD:
+      if (getRecordName == null) {
+        throw new SerializationError('RecordNameFunc is required for TOPIC_RECORD strategy')
+      }
+      return TopicRecordNameStrategy(getRecordName)
+    default:
+      return TopicNameStrategy
+  }
+}
+
+/**
+ * Configuration key for the Kafka cluster ID.
+ * If set, this value will be passed as the resource namespace to schema registry.
+ */
+export const KAFKA_CLUSTER_ID = 'subject.name.strategy.kafka.cluster.id'
+
+/**
+ * Wildcard value for namespace when kafka cluster ID is not configured.
+ */
+export const NAMESPACE_WILDCARD = '-'
+
+/**
+ * Configuration key for the fallback subject name strategy type.
+ * Valid values: TOPIC, RECORD, TOPIC_RECORD, NONE.
+ * Defaults to TOPIC if not specified.
+ */
+export const FALLBACK_TYPE = 'subject.name.strategy.fallback.type'
+
+/**
+ * Default cache capacity for the subject name cache.
+ */
+const DEFAULT_CACHE_CAPACITY = 1000
+
+/**
+ * AssociatedNameStrategy returns a strategy that retrieves the associated subject name from schema registry.
+ * The topic is passed as the resource name to schema registry. If there is a configuration property
+ * named "subject.name.strategy.kafka.cluster.id", then its value will be passed as the resource namespace;
+ * otherwise the value "-" will be passed as the resource namespace.
+ * If more than one subject is returned from the query, an exception will be thrown.
+ * If no subjects are returned from the query, then the behavior will fall back to TopicNameStrategy,
+ * unless the configuration property "subject.name.strategy.fallback.type" is set to "RECORD",
+ * "TOPIC_RECORD", or "NONE".
+ *
+ * @param client - the schema registry client
+ * @param config - configuration options
+ * @param getRecordName - optional function to extract record name from schema (required for RECORD/TOPIC_RECORD fallback)
+ */
+export const AssociatedNameStrategy = (
+  client: Client,
+  config: { [key: string]: string },
+  getRecordName?: RecordNameFunc
+): SubjectNameStrategyFunc => {
+  // Parse configuration
+  const kafkaClusterId = config[KAFKA_CLUSTER_ID] ?? null
+  const fallbackTypeStr = config[FALLBACK_TYPE]?.toUpperCase() ?? 'TOPIC'
+
+  // Parse fallback type string to enum
+  const fallbackTypeEnum = SubjectNameStrategyType[fallbackTypeStr as keyof typeof SubjectNameStrategyType]
+  if (fallbackTypeEnum == null) {
+    throw new SerializationError(
+      `Invalid value for ${FALLBACK_TYPE}: ${fallbackTypeStr}`
+    )
+  }
+  if (fallbackTypeEnum === SubjectNameStrategyType.ASSOCIATED) {
+    throw new SerializationError(
+      `ASSOCIATED cannot be used as fallback strategy`
+    )
+  }
+
+  // Determine fallback strategy using helper
+  const fallbackStrategy = strategyFromType(fallbackTypeEnum, getRecordName)
+
+  const subjectNameCache = new LRUCache<string, string>({
+    max: DEFAULT_CACHE_CAPACITY
+  })
+
+  const makeCacheKey = (topic: string, isKey: boolean, schema?: SchemaInfo): string => {
+    return stringify({ topic, isKey, schema: schema?.schema })
+  }
+
+  // Helper function to load subject name from registry
+  const loadSubjectName = async (
+    topic: string,
+    serdeType: SerdeType,
+    schema?: SchemaInfo
+  ): Promise<string> => {
+    const isKey = serdeType === SerdeType.KEY
+    const resourceNamespace = kafkaClusterId ?? NAMESPACE_WILDCARD
+    const associationType = isKey ? 'key' : 'value'
+
+    let associations: Awaited<ReturnType<typeof client.getAssociationsByResourceName>>
+    try {
+      associations = await client.getAssociationsByResourceName(
+        topic,
+        resourceNamespace,
+        'topic',
+        [associationType],
+        null,
+        0,
+        -1
+      )
+    } catch (err) {
+      if (err instanceof RestError && err.status === 404) {
+        associations = []
+      } else {
+        throw err
+      }
+    }
+
+    if (associations.length > 1) {
+      throw new SerializationError(`Multiple associated subjects found for topic ${topic}`)
+    } else if (associations.length === 1) {
+      return associations[0].subject
+    } else if (fallbackStrategy != null) {
+      return await fallbackStrategy(topic, serdeType, schema)
+    } else {
+      throw new SerializationError(`No associated subject found for topic ${topic}`)
+    }
+  }
+
+  return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+    if (topic == null) {
+      throw new SerializationError('Topic cannot be null')
+    }
+
+    const isKey = serdeType === SerdeType.KEY
+    const cacheKey = makeCacheKey(topic, isKey, schema)
+
+    const cached = subjectNameCache.get(cacheKey)
+    if (cached != null) {
+      return cached
+    }
+
+    const subjectName = await loadSubjectName(topic, serdeType, schema)
+    subjectNameCache.set(cacheKey, subjectName)
+    return subjectName
+  }
+}
 
 /**
  * TopicNameStrategy creates a subject name by appending -[key|value] to the topic name.
