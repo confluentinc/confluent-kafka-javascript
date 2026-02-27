@@ -224,7 +224,8 @@ export abstract class Serde {
 
   /**
    * Configures the subject name strategy based on the strategy type.
-   * @param strategyType - the type of subject name strategy (if null/undefined, does nothing)
+   * Defaults to ASSOCIATED (with TOPIC fallback) when no type is specified.
+   * @param strategyType - the type of subject name strategy
    * @param config - configuration options for the strategy
    * @param getRecordName - function to extract record name from schema
    */
@@ -233,15 +234,13 @@ export abstract class Serde {
     config: { [key: string]: string },
     getRecordName: RecordNameFunc
   ): void {
-    if (strategyType == null) {
-      return
-    }
+    const effectiveType = strategyType ?? SubjectNameStrategyType.ASSOCIATED
     // ASSOCIATED requires special handling with client and config
-    if (strategyType === SubjectNameStrategyType.ASSOCIATED) {
+    if (effectiveType === SubjectNameStrategyType.ASSOCIATED) {
       this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config, getRecordName)
       return
     }
-    const strategy = strategyFromType(strategyType, getRecordName)
+    const strategy = strategyFromType(effectiveType, getRecordName)
     if (strategy != null) {
       this.conf.subjectNameStrategy = strategy
     }
