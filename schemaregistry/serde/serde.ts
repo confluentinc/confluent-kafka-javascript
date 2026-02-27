@@ -218,7 +218,7 @@ export abstract class Serde {
   }
 
   async subjectName(topic: string, info?: SchemaInfo): Promise<string> {
-    const strategy = this.conf.subjectNameStrategy ?? TopicNameStrategy
+    const strategy = this.conf.subjectNameStrategy!
     return await strategy(topic, this.serdeType, info)
   }
 
