@@ -295,6 +295,62 @@ describe('Consumer/Producer', function() {
     });
   });
 
+  describe('Timeout Shared By Batch - Behavior', function() {
+    it('should debounce batch return when bool is false: consumeNum', function(done) {
+      crypto.randomBytes(4096, function(_ex, buffer) {
+        consumer.setDefaultIsTimeoutSharedByBatch(false);
+        consumer.setDefaultConsumeTimeout(5000);
+
+        producer.setPollInterval(10);
+        producer.once('delivery-report', function(err, _report) {
+          t.ifError(err);
+        });
+
+        consumer.subscribe([topic]);
+
+        let messageCount = 12;
+        for (let i = 0; i < messageCount; i++) {
+          setTimeout(() => producer.produce(topic, null, buffer, null), 500 * i); // messages come in staggered under timeout
+        }
+
+        const start = Date.now();
+        consumer.consume(1000, function(err, messages) {
+          t.ifError(err);
+          t.equal(messages.length, messageCount, 'Consume should wait for all messages because of debounce');
+          t(Date.now() - start > 6000, 'Time passed should exceed timeout') // wiggle room for time shenanigans
+          done();
+        });
+      });
+    });
+
+    it('should return after timeout when bool is true: consumeNum', function(done) {
+      crypto.randomBytes(4096, function(_ex, buffer) {
+        consumer.setDefaultIsTimeoutSharedByBatch(true);
+        consumer.setDefaultConsumeTimeout(5000);
+
+        producer.setPollInterval(10);
+        producer.once('delivery-report', function(err, _report) {
+          t.ifError(err);
+        });
+
+        consumer.subscribe([topic]);
+
+        let messageCount = 12;
+        for (let i = 0; i < messageCount; i++) {
+          setTimeout(() => producer.produce(topic, null, buffer, null), 500 * i); // messages come in staggered under timeout
+        }
+
+        const start = Date.now();
+        consumer.consume(1000, function(err, messages) {
+          t.ifError(err);
+          t.notEqual(messages.length, messageCount, 'Consume should fail to get all messages because of timeout');
+          t(Date.now() - start < 6000, 'Time passed should adhere to timeout') // wiggle room for time shenanigans
+          done();
+        });
+      });
+    });
+  });
+
   it('should be able to produce and consume messages: consumeLoop', function(done) {
     var key = 'key';
 
