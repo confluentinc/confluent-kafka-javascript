@@ -16,7 +16,11 @@ import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
 import {EncryptionExecutor, FieldEncryptionExecutor} from "../../rules/encryption/encrypt-executor";
 import {AuthorSchema, file_test_schemaregistry_serde_example, PizzaSchema} from "./test/example_pb";
 import {create, toBinary} from "@bufbuild/protobuf";
-import {FileDescriptorProtoSchema} from "@bufbuild/protobuf/wkt";
+import {
+  FieldDescriptorProto_Label,
+  FieldDescriptorProto_Type,
+  FileDescriptorProtoSchema
+} from "@bufbuild/protobuf/wkt";
 import {
   NestedMessage_InnerMessageSchema
 } from "./test/nested_pb";
@@ -105,6 +109,54 @@ describe('ProtobufSerializer', () => {
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
+  })
+  it('deserialize with relative type names in FileDescriptorProto', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    // Build a FileDescriptorProto with relative type names,
+    // simulating what the schema registry returns for format=serialized
+    const fileDescProto = create(FileDescriptorProtoSchema, {
+      name: 'top.proto',
+      package: 'test',
+      syntax: 'proto3',
+      messageType: [{
+        name: 'MyMessage',
+        field: [{
+          name: 'my_field',
+          number: 1,
+          type: FieldDescriptorProto_Type.ENUM,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'MyEnum',  // relative — this is the bug trigger
+          proto3Optional: true,
+        }],
+        oneofDecl: [{ name: '_my_field' }],
+      }],
+      enumType: [{
+        name: 'MyEnum',
+        value: [
+          { name: 'MY_ENUM_UNSPECIFIED', number: 0 },
+          { name: 'MY_ENUM_FOO', number: 1 },
+        ]
+      }]
+    })
+
+    const schema = Buffer.from(toBinary(FileDescriptorProtoSchema, fileDescProto)).toString('base64')
+    const info: SchemaInfo = { schemaType: 'PROTOBUF', schema }
+    const schemaId = await client.register(subject, info, false)
+
+    // Construct wire-format payload: magic(1) + schemaId(4) + msgIndex(1) + protobuf bytes
+    // MyMessage { my_field = MY_ENUM_FOO(1) } → field 1 varint: [0x08, 0x01]
+    const msgBytes = Buffer.from([0x08, 0x01])
+    const buf = Buffer.alloc(6 + msgBytes.length)
+    buf[0] = 0x00                       // magic byte
+    buf.writeInt32BE(schemaId, 1)       // schema ID
+    buf[5] = 0x00                       // message index (first message)
+    msgBytes.copy(buf, 6)
+
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    const result = await deser.deserialize(topic, buf)
+    expect(result.myField).toEqual(1)  // MY_ENUM_FOO = 1
   })
   it('serialize nested messsage', async () => {
     let conf: ClientConfig = {

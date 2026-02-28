@@ -35,6 +35,8 @@ import {
   file_google_protobuf_timestamp,
   file_google_protobuf_type,
   file_google_protobuf_wrappers,
+  DescriptorProto,
+  FieldDescriptorProto,
   FileDescriptorProto,
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
@@ -458,6 +460,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
 }
 
 function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
+  fullyQualifyTypeNames(fileDesc)
   const resolve = (depName: string) => {
     if (isBuiltin(depName)) {
       const dep = builtinDeps.get(depName)
@@ -472,10 +475,85 @@ function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string
       }
       const fileDesc = fromBinary(FileDescriptorProtoSchema, Buffer.from(dep, 'base64'))
       fileDesc.name = depName
+      fullyQualifyTypeNames(fileDesc)
       return fileDesc
     }
   }
   return createFileRegistry(fileDesc, resolve)
+}
+
+/**
+ * Fully qualifies relative type_name references in a FileDescriptorProto.
+ * The schema registry may return FileDescriptorProto with relative type names
+ * (e.g., "MyEnum" instead of ".test.MyEnum"), which createFileRegistry cannot resolve.
+ */
+function fullyQualifyTypeNames(fileDesc: FileDescriptorProto): void {
+  const prefix = fileDesc.package ? `.${fileDesc.package}` : ''
+
+  const allTypes = new Set<string>()
+  for (const enumProto of fileDesc.enumType) {
+    allTypes.add(`${prefix}.${enumProto.name}`)
+  }
+  for (const msgProto of fileDesc.messageType) {
+    collectTypes(msgProto, prefix, allTypes)
+  }
+
+  for (const msgProto of fileDesc.messageType) {
+    resolveFieldTypeNames(msgProto, prefix, allTypes)
+  }
+  for (const extProto of fileDesc.extension) {
+    resolveTypeName(extProto, prefix, allTypes)
+  }
+}
+
+function collectTypes(
+  msg: DescriptorProto, parentScope: string, allTypes: Set<string>
+): void {
+  const scope = `${parentScope}.${msg.name}`
+  allTypes.add(scope)
+  for (const enumProto of msg.enumType) {
+    allTypes.add(`${scope}.${enumProto.name}`)
+  }
+  for (const nestedMsg of msg.nestedType) {
+    collectTypes(nestedMsg, scope, allTypes)
+  }
+}
+
+function resolveFieldTypeNames(
+  msg: DescriptorProto, parentScope: string, allTypes: Set<string>
+): void {
+  const scope = `${parentScope}.${msg.name}`
+  for (const field of msg.field) {
+    resolveTypeName(field, scope, allTypes)
+  }
+  for (const ext of msg.extension) {
+    resolveTypeName(ext, scope, allTypes)
+  }
+  for (const nestedMsg of msg.nestedType) {
+    resolveFieldTypeNames(nestedMsg, scope, allTypes)
+  }
+}
+
+function resolveTypeName(
+  field: FieldDescriptorProto, scope: string, allTypes: Set<string>
+): void {
+  if (!field.typeName || field.typeName.startsWith('.')) {
+    return
+  }
+  let currentScope = scope
+  while (currentScope !== '') {
+    const candidate = `${currentScope}.${field.typeName}`
+    if (allTypes.has(candidate)) {
+      field.typeName = candidate
+      return
+    }
+    const lastDot = currentScope.lastIndexOf('.')
+    currentScope = lastDot >= 0 ? currentScope.substring(0, lastDot) : ''
+  }
+  const rootCandidate = `.${field.typeName}`
+  if (allTypes.has(rootCandidate)) {
+    field.typeName = rootCandidate
+  }
 }
 
 async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fieldTransform: FieldTransform): Promise<any> {
