@@ -553,6 +553,10 @@ function resolveTypeName(
   const rootCandidate = `.${field.typeName}`
   if (allTypes.has(rootCandidate)) {
     field.typeName = rootCandidate
+  } else if (field.typeName.includes('.')) {
+    // Cross-file reference that is package-qualified but missing the leading dot.
+    // Prefix with '.' so createFileRegistry can resolve it via dependencies.
+    field.typeName = rootCandidate
   }
 }
 

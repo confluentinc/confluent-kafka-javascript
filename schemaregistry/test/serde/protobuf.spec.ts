@@ -114,12 +114,13 @@ describe('ProtobufSerializer', () => {
     const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
     const client = SchemaRegistryClient.newClient(conf)
 
-    // Build a FileDescriptorProto with relative type names,
+    // Build a FileDescriptorProto with various relative type name forms,
     // simulating what the schema registry returns for format=serialized
     const fileDescProto = create(FileDescriptorProtoSchema, {
       name: 'top.proto',
       package: 'test',
       syntax: 'proto3',
+      dependency: ['google/protobuf/timestamp.proto'],
       messageType: [{
         name: 'MyMessage',
         field: [{
@@ -127,10 +128,49 @@ describe('ProtobufSerializer', () => {
           number: 1,
           type: FieldDescriptorProto_Type.ENUM,
           label: FieldDescriptorProto_Label.OPTIONAL,
-          typeName: 'MyEnum',  // relative — this is the bug trigger
+          typeName: 'MyEnum',  // case 1: unqualified relative name
+          proto3Optional: true,
+        }, {
+          name: 'my_field2',
+          number: 2,
+          type: FieldDescriptorProto_Type.ENUM,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'test.MyEnum',  // case 2: package-qualified, missing leading dot
+          proto3Optional: true,
+        }, {
+          name: 'my_nested',
+          number: 3,
+          type: FieldDescriptorProto_Type.MESSAGE,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'Outer.Inner',  // case 3: nested type reference
+          proto3Optional: true,
+        }, {
+          name: 'my_ts',
+          number: 4,
+          type: FieldDescriptorProto_Type.MESSAGE,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'google.protobuf.Timestamp',  // case 4: cross-file, missing leading dot
           proto3Optional: true,
         }],
-        oneofDecl: [{ name: '_my_field' }],
+        oneofDecl: [
+          { name: '_my_field' },
+          { name: '_my_field2' },
+          { name: '_my_nested' },
+          { name: '_my_ts' },
+        ],
+      }, {
+        name: 'Outer',
+        nestedType: [{
+          name: 'Inner',
+          field: [{
+            name: 'value',
+            number: 1,
+            type: FieldDescriptorProto_Type.INT32,
+            label: FieldDescriptorProto_Label.OPTIONAL,
+            proto3Optional: true,
+          }],
+          oneofDecl: [{ name: '_value' }],
+        }],
       }],
       enumType: [{
         name: 'MyEnum',
@@ -146,8 +186,17 @@ describe('ProtobufSerializer', () => {
     const schemaId = await client.register(subject, info, false)
 
     // Construct wire-format payload: magic(1) + schemaId(4) + msgIndex(1) + protobuf bytes
-    // MyMessage { my_field = MY_ENUM_FOO(1) } → field 1 varint: [0x08, 0x01]
-    const msgBytes = Buffer.from([0x08, 0x01])
+    // MyMessage { my_field = 1, my_field2 = 1, my_nested = { value = 42 }, my_ts = { seconds = 1000 } }
+    // field 1 varint 1:     0x08, 0x01
+    // field 2 varint 1:     0x10, 0x01
+    // field 3 LEN {08 2A}:  0x1a, 0x02, 0x08, 0x2a  (Inner { value = 42 })
+    // field 4 LEN {08 e807}: 0x22, 0x03, 0x08, 0xe8, 0x07  (Timestamp { seconds = 1000 })
+    const msgBytes = Buffer.from([
+      0x08, 0x01,
+      0x10, 0x01,
+      0x1a, 0x02, 0x08, 0x2a,
+      0x22, 0x03, 0x08, 0xe8, 0x07,
+    ])
     const buf = Buffer.alloc(6 + msgBytes.length)
     buf[0] = 0x00                       // magic byte
     buf.writeInt32BE(schemaId, 1)       // schema ID
@@ -156,7 +205,10 @@ describe('ProtobufSerializer', () => {
 
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     const result = await deser.deserialize(topic, buf)
-    expect(result.myField).toEqual(1)  // MY_ENUM_FOO = 1
+    expect(result.myField).toEqual(1)   // MY_ENUM_FOO = 1
+    expect(result.myField2).toEqual(1)  // MY_ENUM_FOO = 1 (package-qualified)
+    expect(result.myNested.value).toEqual(42)  // nested type
+    expect(result.myTs.seconds).toEqual(BigInt(1000))  // cross-file Timestamp
   })
   it('serialize nested messsage', async () => {
     let conf: ClientConfig = {
