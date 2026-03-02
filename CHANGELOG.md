@@ -1,6 +1,6 @@
-# confluent-kafka-javascript 1.8.1
+# confluent-kafka-javascript 1.8.2
 
-v1.8.1 is a maintenance release. It is supported for all usage.
+v1.8.2 is a maintenance release. It is supported for all usage.
 
 ## Enhancements
 
