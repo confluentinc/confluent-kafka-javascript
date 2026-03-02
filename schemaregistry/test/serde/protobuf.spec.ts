@@ -4,7 +4,7 @@ import {
   ProtobufDeserializer, ProtobufDeserializerConfig,
   ProtobufSerializer, ProtobufSerializerConfig,
 } from "../../serde/protobuf";
-import {HeaderSchemaIdSerializer, SerdeType} from "../../serde/serde";
+import {HeaderSchemaIdSerializer, SchemaId, SerdeType} from "../../serde/serde";
 import {
   Rule,
   RuleMode,
@@ -185,8 +185,6 @@ describe('ProtobufSerializer', () => {
     const info: SchemaInfo = { schemaType: 'PROTOBUF', schema }
     const schemaId = await client.register(subject, info, false)
 
-    // Construct wire-format payload: magic(1) + schemaId(4) + msgIndexCount(varint) + protobuf bytes
-    // msgIndexCount=0 is a shorthand for the default index path [0] (first message)
     // MyMessage { my_field = 1, my_field2 = 1, my_nested = { value = 42 }, my_ts = { seconds = 1000 } }
     // field 1 varint 1:     0x08, 0x01
     // field 2 varint 1:     0x10, 0x01
@@ -198,11 +196,8 @@ describe('ProtobufSerializer', () => {
       0x1a, 0x02, 0x08, 0x2a,
       0x22, 0x03, 0x08, 0xe8, 0x07,
     ])
-    const buf = Buffer.alloc(6 + msgBytes.length)
-    buf[0] = 0x00                       // magic byte
-    buf.writeInt32BE(schemaId, 1)       // schema ID
-    buf[5] = 0x00                       // message index count (0 = default path [0])
-    msgBytes.copy(buf, 6)
+    const sid = new SchemaId('PROTOBUF', schemaId, undefined, [0])
+    const buf = Buffer.concat([sid.idToBytes(), msgBytes])
 
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     const result = await deser.deserialize(topic, buf)
