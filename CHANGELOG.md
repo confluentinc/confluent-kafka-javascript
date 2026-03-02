@@ -1,6 +1,6 @@
-# confluent-kafka-javascript 1.8.1
+# confluent-kafka-javascript 1.8.2
 
-v1.8.1 is a maintenance release. It is supported for all usage.
+v1.8.2 is a maintenance release. It is supported for all usage.
 
 ## Enhancements
 
@@ -13,6 +13,8 @@ v1.8.1 is a maintenance release. It is supported for all usage.
 1. Fix security vulnerabilities in dependencies (#437)
 2. Process Avro arrays sequentially to avoid race conditions (#445)
 3. Add NULL checks to prevent segfaults when Kafka metadata contains NULL values during broker restarts. This fix adds comprehensive NULL safety checks for node pointers, partition leaders, ISR arrays, and replica arrays in the native C++ code, JavaScript wrapper, and TypeScript definitions.
+
+There was no v1.8.1 release.
 
 # confluent-kafka-javascript 1.8.0
 
