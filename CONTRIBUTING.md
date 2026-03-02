@@ -220,7 +220,7 @@ Steps to update:
     node ci/librdkafka-defs-generator.js
     ```
 
-1. Run `npm install` to build with the new version and fix any build errors that occur.
+1. Run `npm install` to build with the latest supported node version and fix any build errors that occur.
 
 1. Run unit tests: `npm run test`
 
