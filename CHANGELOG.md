@@ -6,8 +6,6 @@ v1.8.2 is a maintenance release. It is supported for all usage.
 
 1. Minor enhancement to JSON Schema validation reporting (#434)
 2. Minor upgrade axios to 1.13.5 (#447)
-3. Allow id-pool header to be optional for union-of-pools (#452)
-
 ## Fixes
 
 1. Fix security vulnerabilities in dependencies (#437)
