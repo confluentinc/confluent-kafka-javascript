@@ -1,79 +1,101 @@
 import { ModuleOptions, ClientCredentials, ClientCredentialTokenConfig, AccessToken } from 'simple-oauth2';
-import { sleep, fullJitter, isRetriable } from '../retry-helper';
-import { isBoom } from '@hapi/boom';
-
+import {
+  _AbstractBearerTokenProviderBuilder as AbstractBearerTokenProviderBuilder,
+  _AbstractOAuthClient as AbstractOAuthClient,
+} from './abstract-oauth-client';
+import { BearerAuthCredentials } from '../rest-service';
+import {
+  _BearerTokenProvider as BearerTokenProvider
+} from './bearer-token-provider';
 const TOKEN_EXPIRATION_THRESHOLD_SECONDS = 30 * 60; // 30 minutes
 
-export class OAuthClient {
-  private client: ClientCredentials;
-  private token: AccessToken | undefined;
-  private tokenParams: ClientCredentialTokenConfig;
-  private maxRetries: number;
-  private retriesWaitMs: number;
-  private retriesMaxWaitMs: number;
+class OAuthClientBuilder extends AbstractBearerTokenProviderBuilder {
+    
+    static readonly requiredFields = [
+      'clientId',
+      'clientSecret',
+      'issuerEndpointUrl',
+      'scope'
+    ];
 
-  constructor(clientId: string, clientSecret: string, tokenHost: string, tokenPath: string, scope: string,
+    constructor(
+        bearerAuthCredentials: BearerAuthCredentials) {
+        super(bearerAuthCredentials);
+    }
+  
+    protected override validate() {
+      super.validate();
+      const missingField = OAuthClientBuilder.requiredFields.find(
+        field => !(field in this.bearerAuthCredentials));
+
+      if (missingField) {
+        throw new Error(`OAuth credential '${missingField}' not provided`);
+      }
+    }
+  
+    override build(maxRetries: number, retriesWaitMs: number, retriesMaxWaitMs: number) : BearerTokenProvider {
+      this.validate();
+      return new OAuthClient(
+        this.bearerAuthCredentials,
+        maxRetries,
+        retriesWaitMs,
+        retriesMaxWaitMs);
+    }
+}
+
+class OAuthClient extends AbstractOAuthClient {
+  private client: ClientCredentials;
+  private tokenObject: AccessToken | undefined;
+  private tokenParams: ClientCredentialTokenConfig;
+
+  constructor(bearerAuthCredentials: BearerAuthCredentials,
     maxRetries: number, retriesWaitMs: number, retriesMaxWaitMs: number
   ) {
+    super(bearerAuthCredentials, maxRetries, retriesWaitMs, retriesMaxWaitMs);
+
+    const tokenEndpoint = new URL(bearerAuthCredentials.issuerEndpointUrl!);
     const clientConfig: ModuleOptions = {
       client: {
-        id: clientId,
-        secret: clientSecret,
+        id: bearerAuthCredentials.clientId!,
+        secret: bearerAuthCredentials.clientSecret!,
       },
       auth: {
-        tokenHost: tokenHost,
-        tokenPath: tokenPath
+        tokenHost: tokenEndpoint.origin,
+        tokenPath: tokenEndpoint.pathname
       },
       options: {
         credentialsEncodingMode: 'loose'
       }
     }
 
-    this.tokenParams = { scope };
+    this.tokenParams = { scope: bearerAuthCredentials.scope! };
 
     this.client = new ClientCredentials(clientConfig);
-
-    this.maxRetries = maxRetries;
-    this.retriesWaitMs = retriesWaitMs;
-    this.retriesMaxWaitMs = retriesMaxWaitMs;
   }
 
-  async getAccessToken(): Promise<string> {
-    if (!this.token || this.token.expired(TOKEN_EXPIRATION_THRESHOLD_SECONDS)) {
-      await this.generateAccessToken();
-    }
-
-    return this.getAccessTokenString();
+  override async fetchToken(): Promise<string> {
+      this.tokenObject = await this.client.getToken(this.tokenParams);
+      return this.getAccessTokenString();
   }
 
-  async generateAccessToken(): Promise<void> {
-    for (let i = 0; i < this.maxRetries + 1; i++) {
-      try {
-        const token = await this.client.getToken(this.tokenParams);
-        this.token = token;
-        return;
-      } catch (error: any) {
-        if (isBoom(error) && i < this.maxRetries) {
-          const statusCode = error.output.statusCode;
-          if (isRetriable(statusCode)) {
-            const waitTime = fullJitter(this.retriesWaitMs, this.retriesMaxWaitMs, i);
-            await sleep(waitTime);
-            continue;
-          }
-        } 
-        throw new Error(`Failed to get token from server: ${error}`);
-      }
-    }
+  override tokenExpired(): boolean {
+    return this.tokenObject === undefined || 
+      this.tokenObject.expired(TOKEN_EXPIRATION_THRESHOLD_SECONDS);
   }
 
-  async getAccessTokenString(): Promise<string> {
-    const accessToken = this.token?.token?.['access_token'];
+  private getAccessTokenString(): string {
+    const accessToken = this.tokenObject?.token?.['access_token'];
 
-    if (typeof accessToken === 'string') {
-      return accessToken;
+    if (typeof accessToken !== 'string') {
+      throw new Error('Access token is not available');
     }
 
-    throw new Error('Access token is not available');
+    return accessToken;
   }
 }
 
+// internal/testing usage only
+export {
+  OAuthClient as _OAuthClient,
+  OAuthClientBuilder as _OAuthClientBuilder,
+}

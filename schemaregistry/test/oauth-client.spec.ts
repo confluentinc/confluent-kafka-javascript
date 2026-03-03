@@ -1,9 +1,10 @@
-import { OAuthClient } from '../oauth/oauth-client';
+import { _OAuthClient as OAuthClient } from '../oauth/oauth-client';
 import { ClientCredentials, AccessToken } from 'simple-oauth2';
 import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
 import * as retryHelper from '@confluentinc/schemaregistry/retry-helper';
 import { maxRetries, retriesWaitMs, retriesMaxWaitMs } from './test-constants';
 import { boomify } from '@hapi/boom';
+import { BearerAuthCredentials } from '../rest-service';
 
 jest.mock('simple-oauth2');
 
@@ -61,12 +62,16 @@ describe('OAuthClient', () => {
   };
 
   beforeEach(() => {
-    oauthClient = new OAuthClient(
+    const bearerAuthCredentials: BearerAuthCredentials = {
+      credentialsSource: 'OAUTHBEARER',
+      issuerEndpointUrl: `${tokenHost}${tokenPath}`,
       clientId,
       clientSecret,
-      tokenHost,
-      tokenPath,
-      scope,
+      scope
+    }
+
+    oauthClient = new OAuthClient(
+      bearerAuthCredentials,
       maxRetries,
       retriesWaitMs,
       retriesMaxWaitMs
