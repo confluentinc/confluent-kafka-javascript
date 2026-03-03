@@ -4,7 +4,7 @@ import {
   ProtobufDeserializer, ProtobufDeserializerConfig,
   ProtobufSerializer, ProtobufSerializerConfig,
 } from "../../serde/protobuf";
-import {HeaderSchemaIdSerializer, SerdeType} from "../../serde/serde";
+import {HeaderSchemaIdSerializer, SchemaId, SerdeType} from "../../serde/serde";
 import {
   Rule,
   RuleMode,
@@ -16,7 +16,11 @@ import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
 import {EncryptionExecutor, FieldEncryptionExecutor} from "../../rules/encryption/encrypt-executor";
 import {AuthorSchema, file_test_schemaregistry_serde_example, PizzaSchema} from "./test/example_pb";
 import {create, toBinary} from "@bufbuild/protobuf";
-import {FileDescriptorProtoSchema} from "@bufbuild/protobuf/wkt";
+import {
+  FieldDescriptorProto_Label,
+  FieldDescriptorProto_Type,
+  FileDescriptorProtoSchema
+} from "@bufbuild/protobuf/wkt";
 import {
   NestedMessage_InnerMessageSchema
 } from "./test/nested_pb";
@@ -105,6 +109,102 @@ describe('ProtobufSerializer', () => {
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
+  })
+  it('deserialize with relative type names in FileDescriptorProto', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    // Build a FileDescriptorProto with various relative type name forms,
+    // simulating what the schema registry returns for format=serialized
+    const fileDescProto = create(FileDescriptorProtoSchema, {
+      name: 'top.proto',
+      package: 'test',
+      syntax: 'proto3',
+      dependency: ['google/protobuf/timestamp.proto'],
+      messageType: [{
+        name: 'MyMessage',
+        field: [{
+          name: 'my_field',
+          number: 1,
+          type: FieldDescriptorProto_Type.ENUM,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'MyEnum',  // case 1: unqualified relative name
+          proto3Optional: true,
+        }, {
+          name: 'my_field2',
+          number: 2,
+          type: FieldDescriptorProto_Type.ENUM,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'test.MyEnum',  // case 2: package-qualified, missing leading dot
+          proto3Optional: true,
+        }, {
+          name: 'my_nested',
+          number: 3,
+          type: FieldDescriptorProto_Type.MESSAGE,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'Outer.Inner',  // case 3: nested type reference
+          proto3Optional: true,
+        }, {
+          name: 'my_ts',
+          number: 4,
+          type: FieldDescriptorProto_Type.MESSAGE,
+          label: FieldDescriptorProto_Label.OPTIONAL,
+          typeName: 'google.protobuf.Timestamp',  // case 4: cross-file, missing leading dot
+          proto3Optional: true,
+        }],
+        oneofDecl: [
+          { name: '_my_field' },
+          { name: '_my_field2' },
+          { name: '_my_nested' },
+          { name: '_my_ts' },
+        ],
+      }, {
+        name: 'Outer',
+        nestedType: [{
+          name: 'Inner',
+          field: [{
+            name: 'value',
+            number: 1,
+            type: FieldDescriptorProto_Type.INT32,
+            label: FieldDescriptorProto_Label.OPTIONAL,
+            proto3Optional: true,
+          }],
+          oneofDecl: [{ name: '_value' }],
+        }],
+      }],
+      enumType: [{
+        name: 'MyEnum',
+        value: [
+          { name: 'MY_ENUM_UNSPECIFIED', number: 0 },
+          { name: 'MY_ENUM_FOO', number: 1 },
+        ]
+      }]
+    })
+
+    const schema = Buffer.from(toBinary(FileDescriptorProtoSchema, fileDescProto)).toString('base64')
+    const info: SchemaInfo = { schemaType: 'PROTOBUF', schema }
+    const schemaId = await client.register(subject, info, false)
+
+    // MyMessage { my_field = 1, my_field2 = 1, my_nested = { value = 42 }, my_ts = { seconds = 1000 } }
+    // field 1 varint 1:     0x08, 0x01
+    // field 2 varint 1:     0x10, 0x01
+    // field 3 LEN {08 2A}:  0x1a, 0x02, 0x08, 0x2a  (Inner { value = 42 })
+    // field 4 LEN {08 e807}: 0x22, 0x03, 0x08, 0xe8, 0x07  (Timestamp { seconds = 1000 })
+    const msgBytes = Buffer.from([
+      0x08, 0x01,
+      0x10, 0x01,
+      0x1a, 0x02, 0x08, 0x2a,
+      0x22, 0x03, 0x08, 0xe8, 0x07,
+    ])
+    const sid = new SchemaId('PROTOBUF', schemaId, undefined, [0])
+    const buf = Buffer.concat([sid.idToBytes(), msgBytes])
+
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    const result = await deser.deserialize(topic, buf)
+    expect(result.myField).toEqual(1)   // MY_ENUM_FOO = 1
+    expect(result.myField2).toEqual(1)  // MY_ENUM_FOO = 1 (package-qualified)
+    expect(result.myNested.value).toEqual(42)  // nested type
+    expect(result.myTs.seconds).toEqual(BigInt(1000))  // cross-file Timestamp
   })
   it('serialize nested messsage', async () => {
     let conf: ClientConfig = {
