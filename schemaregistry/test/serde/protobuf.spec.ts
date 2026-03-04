@@ -4,12 +4,20 @@ import {
   ProtobufDeserializer, ProtobufDeserializerConfig,
   ProtobufSerializer, ProtobufSerializerConfig,
 } from "../../serde/protobuf";
-import {HeaderSchemaIdSerializer, SerdeType} from "../../serde/serde";
 import {
+  FALLBACK_TYPE,
+  HeaderSchemaIdSerializer,
+  KAFKA_CLUSTER_ID,
+  SerdeType,
+  SubjectNameStrategyType
+} from "../../serde/serde";
+import {
+  AssociationCreateOrUpdateRequest,
   Rule,
   RuleMode,
   RuleSet,
   SchemaInfo,
+  LifecyclePolicy,
   SchemaRegistryClient
 } from "../../schemaregistry-client";
 import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
@@ -322,5 +330,174 @@ describe('ProtobufSerializer', () => {
     fieldEncryptionExecutor.executor.client = dekClient
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
+  })
+})
+
+describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
+  it('serializes and deserializes with associated name strategy', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-custom-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: ProtobufSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, serConfig)
+    ser.registry.add(AuthorSchema)
+
+    const obj = create(AuthorSchema, {
+      name: 'Kafka',
+      id: 123,
+      picture: Buffer.from([1, 2]),
+      works: ['The Castle', 'The Trial']
+    })
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: ProtobufDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, deserConfig)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+
+    await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
+  })
+
+  it('falls back to topic name strategy when no association found', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    // No association created - should fall back to TopicNameStrategy
+    const serConfig: ProtobufSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, serConfig)
+    ser.registry.add(AuthorSchema)
+
+    const obj = create(AuthorSchema, {
+      name: 'Kafka',
+      id: 123,
+      picture: Buffer.from([1, 2]),
+      works: ['The Castle', 'The Trial']
+    })
+    const bytes = await ser.serialize(topic, obj)
+
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+
+  it('throws error when no association found and fallback is NONE', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    // No association created, and fallback is NONE - should error
+    const serConfig: ProtobufSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [FALLBACK_TYPE]: 'NONE' }
+    }
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, serConfig)
+    ser.registry.add(AuthorSchema)
+
+    const obj = create(AuthorSchema, {
+      name: 'Kafka',
+      id: 123,
+      picture: Buffer.from([1, 2]),
+      works: ['The Castle', 'The Trial']
+    })
+    await expect(ser.serialize(topic, obj)).rejects.toThrow()
+  })
+
+  it('uses kafka cluster id as namespace when configured', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: 'lkc-my-cluster',
+      resourceId: 'lkc-my-cluster:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-custom-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: ProtobufSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [KAFKA_CLUSTER_ID]: 'lkc-my-cluster' }
+    }
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, serConfig)
+    ser.registry.add(AuthorSchema)
+
+    const obj = create(AuthorSchema, {
+      name: 'Kafka',
+      id: 123,
+      picture: Buffer.from([1, 2]),
+      works: ['The Castle', 'The Trial']
+    })
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: ProtobufDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED,
+      subjectNameStrategyConfig: { [KAFKA_CLUSTER_ID]: 'lkc-my-cluster' }
+    }
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, deserConfig)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+
+    await client.deleteAssociations('lkc-my-cluster:topic1', 'topic', ['value'], true)
+  })
+
+  it('serializes and deserializes correctly across multiple calls with caching', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: '-',
+      resourceId: 'lkc-123:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-cached-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
+    }
+    await client.createAssociation(request)
+
+    const serConfig: ProtobufSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, serConfig)
+    ser.registry.add(AuthorSchema)
+
+    const obj = create(AuthorSchema, {
+      name: 'Kafka',
+      id: 123,
+      picture: Buffer.from([1, 2]),
+      works: ['The Castle', 'The Trial']
+    })
+
+    const deserConfig: ProtobufDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    }
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, deserConfig)
+
+    // Serialize multiple times - should use cache after first call
+    for (let i = 0; i < 5; i++) {
+      const bytes = await ser.serialize(topic, obj)
+      const obj2 = await deser.deserialize(topic, bytes)
+      expect(obj2).toEqual(obj)
+    }
+
+    await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 })
