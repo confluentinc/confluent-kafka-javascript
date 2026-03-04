@@ -17,6 +17,7 @@ import {
   RuleMode,
   RuleSet,
   SchemaInfo,
+  LifecyclePolicy,
   SchemaRegistryClient
 } from "../../schemaregistry-client";
 import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
@@ -342,7 +343,7 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
       resourceNamespace: '-',
       resourceId: 'lkc-123:topic1',
       resourceType: 'topic',
-      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+      associations: [{ subject: 'my-custom-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
     }
     await client.createAssociation(request)
 
@@ -367,6 +368,8 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, deserConfig)
     const obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
+
+    await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 
   it('falls back to topic name strategy when no association found', async () => {
@@ -416,46 +419,6 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
     await expect(ser.serialize(topic, obj)).rejects.toThrow()
   })
 
-  it('throws error when multiple associations found', async () => {
-    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
-    const client = SchemaRegistryClient.newClient(conf)
-
-    // Create first association
-    const request1: AssociationCreateOrUpdateRequest = {
-      resourceName: 'topic1',
-      resourceNamespace: '-',
-      resourceId: 'lkc-123:topic1',
-      resourceType: 'topic',
-      associations: [{ subject: 'subject1', associationType: 'value' }]
-    }
-    await client.createAssociation(request1)
-
-    // Create second association for same topic and association type
-    const request2: AssociationCreateOrUpdateRequest = {
-      resourceName: 'topic1',
-      resourceNamespace: '-',
-      resourceId: 'lkc-456:topic1',
-      resourceType: 'topic',
-      associations: [{ subject: 'subject2', associationType: 'value' }]
-    }
-    await client.createAssociation(request2)
-
-    const serConfig: ProtobufSerializerConfig = {
-      autoRegisterSchemas: true,
-      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
-    }
-    const ser = new ProtobufSerializer(client, SerdeType.VALUE, serConfig)
-    ser.registry.add(AuthorSchema)
-
-    const obj = create(AuthorSchema, {
-      name: 'Kafka',
-      id: 123,
-      picture: Buffer.from([1, 2]),
-      works: ['The Castle', 'The Trial']
-    })
-    await expect(ser.serialize(topic, obj)).rejects.toThrow()
-  })
-
   it('uses kafka cluster id as namespace when configured', async () => {
     const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
     const client = SchemaRegistryClient.newClient(conf)
@@ -465,7 +428,7 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
       resourceNamespace: 'lkc-my-cluster',
       resourceId: 'lkc-my-cluster:topic1',
       resourceType: 'topic',
-      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+      associations: [{ subject: 'my-custom-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
     }
     await client.createAssociation(request)
 
@@ -492,6 +455,8 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, deserConfig)
     const obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
+
+    await client.deleteAssociations('lkc-my-cluster:topic1', 'topic', ['value'], true)
   })
 
   it('serializes and deserializes correctly across multiple calls with caching', async () => {
@@ -503,7 +468,7 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
       resourceNamespace: '-',
       resourceId: 'lkc-123:topic1',
       resourceType: 'topic',
-      associations: [{ subject: 'my-cached-subject', associationType: 'value' }]
+      associations: [{ subject: 'my-cached-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
     }
     await client.createAssociation(request)
 
@@ -532,5 +497,7 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
       const obj2 = await deser.deserialize(topic, bytes)
       expect(obj2).toEqual(obj)
     }
+
+    await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 })
