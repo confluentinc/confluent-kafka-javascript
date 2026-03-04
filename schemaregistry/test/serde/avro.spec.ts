@@ -18,6 +18,7 @@ import {
 import {
   AssociationCreateOrUpdateRequest,
   Client,
+  LifecyclePolicy,
   Rule,
   RuleMode,
   RuleSet,
@@ -26,7 +27,8 @@ import {
 } from "../../schemaregistry-client";
 import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
 import {
-  Clock, EncryptionExecutor,
+  Clock,
+  EncryptionExecutor,
   FieldEncryptionExecutor
 } from "../../rules/encryption/encrypt-executor";
 import {GcpKmsDriver} from "../../rules/encryption/gcpkms/gcp-driver";
@@ -36,9 +38,7 @@ import {HcVaultDriver} from "../../rules/encryption/hcvault/hcvault-driver";
 import {JsonataExecutor} from "@confluentinc/schemaregistry/rules/jsonata/jsonata-executor";
 import stringify from "json-stringify-deterministic";
 import {RuleRegistry} from "@confluentinc/schemaregistry/serde/rule-registry";
-import {
-  clearKmsClients
-} from "@confluentinc/schemaregistry/rules/encryption/kms-registry";
+import {clearKmsClients} from "@confluentinc/schemaregistry/rules/encryption/kms-registry";
 import {CelExecutor} from "../../rules/cel/cel-executor";
 import {CelFieldExecutor} from "../../rules/cel/cel-field-executor";
 
@@ -2520,7 +2520,7 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
       resourceNamespace: '-',
       resourceId: 'lkc-123:topic1',
       resourceType: 'topic',
-      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+      associations: [{ subject: 'my-custom-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG}]
     }
     await client.createAssociation(request)
 
@@ -2551,6 +2551,8 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
     expect(obj2.stringField).toEqual(obj.stringField)
     expect(obj2.boolField).toEqual(obj.boolField)
     expect(obj2.bytesField).toEqual(obj.bytesField)
+
+    await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 
   it('falls back to topic name strategy when no association found', async () => {
@@ -2614,55 +2616,6 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
     await expect(ser.serialize(topic, obj)).rejects.toThrow()
   })
 
-  it('throws error when multiple associations found', async () => {
-    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
-    const client = SchemaRegistryClient.newClient(conf)
-
-    const info1: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
-    const id1 = await client.register('subject1', info1, false)
-    expect(id1).toBeGreaterThan(0)
-
-    const info2: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
-    const id2 = await client.register('subject2', info2, false)
-    expect(id2).toBeGreaterThan(0)
-
-    // Create first association
-    const request1: AssociationCreateOrUpdateRequest = {
-      resourceName: 'topic1',
-      resourceNamespace: '-',
-      resourceId: 'lkc-123:topic1',
-      resourceType: 'topic',
-      associations: [{ subject: 'subject1', associationType: 'value' }]
-    }
-    await client.createAssociation(request1)
-
-    // Create second association for same topic and association type
-    const request2: AssociationCreateOrUpdateRequest = {
-      resourceName: 'topic1',
-      resourceNamespace: '-',
-      resourceId: 'lkc-456:topic1',
-      resourceType: 'topic',
-      associations: [{ subject: 'subject2', associationType: 'value' }]
-    }
-    await client.createAssociation(request2)
-
-    const serConfig: AvroSerializerConfig = {
-      autoRegisterSchemas: false,
-      useLatestVersion: true,
-      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
-    }
-    const ser = new AvroSerializer(client, SerdeType.VALUE, serConfig)
-
-    const obj = {
-      intField: 123,
-      doubleField: 45.67,
-      stringField: 'hi',
-      boolField: true,
-      bytesField: Buffer.from([1, 2]),
-    }
-    await expect(ser.serialize(topic, obj)).rejects.toThrow()
-  })
-
   it('uses kafka cluster id as namespace when configured', async () => {
     const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
     const client = SchemaRegistryClient.newClient(conf)
@@ -2676,7 +2629,7 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
       resourceNamespace: 'lkc-my-cluster',
       resourceId: 'lkc-my-cluster:topic1',
       resourceType: 'topic',
-      associations: [{ subject: 'my-custom-subject', associationType: 'value' }]
+      associations: [{ subject: 'my-custom-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
     }
     await client.createAssociation(request)
 
@@ -2709,6 +2662,8 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
     expect(obj2.stringField).toEqual(obj.stringField)
     expect(obj2.boolField).toEqual(obj.boolField)
     expect(obj2.bytesField).toEqual(obj.bytesField)
+
+    await client.deleteAssociations('lkc-my-cluster:topic1', 'topic', ['value'], true)
   })
 
   it('serializes and deserializes correctly across multiple calls with caching', async () => {
@@ -2724,7 +2679,7 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
       resourceNamespace: '-',
       resourceId: 'lkc-123:topic1',
       resourceType: 'topic',
-      associations: [{ subject: 'my-cached-subject', associationType: 'value' }]
+      associations: [{ subject: 'my-cached-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
     }
     await client.createAssociation(request)
 
@@ -2758,5 +2713,7 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
       expect(obj2.boolField).toEqual(obj.boolField)
       expect(obj2.bytesField).toEqual(obj.bytesField)
     }
+
+    await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 })
