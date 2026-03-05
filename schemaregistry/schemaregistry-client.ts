@@ -135,6 +135,74 @@ export interface ServerConfig {
   overrideRuleSet?: RuleSet;
 }
 
+/**
+ * LifecyclePolicy represents the lifecycle policy for an association
+ */
+export enum LifecyclePolicy {
+  STRONG = 'STRONG',
+  WEAK = 'WEAK'
+}
+
+/**
+ * Association represents an association between a subject and a resource
+ */
+export interface Association {
+  subject: string;
+  guid?: string;
+  resourceName: string;
+  resourceNamespace: string;
+  resourceId?: string;
+  resourceType: string;
+  associationType: string;
+  lifecycle?: LifecyclePolicy;
+  frozen?: boolean;
+}
+
+/**
+ * AssociationInfo represents association info returned in a response
+ */
+export interface AssociationInfo {
+  subject?: string;
+  associationType?: string;
+  lifecycle?: LifecyclePolicy;
+  frozen?: boolean;
+  schema?: SchemaInfo;
+}
+
+/**
+ * AssociationCreateOrUpdateInfo represents an association to create or update
+ */
+export interface AssociationCreateOrUpdateInfo {
+  subject?: string;
+  associationType?: string;
+  lifecycle?: LifecyclePolicy;
+  frozen?: boolean;
+  schema?: SchemaInfo;
+  normalize?: boolean;
+}
+
+/**
+ * AssociationCreateOrUpdateRequest represents a request to create or update associations
+ */
+export interface AssociationCreateOrUpdateRequest {
+  resourceName?: string;
+  resourceNamespace?: string;
+  resourceId?: string;
+  resourceType?: string;
+  associations?: AssociationCreateOrUpdateInfo[];
+}
+
+/**
+ * AssociationResponse represents a response from creating/updating associations
+ */
+export interface AssociationResponse {
+  resourceName?: string;
+  resourceNamespace?: string;
+  resourceId?: string;
+  resourceType?: string;
+  associations?: AssociationInfo[];
+}
+
 export interface isCompatibleResponse {
   is_compatible: boolean;
 }
@@ -171,6 +239,22 @@ export interface Client {
   updateConfig(subject: string, update: ServerConfig): Promise<ServerConfig>;
   getDefaultConfig(): Promise<ServerConfig>;
   updateDefaultConfig(update: ServerConfig): Promise<ServerConfig>;
+  getAssociationsByResourceName(
+    resourceName: string,
+    resourceNamespace: string,
+    resourceType: string | null,
+    associationTypes: string[],
+    lifecycle: LifecyclePolicy | null,
+    offset: number,
+    limit: number
+  ): Promise<Association[]>;
+  createAssociation(request: AssociationCreateOrUpdateRequest): Promise<AssociationResponse>;
+  deleteAssociations(
+    resourceId: string,
+    resourceType: string | null,
+    associationTypes: string[] | null,
+    cascadeLifecycle: boolean
+  ): Promise<void>;
   clearLatestCaches(): void;
   clearCaches(): void;
   close(): void;
@@ -753,6 +837,105 @@ export class SchemaRegistryClient implements Client {
       update
     );
     return response.data;
+  }
+
+  /**
+   * Get associations by resource name.
+   * @param resourceName - The resource name to query.
+   * @param resourceNamespace - The resource namespace.
+   * @param resourceType - The resource type (optional).
+   * @param associationTypes - The association types to filter by.
+   * @param lifecycle - The lifecycle policy to filter by (optional).
+   * @param offset - The offset for pagination.
+   * @param limit - The limit for pagination (-1 for no limit).
+   */
+  async getAssociationsByResourceName(
+    resourceName: string,
+    resourceNamespace: string,
+    resourceType: string | null,
+    associationTypes: string[],
+    lifecycle: LifecyclePolicy | null,
+    offset: number,
+    limit: number
+  ): Promise<Association[]> {
+    const encodedNamespace = encodeURIComponent(resourceNamespace);
+    const encodedName = encodeURIComponent(resourceName);
+
+    let path = `/associations/resources/${encodedNamespace}/${encodedName}`;
+    const queryParams: string[] = [];
+
+    if (resourceType != null) {
+      queryParams.push(`resourceType=${encodeURIComponent(resourceType)}`);
+    }
+    for (const associationType of associationTypes) {
+      queryParams.push(`associationType=${encodeURIComponent(associationType)}`);
+    }
+    if (lifecycle != null) {
+      queryParams.push(`lifecycle=${encodeURIComponent(lifecycle)}`);
+    }
+    if (offset > 0) {
+      queryParams.push(`offset=${offset}`);
+    }
+    if (limit >= 1) {
+      queryParams.push(`limit=${limit}`);
+    }
+
+    if (queryParams.length > 0) {
+      path += '?' + queryParams.join('&');
+    }
+
+    const response: AxiosResponse<Association[]> = await this.restService.handleRequest(
+      path,
+      'GET'
+    );
+    return response.data;
+  }
+
+  /**
+   * Create an association between a subject and a resource.
+   * @param request - The association create or update request.
+   */
+  async createAssociation(request: AssociationCreateOrUpdateRequest): Promise<AssociationResponse> {
+    const response: AxiosResponse<AssociationResponse> = await this.restService.handleRequest(
+      '/associations',
+      'POST',
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Delete associations for a resource.
+   * @param resourceId - The resource identifier.
+   * @param resourceType - The type of resource (e.g., "topic"). Can be null.
+   * @param associationTypes - The types of associations to delete (e.g., "key", "value"). Can be null to delete all.
+   * @param cascadeLifecycle - Whether to cascade the lifecycle policy to dependent schemas.
+   */
+  async deleteAssociations(
+    resourceId: string,
+    resourceType: string | null,
+    associationTypes: string[] | null,
+    cascadeLifecycle: boolean
+  ): Promise<void> {
+    const queryParams: string[] = [];
+
+    if (resourceType != null) {
+      queryParams.push(`resourceType=${encodeURIComponent(resourceType)}`);
+    }
+    if (associationTypes != null) {
+      for (const associationType of associationTypes) {
+        queryParams.push(`associationType=${encodeURIComponent(associationType)}`);
+      }
+    }
+    queryParams.push(`cascadeLifecycle=${cascadeLifecycle}`);
+
+    const queryString = queryParams.length > 0 ? '?' + queryParams.join('&') : '';
+    const endpoint = `/associations/resources/${encodeURIComponent(resourceId)}${queryString}`;
+
+    await this.restService.handleRequest(
+      endpoint,
+      'DELETE'
+    );
   }
 
   /**
