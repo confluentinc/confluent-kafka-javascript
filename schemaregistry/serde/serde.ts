@@ -232,15 +232,19 @@ export abstract class Serde {
     if (msg == null || target == null) {
       return msg
     }
+    let enabledEnv: string | undefined
     let rules: Rule[] | undefined
     switch (ruleMode) {
       case RuleMode.UPGRADE:
+        enabledEnv = target.ruleSet?.enableAt
         rules = target.ruleSet?.migrationRules
         break
       case RuleMode.DOWNGRADE:
+        enabledEnv = source?.ruleSet?.enableAt
         rules = source?.ruleSet?.migrationRules?.map(x => x).reverse()
         break
       default:
+        enabledEnv = target.ruleSet?.enableAt
         if (rulePhase === RulePhase.ENCODING) {
           rules = target.ruleSet?.encodingRules
         } else {
@@ -257,7 +261,9 @@ export abstract class Serde {
     }
     for (let i = 0; i < rules.length; i++ ) {
       let rule = rules[i]
-      if (this.isDisabled(rule)) {
+      let ctx = new RuleContext(enabledEnv, source, target, subject, topic,
+        this.serdeType === SerdeType.KEY, ruleMode, rule, i, rules, inlineTags, this.fieldTransformer!)
+      if (this.isDisabled(ctx, rule)) {
         continue
       }
       let mode = rule.mode
@@ -278,8 +284,6 @@ export abstract class Serde {
           }
           break
       }
-      let ctx = new RuleContext(source, target, subject, topic,
-        this.serdeType === SerdeType.KEY, ruleMode, rule, i, rules, inlineTags, this.fieldTransformer!)
       let ruleExecutor = this.ruleRegistry.getExecutor(rule.type)
       if (ruleExecutor == null) {
         await this.runAction(ctx, ruleMode, rule, this.getOnFailure(rule), msg,
@@ -327,10 +331,14 @@ export abstract class Serde {
     return rule.onFailure
   }
 
-  isDisabled(rule: Rule): boolean | undefined {
+  isDisabled(ctx: RuleContext, rule: Rule): boolean | undefined {
     let override = this.ruleRegistry.getOverride(rule.type)
     if (override != null && override.disabled != null) {
       return override.disabled
+    }
+    let enabledEnv = ctx.enabledEnv ?? 'ALL'
+    if (enabledEnv !== 'ALL' && enabledEnv !== 'CLIENT') {
+      return true
     }
     return rule.disabled
   }
@@ -766,6 +774,7 @@ export const PrefixSchemaIdDeserializer: SchemaIdDeserializerFunc = (
  * RuleContext represents a rule context
  */
 export class RuleContext {
+  enabledEnv: string | undefined
   source: SchemaInfo | null
   target: SchemaInfo
   subject: string
@@ -779,9 +788,10 @@ export class RuleContext {
   fieldTransformer: FieldTransformer
   private fieldContexts: FieldContext[]
 
-  constructor(source: SchemaInfo | null, target: SchemaInfo, subject: string, topic: string,
+  constructor(enabledEnv: string | undefined, source: SchemaInfo | null, target: SchemaInfo, subject: string, topic: string,
               isKey: boolean, ruleMode: RuleMode, rule: Rule, index: number, rules: Rule[],
               inlineTags: Map<string, Set<string>> | null, fieldTransformer: FieldTransformer) {
+    this.enabledEnv = enabledEnv
     this.source = source
     this.target = target
     this.subject = subject
