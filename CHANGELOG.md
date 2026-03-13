@@ -1,3 +1,11 @@
+
+# confluent-kafka-javascript 1.x.x
+
+## Enhancements
+1. Add AssociatedNameStrategy (#454)
+2. Add enableAt to RuleSet (#470)
+
+
 # confluent-kafka-javascript 1.8.2
 
 v1.8.2 is a maintenance release. It is supported for all usage.
