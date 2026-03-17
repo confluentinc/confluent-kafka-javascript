@@ -38,7 +38,6 @@ template<> std::vector<std::string> GetParameter<std::vector<std::string> >(
   Napi::Object, std::string, std::vector<std::string>);
 template<> Napi::Array GetParameter<Napi::Array >(
   Napi::Object, std::string, Napi::Array);
-// template int GetParameter<int>(v8::Local<v8::Object, std::string, int);
 std::vector<std::string> v8ArrayToStringVector(Napi::Array);
 std::list<std::string> v8ArrayToStringList(Napi::Array);
 

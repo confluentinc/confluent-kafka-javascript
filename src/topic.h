@@ -24,7 +24,7 @@ namespace NodeKafka {
 class Topic : public Napi::ObjectWrap<Topic> {
  public:
   static void Init(const Napi::Env &, Napi::Object);
-  Topic(const Napi::CallbackInfo& info);
+  explicit Topic(const Napi::CallbackInfo& info);
   ~Topic();
 
   template <class T> Baton toRDKafkaTopic(Connection<T> *handle);

@@ -12,8 +12,6 @@
 
 #include <napi.h>
 #include <uv.h>
-#include <napi.h>
-#include <uv.h>
 #include <node_buffer.h>
 #include <string>
 #include <vector>
@@ -93,7 +91,7 @@ class Producer : public Connection<Producer> {
     NodeKafka::KafkaConsumer* consumer,
     int timeout_ms);
 
-  Producer(const Napi::CallbackInfo& info);
+  explicit Producer(const Napi::CallbackInfo& info);
   ~Producer();
 
  protected:

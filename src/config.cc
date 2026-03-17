@@ -55,7 +55,8 @@ Conf * Conf::create(RdKafka::Conf::ConfType type, Napi::Object object, std::stri
       } else if (value.IsBoolean()) {
         string_value = value.As<Napi::Boolean>().Value() ? "true" : "false";
       } else {
-        // Use JS ToString coercion (mirrors NAN's value->ToString()->Utf8Value())
+        // Use JS ToString coercion (mirrors NAN's
+        // value->ToString()->Utf8Value())
         // so that e.g. undefined becomes "undefined" rather than throwing.
         string_value = value.ToString().Utf8Value();
       }

@@ -13,7 +13,6 @@
 
 #include <napi.h>
 #include <uv.h>
-#include <uv.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -41,7 +40,7 @@ class AdminClient : public Connection<AdminClient> {
  public:
   static void Init(const Napi::Env&, Napi::Object);
 
-  AdminClient(const Napi::CallbackInfo&);
+  explicit AdminClient(const Napi::CallbackInfo&);
   void ActivateDispatchers();
   void DeactivateDispatchers();
 

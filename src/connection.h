@@ -67,9 +67,9 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
     if (IsConnected()) {
       scoped_shared_read_lock lock(m_connection_lock);
       if (IsConnected()) {
-	topic = RdKafka::Topic::create(m_client, topic_name, conf, errstr);
+  topic = RdKafka::Topic::create(m_client, topic_name, conf, errstr);
       } else {
-	return Baton(RdKafka::ErrorCode::ERR__STATE);
+  return Baton(RdKafka::ErrorCode::ERR__STATE);
       }
     } else {
       return Baton(RdKafka::ErrorCode::ERR__STATE);
@@ -93,7 +93,7 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
     if (!topic_name.empty()) {
       Baton b = CreateTopic(topic_name);
       if (b.err() == RdKafka::ErrorCode::ERR_NO_ERROR) {
-	topic = b.data<RdKafka::Topic*>();
+  topic = b.data<RdKafka::Topic*>();
       }
     }
 
@@ -106,10 +106,10 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
     if (IsConnected()) {
       scoped_shared_read_lock lock(m_connection_lock);
       if (IsConnected()) {
-	// Always send true - we
-	err = m_client->metadata(all_topics, topic, &metadata, timeout_ms);
+  // Always send true - we
+  err = m_client->metadata(all_topics, topic, &metadata, timeout_ms);
       } else {
-	err = RdKafka::ERR__STATE;
+  err = RdKafka::ERR__STATE;
       }
     } else {
       err = RdKafka::ERR__STATE;
@@ -128,9 +128,9 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
   }
 
   Baton QueryWatermarkOffsets(
-			      std::string topic_name, int32_t partition,
-			      int64_t* low_offset, int64_t* high_offset,
-			      int timeout_ms) {
+            std::string topic_name, int32_t partition,
+            int64_t* low_offset, int64_t* high_offset,
+            int timeout_ms) {
     // Check if we are connected first
 
     RdKafka::ErrorCode err;
@@ -138,12 +138,12 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
     if (IsConnected()) {
       scoped_shared_read_lock lock(m_connection_lock);
       if (IsConnected()) {
-	// Always send true - we
-	err = m_client->query_watermark_offsets(topic_name, partition,
-						low_offset, high_offset, timeout_ms);
+  // Always send true - we
+  err = m_client->query_watermark_offsets(topic_name, partition,
+            low_offset, high_offset, timeout_ms);
 
       } else {
-	err = RdKafka::ERR__STATE;
+  err = RdKafka::ERR__STATE;
       }
     } else {
       err = RdKafka::ERR__STATE;
@@ -163,8 +163,8 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
    *          there still may be an error on a topic partition basis.
    */
   Baton OffsetsForTimes(
-			std::vector<RdKafka::TopicPartition*> &toppars,
-			int timeout_ms) {
+      std::vector<RdKafka::TopicPartition*> &toppars,
+      int timeout_ms) {
     // Check if we are connected first
 
     RdKafka::ErrorCode err;
@@ -172,11 +172,11 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
     if (IsConnected()) {
       scoped_shared_read_lock lock(m_connection_lock);
       if (IsConnected()) {
-	// Always send true - we
-	err = m_client->offsetsForTimes(toppars, timeout_ms);
+  // Always send true - we
+  err = m_client->offsetsForTimes(toppars, timeout_ms);
 
       } else {
-	err = RdKafka::ERR__STATE;
+  err = RdKafka::ERR__STATE;
       }
     } else {
       err = RdKafka::ERR__STATE;
@@ -186,16 +186,16 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
   }
 
   Baton SetSaslCredentials(
-			   std::string username, std::string password) {
+         std::string username, std::string password) {
     RdKafka::Error *error;
 
     if (IsConnected()) {
       scoped_shared_read_lock lock(m_connection_lock);
       if (IsConnected()) {
-	// Always send true - we
-	error = m_client->sasl_set_credentials(username, password);
+  // Always send true - we
+  error = m_client->sasl_set_credentials(username, password);
       } else {
-	return Baton(RdKafka::ERR__STATE);
+  return Baton(RdKafka::ERR__STATE);
       }
     } else {
       return Baton(RdKafka::ERR__STATE);
@@ -205,19 +205,19 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
   }
 
   Baton SetOAuthBearerToken(
-			    const std::string& value, int64_t lifetime_ms,
-			    const std::string& principal_name,
-			    const std::list<std::string>& extensions) {
+          const std::string& value, int64_t lifetime_ms,
+          const std::string& principal_name,
+          const std::list<std::string>& extensions) {
     RdKafka::ErrorCode error_code;
     std::string errstr;
 
     if (IsConnected()) {
       scoped_shared_read_lock lock(m_connection_lock);
       if (IsConnected()) {
-	error_code = m_client->oauthbearer_set_token(
-						     value, lifetime_ms, principal_name, extensions, errstr);
+  error_code = m_client->oauthbearer_set_token(
+                 value, lifetime_ms, principal_name, extensions, errstr);
       } else {
-	return Baton(RdKafka::ERR__STATE);
+  return Baton(RdKafka::ERR__STATE);
       }
     } else {
       return Baton(RdKafka::ERR__STATE);
@@ -236,9 +236,9 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
     if (IsConnected()) {
       scoped_shared_read_lock lock(m_connection_lock);
       if (IsConnected()) {
-	error_code = m_client->oauthbearer_set_token_failure(errstr);
+  error_code = m_client->oauthbearer_set_token_failure(errstr);
       } else {
-	return Baton(RdKafka::ERR__STATE);
+  return Baton(RdKafka::ERR__STATE);
       }
     } else {
       return Baton(RdKafka::ERR__STATE);
@@ -265,12 +265,12 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
   virtual void DeactivateDispatchers() = 0;
 
   virtual void ConfigureCallback(
-				 const std::string &string_key, const Napi::Function &cb, bool add) {
+         const std::string &string_key, const Napi::Function &cb, bool add) {
     if (string_key.compare("event_cb") == 0) {
       if (add) {
-	this->m_event_cb.dispatcher.AddCallback(cb);
+  this->m_event_cb.dispatcher.AddCallback(cb);
       } else {
-	this->m_event_cb.dispatcher.RemoveCallback(cb);
+  this->m_event_cb.dispatcher.RemoveCallback(cb);
       }
     }
   }
@@ -304,16 +304,19 @@ template <class T> class Connection : public Napi::ObjectWrap<T> {
     return Baton(RdKafka::ERR_NO_ERROR);
   }
 
-protected:
-  Connection(const Napi::CallbackInfo &info): Napi::ObjectWrap<T>(info), m_event_cb() {
+ protected:
+  explicit Connection(const Napi::CallbackInfo &info)
+      : Napi::ObjectWrap<T>(info), m_event_cb() {
     Napi::Env env = info.Env();
     if (!info.IsConstructCall()) {
-      Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "non-constructor invocation not supported")
+          .ThrowAsJavaScriptException();
     }
 
     if (info.Length() < 2) {
-      Napi::Error::New(env, "You must supply global and topic configuration").ThrowAsJavaScriptException();
-
+      Napi::Error::New(env,
+          "You must supply global and topic configuration")
+          .ThrowAsJavaScriptException();
     }
   }
 
@@ -374,7 +377,7 @@ protected:
       return Baton(RdKafka::ERR_NO_ERROR);
     } else {
       Baton result(error->code(), error->str(), error->is_fatal(),
-		   error->is_retriable(), error->txn_requires_abort());
+       error->is_retriable(), error->txn_requires_abort());
       delete error;
       return result;
     }
@@ -438,7 +441,8 @@ protected:
     }
 
     if (!info[1].IsFunction()) {
-      Napi::Error::New(env, "Second parameter must be a callback").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Second parameter must be a callback")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -452,7 +456,7 @@ protected:
     *callback = Napi::Persistent(cb);
 
     Napi::AsyncWorker *worker = new Workers::ConnectionMetadata(
-	callback, obj, topic, timeout_ms, allTopics);
+  callback, obj, topic, timeout_ms, allTopics);
     worker->Queue();
 
     return env.Null();
@@ -464,7 +468,8 @@ protected:
 
     if (info.Length() < 3 || !info[0].IsArray()) {
       // Just throw an exception
-      Napi::Error::New(env, "Need to specify an array of topic partitions").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Need to specify an array of topic partitions")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -480,7 +485,7 @@ protected:
     Connection* handle = this;
 
     Napi::AsyncWorker *worker = new Workers::Handle::OffsetsForTimes<T>(
-	callback, handle, toppars, timeout_ms);
+  callback, handle, toppars, timeout_ms);
     worker->Queue();
 
     return env.Null();
@@ -493,23 +498,26 @@ protected:
     Connection* obj = this;
 
     if (!info[0].IsString()) {
-      Napi::Error::New(env, "1st parameter must be a topic string").ThrowAsJavaScriptException();
-      ;
+      Napi::Error::New(env, "1st parameter must be a topic string")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[1].IsNumber()) {
-      Napi::Error::New(env, "2nd parameter must be a partition number").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "2nd parameter must be a partition number")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[2].IsNumber()) {
-      Napi::Error::New(env, "3rd parameter must be a number of milliseconds").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "3rd parameter must be a number of milliseconds")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[3].IsFunction()) {
-      Napi::Error::New(env, "4th parameter must be a callback").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "4th parameter must be a callback")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -530,7 +538,7 @@ protected:
     callback->Reset(cb);
 
     Napi::AsyncWorker *worker = new Workers::ConnectionQueryWatermarkOffsets(
-	callback, obj, topic_name, partition, timeout_ms);
+  callback, obj, topic_name, partition, timeout_ms);
     worker->Queue();
 
     return env.Null();
@@ -539,12 +547,14 @@ protected:
   Napi::Value NodeSetSaslCredentials(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!info[0].IsString()) {
-      Napi::Error::New(env, "1st parameter must be a username string").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "1st parameter must be a username string")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[1].IsString()) {
-      Napi::Error::New(env, "2nd parameter must be a password string").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "2nd parameter must be a password string")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -575,10 +585,11 @@ protected:
     Napi::HandleScope scope(env);
 
     if (info.Length() < 2 ||
-	!info[0].IsBoolean() ||
-	!info[1].IsObject()) {
+  !info[0].IsBoolean() ||
+  !info[1].IsObject()) {
       // Just throw an exception
-      Napi::Error::New(env, "Need to specify a callbacks object").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Need to specify a callbacks object")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -594,68 +605,68 @@ protected:
       std::string configs_string_key;
 
       Napi::Value configs_key =
-	(configs_property_names).Get(j);
+  (configs_property_names).Get(j);
       Napi::Value configs_value =
-	(configs_object).Get(configs_key);
+  (configs_object).Get(configs_key);
 
       int config_type = 0;
       if (configs_value.IsObject() && configs_key.IsString()) {
-	std::string configs_utf8_key = configs_key.As<Napi::String>();
-	configs_string_key = std::string(configs_utf8_key);
-	if (configs_string_key.compare("global") == 0) {
-	  config_type = 1;
-	} else if (configs_string_key.compare("topic") == 0) {
-	  config_type = 2;
-	} else if (configs_string_key.compare("event") == 0) {
-	  config_type = 3;
-	} else {
-	  continue;
-	}
+  std::string configs_utf8_key = configs_key.As<Napi::String>();
+  configs_string_key = std::string(configs_utf8_key);
+  if (configs_string_key.compare("global") == 0) {
+    config_type = 1;
+  } else if (configs_string_key.compare("topic") == 0) {
+    config_type = 2;
+  } else if (configs_string_key.compare("event") == 0) {
+    config_type = 3;
+  } else {
+    continue;
+  }
       } else {
-	continue;
+  continue;
       }
 
       Napi::Object object =
-	configs_value.ToObject();
+  configs_value.ToObject();
       Napi::Array property_names =
-	object.GetPropertyNames();
+  object.GetPropertyNames();
 
       for (unsigned int i = 0; i < property_names.Length(); ++i) {
-	std::string errstr;
-	std::string string_key;
+  std::string errstr;
+  std::string string_key;
 
-	Napi::Value key = (property_names).Get(i);
-	Napi::Value value = (object).Get(key);
+  Napi::Value key = (property_names).Get(i);
+  Napi::Value value = (object).Get(key);
 
-	if (key.IsString()) {
-	  std::string utf8_key = key.As<Napi::String>();
-	  string_key = std::string(utf8_key);
-	} else {
-	  continue;
-	}
+  if (key.IsString()) {
+    std::string utf8_key = key.As<Napi::String>();
+    string_key = std::string(utf8_key);
+  } else {
+    continue;
+  }
 
-	if (value.IsFunction()) {
-	  Napi::Function cb = value.As<Napi::Function>();
-	  switch (config_type) {
-	  case 1:
-	    obj->m_gconfig->ConfigureCallback(string_key, cb, add, errstr);
-	    if (!errstr.empty()) {
-	      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
-	      return env.Null();
-	    }
-	    break;
-	  case 2:
-	    obj->m_tconfig->ConfigureCallback(string_key, cb, add, errstr);
-	    if (!errstr.empty()) {
-	      Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
-	      return env.Null();
-	    }
-	    break;
-	  case 3:
-	    obj->ConfigureCallback(string_key, cb, add);
-	    break;
-	  }
-	}
+  if (value.IsFunction()) {
+    Napi::Function cb = value.As<Napi::Function>();
+    switch (config_type) {
+    case 1:
+      obj->m_gconfig->ConfigureCallback(string_key, cb, add, errstr);
+      if (!errstr.empty()) {
+        Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+        return env.Null();
+      }
+      break;
+    case 2:
+      obj->m_tconfig->ConfigureCallback(string_key, cb, add, errstr);
+      if (!errstr.empty()) {
+        Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
+        return env.Null();
+      }
+      break;
+    case 3:
+      obj->ConfigureCallback(string_key, cb, add);
+      break;
+    }
+  }
       }
     }
 
@@ -665,22 +676,27 @@ protected:
   Napi::Value NodeSetOAuthBearerToken(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!info[0].IsString()) {
-      Napi::Error::New(env, "1st parameter must be a token string").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "1st parameter must be a token string")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[1].IsNumber()) {
-      Napi::Error::New(env, "2nd parameter must be a lifetime_ms number").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "2nd parameter must be a lifetime_ms number")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[2].IsString()) {
-      Napi::Error::New(env, "3rd parameter must be a principal_name string").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "3rd parameter must be a principal_name string")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[3].IsNull() && !info[3].IsUndefined() && !info[3].IsArray()) {
-      Napi::Error::New(env, "4th parameter must be an extensions array or null").ThrowAsJavaScriptException();
+      Napi::Error::New(env,
+          "4th parameter must be an extensions array or null")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -718,7 +734,8 @@ protected:
   Napi::Value NodeSetOAuthBearerTokenFailure(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!info[0].IsString()) {
-      Napi::Error::New(env, "1st parameter must be an error string").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "1st parameter must be an error string")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 

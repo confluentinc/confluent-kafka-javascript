@@ -92,17 +92,20 @@ void Topic::Init(const Napi::Env &env, Napi::Object exports) {
 Topic::Topic(const Napi::CallbackInfo &info): ObjectWrap<Topic>(info) {
   Napi::Env env = info.Env();
   if (!info.IsConstructCall()) {
-    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "non-constructor invocation not supported")
+        .ThrowAsJavaScriptException();
     return;
   }
 
   if (info.Length() < 1) {
-    Napi::Error::New(env, "topic name is required").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "topic name is required")
+        .ThrowAsJavaScriptException();
     return;
   }
 
   if (!info[0].IsString()) {
-    Napi::Error::New(env, "Topic name must be a string").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Topic name must be a string")
+        .ThrowAsJavaScriptException();
     return;
   }
 
@@ -114,7 +117,8 @@ Topic::Topic(const Napi::CallbackInfo &info): ObjectWrap<Topic>(info) {
 
     std::string errstr;
     if (!info[1].IsObject()) {
-      Napi::Error::New(env, "Configuration data must be specified").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Configuration data must be specified")
+          .ThrowAsJavaScriptException();
       return;
     }
 
@@ -151,7 +155,8 @@ Napi::Value Topic::NodeOffsetStore(const Napi::CallbackInfo& info) {
   // @TODO(sparente)
 }
 
-// Explicit instantiation for Producer (the only type that calls toRDKafkaTopic).
+// Explicit instantiation for Producer (the only type that calls
+// toRDKafkaTopic).
 template Baton Topic::toRDKafkaTopic<Producer>(Connection<Producer>*);
 
 }  // namespace NodeKafka

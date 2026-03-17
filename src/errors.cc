@@ -34,7 +34,7 @@ Napi::Error RdKafkaError(const Napi::Env& env, const RdKafka::ErrorCode &err) {
 }
 
 Napi::Error RdKafkaError(
-			 const Napi::Env& env,			  
+       const Napi::Env& env,
   const RdKafka::ErrorCode &err, std::string errstr,
   bool isFatal, bool isRetriable, bool isTxnRequiresAbort) {
   Napi::Error ret = RdKafkaError(env, err, errstr);

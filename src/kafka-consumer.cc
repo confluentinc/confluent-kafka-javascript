@@ -28,20 +28,24 @@ namespace NodeKafka {
  * @sa NodeKafka::Client
  */
 
-KafkaConsumer::KafkaConsumer(const Napi::CallbackInfo& info): Connection<KafkaConsumer>(info) {
+KafkaConsumer::KafkaConsumer(const Napi::CallbackInfo& info)
+    : Connection<KafkaConsumer>(info) {
   Napi::Env env = info.Env();
   if (!info.IsConstructCall()) {
-    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "non-constructor invocation not supported")
+        .ThrowAsJavaScriptException();
     return;
   }
 
   if (info.Length() < 2) {
-    Napi::Error::New(env, "You must supply global and topic configuration").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "You must supply global and topic configuration")
+        .ThrowAsJavaScriptException();
     return;
   }
 
   if (!info[0].IsObject()) {
-    Napi::Error::New(env, "Global configuration data must be specified").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Global configuration data must be specified")
+        .ThrowAsJavaScriptException();
     return;
   }
 
@@ -60,7 +64,8 @@ KafkaConsumer::KafkaConsumer(const Napi::CallbackInfo& info): Connection<KafkaCo
   // If tconfig isn't set, then just let us pick properties from gconf.
   Conf* tconfig = nullptr;
   if (info[1].IsObject()) {
-    tconfig = Conf::create(RdKafka::Conf::CONF_TOPIC, info[1].ToObject(), errstr);
+    tconfig = Conf::create(RdKafka::Conf::CONF_TOPIC, info[1].ToObject(),
+        errstr);
 
     if (!tconfig) {
       delete gconfig;
@@ -167,8 +172,8 @@ void KafkaConsumer::DeactivateDispatchers() {
 }
 
 void KafkaConsumer::ConfigureCallback(const std::string& string_key,
-				      const Napi::Function& cb,
-				      bool add) {
+              const Napi::Function& cb,
+              bool add) {
   if (string_key.compare("queue_non_empty_cb") == 0) {
     if (add) {
       this->m_queue_not_empty_cb.dispatcher.AddCallback(cb);
@@ -213,7 +218,7 @@ Baton KafkaConsumer::GetWatermarkOffsets(
     if (IsConnected()) {
       // Always send true - we
       err = m_client->get_watermark_offsets(topic_name, partition,
-	low_offset, high_offset);
+  low_offset, high_offset);
     } else {
       err = RdKafka::ERR__STATE;
     }
@@ -305,13 +310,13 @@ Baton KafkaConsumer::IncrementalUnassign(
     // For now, use two for loops. Make more efficient if needed later.
     for (unsigned int i = 0; i < partitions.size(); i++) {
       for (unsigned int j = 0; j < m_partitions.size(); j++) {
-	if (partitions[i]->partition() == m_partitions[j]->partition() &&
-	    partitions[i]->topic() == m_partitions[j]->topic()) {
-	  delete_partitions.push_back(m_partitions[j]);
-	  m_partitions.erase(m_partitions.begin() + j);
-	  m_partition_cnt--;
-	  break;
-	}
+  if (partitions[i]->partition() == m_partitions[j]->partition() &&
+      partitions[i]->topic() == m_partitions[j]->topic()) {
+    delete_partitions.push_back(m_partitions[j]);
+    m_partitions.erase(m_partitions.begin() + j);
+    m_partition_cnt--;
+    break;
+  }
       }
     }
   }
@@ -507,12 +512,11 @@ Baton KafkaConsumer::Consume(int timeout_ms) {
       RdKafka::ErrorCode response_code = message->err();
       // we want to handle these errors at the call site
       if (response_code != RdKafka::ERR_NO_ERROR &&
-	 response_code != RdKafka::ERR__PARTITION_EOF &&
-	 response_code != RdKafka::ERR__TIMED_OUT &&
-	 response_code != RdKafka::ERR__TIMED_OUT_QUEUE
-       ) {
-	delete message;
-	return Baton(response_code);
+          response_code != RdKafka::ERR__PARTITION_EOF &&
+          response_code != RdKafka::ERR__TIMED_OUT &&
+          response_code != RdKafka::ERR__TIMED_OUT_QUEUE) {
+  delete message;
+  return Baton(response_code);
       }
 
       return Baton(message);
@@ -572,7 +576,8 @@ void KafkaConsumer::Init(Napi::Env env, Napi::Object exports) {
        * @sa NodeKafka::Connection
        */
 
-      InstanceMethod("configureCallbacks", &KafkaConsumer::NodeConfigureCallbacks),
+      InstanceMethod("configureCallbacks",
+          &KafkaConsumer::NodeConfigureCallbacks),
 
       /*
        * @brief Methods to do with establishing state
@@ -582,10 +587,14 @@ void KafkaConsumer::Init(Napi::Env env, Napi::Object exports) {
       InstanceMethod("getMetadata", &KafkaConsumer::NodeGetMetadata),
       InstanceMethod("queryWatermarkOffsets", &KafkaConsumer::NodeQueryWatermarkOffsets),  // NOLINT
       InstanceMethod("offsetsForTimes", &KafkaConsumer::NodeOffsetsForTimes),
-      InstanceMethod("getWatermarkOffsets", &KafkaConsumer::NodeGetWatermarkOffsets),
-      InstanceMethod("setSaslCredentials", &KafkaConsumer::NodeSetSaslCredentials),
-      InstanceMethod("setOAuthBearerToken", &KafkaConsumer::NodeSetOAuthBearerToken),
-      InstanceMethod("setOAuthBearerTokenFailure", &KafkaConsumer::NodeSetOAuthBearerTokenFailure),
+      InstanceMethod("getWatermarkOffsets",
+          &KafkaConsumer::NodeGetWatermarkOffsets),
+      InstanceMethod("setSaslCredentials",
+          &KafkaConsumer::NodeSetSaslCredentials),
+      InstanceMethod("setOAuthBearerToken",
+          &KafkaConsumer::NodeSetOAuthBearerToken),
+      InstanceMethod("setOAuthBearerTokenFailure",
+          &KafkaConsumer::NodeSetOAuthBearerTokenFailure),
 
       /*
        * @brief Methods exposed to do with message retrieval
@@ -613,17 +622,21 @@ void KafkaConsumer::Init(Napi::Env env, Napi::Object exports) {
       InstanceMethod("position", &KafkaConsumer::NodePosition),
       InstanceMethod("assign", &KafkaConsumer::NodeAssign),
       InstanceMethod("unassign", &KafkaConsumer::NodeUnassign),
-      InstanceMethod("incrementalAssign", &KafkaConsumer::NodeIncrementalAssign),
-      InstanceMethod("incrementalUnassign", &KafkaConsumer::NodeIncrementalUnassign),
+      InstanceMethod("incrementalAssign",
+          &KafkaConsumer::NodeIncrementalAssign),
+      InstanceMethod("incrementalUnassign",
+          &KafkaConsumer::NodeIncrementalUnassign),
       InstanceMethod("assignments", &KafkaConsumer::NodeAssignments),
       InstanceMethod("assignmentLost", &KafkaConsumer::NodeAssignmentLost),
-      InstanceMethod("rebalanceProtocol", &KafkaConsumer::NodeRebalanceProtocol),
+      InstanceMethod("rebalanceProtocol",
+          &KafkaConsumer::NodeRebalanceProtocol),
 
       InstanceMethod("commit", &KafkaConsumer::NodeCommit),
       InstanceMethod("commitSync", &KafkaConsumer::NodeCommitSync),
       InstanceMethod("commitCb", &KafkaConsumer::NodeCommitCb),
       InstanceMethod("offsetsStore", &KafkaConsumer::NodeOffsetsStore),
-      InstanceMethod("offsetsStoreSingle", &KafkaConsumer::NodeOffsetsStoreSingle),
+      InstanceMethod("offsetsStoreSingle",
+          &KafkaConsumer::NodeOffsetsStoreSingle),
     });
 
   constructor.Reset(KafkaConsumer);
@@ -652,7 +665,8 @@ Napi::Value KafkaConsumer::NodeCommitted(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 3 || !info[0].IsArray()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify an array of topic partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify an array of topic partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -702,7 +716,8 @@ Napi::Value KafkaConsumer::NodePosition(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 1 || !info[0].IsArray()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify an array of topic partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify an array of topic partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -749,7 +764,8 @@ Napi::Value KafkaConsumer::NodeAssignmentLost(const Napi::CallbackInfo &info) {
   return Napi::Boolean::New(env, lost);
 }
 
-Napi::Value KafkaConsumer::NodeRebalanceProtocol(const Napi::CallbackInfo &info) {
+Napi::Value KafkaConsumer::NodeRebalanceProtocol(
+    const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   std::string protocol = this->RebalanceProtocol();
   return Napi::String::New(env, protocol);
@@ -761,7 +777,8 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
 
   if (info.Length() < 1 || !info[0].IsArray()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify an array of partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify an array of partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -771,7 +788,8 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
   for (unsigned int i = 0; i < partitions.Length(); ++i) {
     Napi::Value partition_obj_value = partitions.Get(i);
     if (!partition_obj_value.IsObject()) {
-      Napi::Error::New(env, "Must pass topic-partition objects").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Must pass topic-partition objects")
+          .ThrowAsJavaScriptException();
     }
 
     Napi::Object partition_obj = partition_obj_value.As<Napi::Object>();
@@ -784,17 +802,17 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
       RdKafka::TopicPartition* part;
 
       if (partition < 0) {
-	part = Connection::GetPartition(topic);
+  part = Connection::GetPartition(topic);
       } else {
-	part = Connection::GetPartition(topic, partition);
+  part = Connection::GetPartition(topic, partition);
       }
 
       // Set the default value to offset invalid. If provided, we will not set
       // the offset.
       int64_t offset = GetParameter<int64_t>(
-	partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
+  partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
       if (offset != RdKafka::Topic::OFFSET_INVALID) {
-	part->set_offset(offset);
+  part->set_offset(offset);
       }
 
       topic_partitions.push_back(part);
@@ -805,8 +823,8 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
   Baton b = this->Assign(topic_partitions);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
-    Napi::Error::New(env, RdKafka::err2str(b.err()).c_str()).ThrowAsJavaScriptException();
-
+    Napi::Error::New(env, RdKafka::err2str(b.err()).c_str())
+        .ThrowAsJavaScriptException();
   }
 
   return Napi::Value::From(env, true);
@@ -817,27 +835,30 @@ Napi::Value KafkaConsumer::NodeUnassign(const Napi::CallbackInfo &info) {
   Napi::HandleScope scope(env);
 
   if (!this->IsClosing() && !this->IsConnected()) {
-    Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "KafkaConsumer is disconnected")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   Baton b = this->Unassign();
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
-    Napi::Error::New(env, RdKafka::err2str(b.err()).c_str()).ThrowAsJavaScriptException();
-
+    Napi::Error::New(env, RdKafka::err2str(b.err()).c_str())
+        .ThrowAsJavaScriptException();
   }
 
   return Napi::Value::From(env, true);
 }
 
-Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo &info) {
+Napi::Value KafkaConsumer::NodeIncrementalAssign(
+    const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsArray()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify an array of partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify an array of partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -847,7 +868,8 @@ Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo &info)
   for (unsigned int i = 0; i < partitions.Length(); ++i) {
     Napi::Value partition_obj_value = partitions.Get(i);
     if (!partition_obj_value.IsObject()) {
-      Napi::Error::New(env, "Must pass topic-partition objects").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Must pass topic-partition objects")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -861,17 +883,17 @@ Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo &info)
       RdKafka::TopicPartition* part;
 
       if (partition < 0) {
-	part = Connection::GetPartition(topic);
+  part = Connection::GetPartition(topic);
       } else {
-	part = Connection::GetPartition(topic, partition);
+  part = Connection::GetPartition(topic, partition);
       }
 
       // Set the default value to offset invalid. If provided, we will not set
       // the offset.
       int64_t offset = GetParameter<int64_t>(
-	partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
+  partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
       if (offset != RdKafka::Topic::OFFSET_INVALID) {
-	part->set_offset(offset);
+  part->set_offset(offset);
       }
 
       topic_partitions.push_back(part);
@@ -888,13 +910,15 @@ Napi::Value KafkaConsumer::NodeIncrementalAssign(const Napi::CallbackInfo &info)
   return Napi::Value::From(env, true);
 }
 
-Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo &info) {
+Napi::Value KafkaConsumer::NodeIncrementalUnassign(
+    const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsArray()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify an array of partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify an array of partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -904,7 +928,8 @@ Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo &inf
   for (unsigned int i = 0; i < partitions.Length(); ++i) {
     Napi::Value partition_obj_value = partitions.Get(i);
     if (!partition_obj_value.IsObject()) {
-      Napi::Error::New(env, "Must pass topic-partition objects").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Must pass topic-partition objects")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -918,17 +943,17 @@ Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo &inf
       RdKafka::TopicPartition* part;
 
       if (partition < 0) {
-	part = Connection::GetPartition(topic);
+  part = Connection::GetPartition(topic);
       } else {
-	part = Connection::GetPartition(topic, partition);
+  part = Connection::GetPartition(topic, partition);
       }
 
       // Set the default value to offset invalid. If provided, we will not set
       // the offset.
       int64_t offset = GetParameter<int64_t>(
-	partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
+  partition_obj, "offset", RdKafka::Topic::OFFSET_INVALID);
       if (offset != RdKafka::Topic::OFFSET_INVALID) {
-	part->set_offset(offset);
+  part->set_offset(offset);
       }
 
       topic_partitions.push_back(part);
@@ -941,7 +966,6 @@ Napi::Value KafkaConsumer::NodeIncrementalUnassign(const Napi::CallbackInfo &inf
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     Napi::Error errorObject = b.ToError(env);
     errorObject.ThrowAsJavaScriptException();
-
   }
 
   return Napi::Value::From(env, true);
@@ -964,7 +988,8 @@ Napi::Value KafkaConsumer::NodeCommit(const Napi::CallbackInfo &info) {
 
 
   if (!this->IsConnected()) {
-    Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "KafkaConsumer is disconnected")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -984,7 +1009,8 @@ Napi::Value KafkaConsumer::NodeCommit(const Napi::CallbackInfo &info) {
       Conversion::TopicPartition::FromV8Object(info[0].As<Napi::Object>());
 
     if (toppar == NULL) {
-      Napi::Error::New(env, "Invalid topic partition provided").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Invalid topic partition provided")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -993,7 +1019,8 @@ Napi::Value KafkaConsumer::NodeCommit(const Napi::CallbackInfo &info) {
 
     delete toppar;
   } else {
-    Napi::Error::New(env, "First parameter must be an object or an array").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "First parameter must be an object or an array")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1006,7 +1033,8 @@ Napi::Value KafkaConsumer::NodeCommitSync(const Napi::CallbackInfo &info) {
   int error_code;
 
   if (!this->IsConnected()) {
-    Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "KafkaConsumer is disconnected")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1026,7 +1054,8 @@ Napi::Value KafkaConsumer::NodeCommitSync(const Napi::CallbackInfo &info) {
       Conversion::TopicPartition::FromV8Object(info[0].As<Napi::Object>());
 
     if (toppar == NULL) {
-      Napi::Error::New(env, "Invalid topic partition provided").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Invalid topic partition provided")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -1035,7 +1064,8 @@ Napi::Value KafkaConsumer::NodeCommitSync(const Napi::CallbackInfo &info) {
 
     delete toppar;
   } else {
-    Napi::Error::New(env, "First parameter must be an object or an array").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "First parameter must be an object or an array")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1050,12 +1080,14 @@ Napi::Value KafkaConsumer::NodeCommitCb(const Napi::CallbackInfo &info) {
   Napi::FunctionReference *callback;
 
   if (!this->IsConnected()) {
-    Napi::Error::New(env, "KafkaConsumer is disconnected").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "KafkaConsumer is disconnected")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (info.Length() != 2) {
-    Napi::Error::New(env, "Two arguments are required").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Two arguments are required")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1063,7 +1095,8 @@ Napi::Value KafkaConsumer::NodeCommitCb(const Napi::CallbackInfo &info) {
       (info[0].IsArray() || info[0].IsNull()) &&
       info[1].IsFunction())) {
     Napi::Error::New(env,
-		     "First argument should be an array or null and second one a callback").ThrowAsJavaScriptException();
+         "First argument should be an array or null and second one a callback")
+             .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1090,7 +1123,8 @@ Napi::Value KafkaConsumer::NodeSubscribe(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 1 || !info[0].IsArray()) {
     // Just throw an exception
-    Napi::Error::New(env, "First parameter must be an array").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "First parameter must be an array")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1111,28 +1145,31 @@ Napi::Value KafkaConsumer::NodeSeek(const Napi::CallbackInfo &info) {
   // If number of parameters is less than 3 (need topic partition, timeout,
   // and callback), we can't call this thing
   if (info.Length() < 3) {
-    Napi::Error::New(env, "Must provide a topic partition, timeout, and callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env,
+        "Must provide a topic partition, timeout, and callback")
+        .ThrowAsJavaScriptException();
     return env.Null();  // NOLINT
   }
 
   if (!info[0].IsObject()) {
-    Napi::Error::New(env, "Topic partition must be an object").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Topic partition must be an object")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[1].IsNumber() && !info[1].IsNull()) {
-    Napi::Error::New(env, "Timeout must be a number.").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Timeout must be a number.")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[2].IsFunction()) {
-    Napi::Error::New(env, "Callback must be a function").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Callback must be a function")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   int timeout_ms;
-  // Nan::Maybe<uint32_t> maybeTimeout =
-  //   Nan::To<uint32_t>(info[1].As<v8::Number>());
   uint32_t maybeTimeout =
     info[1].As<Napi::Number>().Uint32Value();
 
@@ -1142,14 +1179,14 @@ Napi::Value KafkaConsumer::NodeSeek(const Napi::CallbackInfo &info) {
   // because it makes it asynchronous.
   if (timeout_ms < 10) {
     timeout_ms = 10;
-
   }
 
   const RdKafka::TopicPartition * toppar =
     Conversion::TopicPartition::FromV8Object(info[0].As<Napi::Object>());
 
   if (!toppar) {
-    Napi::Error::New(env, "Invalid topic partition provided").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Invalid topic partition provided")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1172,12 +1209,14 @@ Napi::Value KafkaConsumer::NodeOffsetsStore(const Napi::CallbackInfo &info) {
   // If number of parameters is less than 3 (need topic partition, timeout,
   // and callback), we can't call this thing
   if (info.Length() < 1) {
-    Napi::Error::New(env, "Must provide a list of topic partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Must provide a list of topic partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[0].IsArray()) {
-    Napi::Error::New(env, "Topic partition must be an array of objects").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Topic partition must be an array of objects")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1200,8 +1239,8 @@ KafkaConsumer::NodeOffsetsStoreSingle(const Napi::CallbackInfo &info) {
   // offset, and leader epoch), we can't call this.
   if (info.Length() < 4) {
     Napi::Error::New(env,
-		     "Must provide topic, partition, offset and leaderEpoch")
-	.ThrowAsJavaScriptException();
+         "Must provide topic, partition, offset and leaderEpoch")
+  .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1233,12 +1272,14 @@ Napi::Value KafkaConsumer::NodePause(const Napi::CallbackInfo &info) {
   // If number of parameters is less than 3 (need topic partition, timeout,
   // and callback), we can't call this thing
   if (info.Length() < 1) {
-    Napi::Error::New(env, "Must provide a list of topic partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Must provide a list of topic partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[0].IsArray()) {
-    Napi::Error::New(env, "Topic partition must be an array of objects").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Topic partition must be an array of objects")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1272,12 +1313,14 @@ Napi::Value KafkaConsumer::NodeResume(const Napi::CallbackInfo &info) {
   // If number of parameters is less than 3 (need topic partition, timeout,
   // and callback), we can't call this thing
   if (info.Length() < 1) {
-    Napi::Error::New(env, "Must provide a list of topic partitions").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Must provide a list of topic partitions")
+        .ThrowAsJavaScriptException();
     return env.Null();  // NOLINT
   }
 
   if (!info[0].IsArray()) {
-    Napi::Error::New(env, "Topic partition must be an array of objects").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Topic partition must be an array of objects")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1307,22 +1350,26 @@ Napi::Value KafkaConsumer::NodeConsumeLoop(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 3) {
     // Just throw an exception
-    Napi::Error::New(env, "Invalid number of parameters").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Invalid number of parameters")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[0].IsNumber()) {
-    Napi::Error::New(env, "Need to specify a timeout").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a timeout")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[1].IsNumber()) {
-    Napi::Error::New(env, "Need to specify a sleep delay").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a sleep delay")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[2].IsFunction()) {
-    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1338,12 +1385,14 @@ Napi::Value KafkaConsumer::NodeConsumeLoop(const Napi::CallbackInfo &info) {
   timeout_sleep_delay_ms = static_cast<int>(maybeSleep);
 
   if (this->m_consume_loop != nullptr) {
-    Napi::Error::New(env, "Consume was already called").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Consume was already called")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!this->IsConnected()) {
-    Napi::Error::New(env, "Connect must be called before consume").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Connect must be called before consume")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1364,7 +1413,8 @@ Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 2) {
     // Just throw an exception
-    Napi::Error::New(env, "Invalid number of parameters").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Invalid number of parameters")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1376,12 +1426,14 @@ Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo &info) {
 
   if (info[1].IsNumber()) {
     if (!info[2].IsBoolean()) {
-      Napi::Error::New(env, "Need to specify a boolean").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Need to specify a boolean")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
     if (!info[3].IsFunction()) {
-      Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Need to specify a callback")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -1389,7 +1441,8 @@ Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo &info) {
     uint32_t numMessages = numMessagesNumber.As<Napi::Number>().Uint32Value();  // NOLINT
 
     if (numMessages == 0) {
-      Napi::Error::New(env, "Parameter must be a number over 0").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Parameter must be a number over 0")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -1402,11 +1455,12 @@ Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo &info) {
     callback->Reset(cb);
 
     Napi::AsyncWorker *worker = new Workers::KafkaConsumerConsumeNum(
-	callback, this, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage);
+  callback, this, numMessages, timeout_ms, isTimeoutOnlyForFirstMessage);
     worker->Queue();
   } else {
     if (!info[1].IsFunction()) {
-      Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Need to specify a callback")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -1414,7 +1468,8 @@ Napi::Value KafkaConsumer::NodeConsume(const Napi::CallbackInfo &info) {
     Napi::FunctionReference *callback = new Napi::FunctionReference();
     callback->Reset(cb);
 
-    Napi::AsyncWorker* worker = new Workers::KafkaConsumerConsume(callback, this, timeout_ms);
+    Napi::AsyncWorker* worker = new Workers::KafkaConsumerConsume(callback,
+        this, timeout_ms);
     worker->Queue();
   }
 
@@ -1427,7 +1482,8 @@ Napi::Value KafkaConsumer::NodeConnect(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1449,7 +1505,8 @@ Napi::Value KafkaConsumer::NodeDisconnect(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -1470,23 +1527,27 @@ Napi::Value KafkaConsumer::NodeDisconnect(const Napi::CallbackInfo &info) {
     this->m_consume_loop = nullptr;
   }
 
-  Napi::AsyncWorker* worker = new Workers::KafkaConsumerDisconnect(callback, this);
+  Napi::AsyncWorker* worker = new Workers::KafkaConsumerDisconnect(callback,
+      this);
 
   worker->Queue();
   return env.Null();
 }
 
-Napi::Value KafkaConsumer::NodeGetWatermarkOffsets(const Napi::CallbackInfo &info) {
+Napi::Value KafkaConsumer::NodeGetWatermarkOffsets(
+    const Napi::CallbackInfo &info) {
     const Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
   if (!info[0].IsString()) {
-    Napi::Error::New(env, "1st parameter must be a topic string").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "1st parameter must be a topic string")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[1].IsNumber()) {
-    Napi::Error::New(env, "2nd parameter must be a partition number").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "2nd parameter must be a partition number")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 

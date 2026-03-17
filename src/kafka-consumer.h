@@ -13,7 +13,6 @@
 
 #include <napi.h>
 #include <uv.h>
-#include <uv.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -91,9 +90,9 @@ class KafkaConsumer : public Connection<KafkaConsumer> {
   void DeactivateDispatchers();
 
   void ConfigureCallback(const std::string& string_key,
-			 const Napi::Function& cb, bool add) override;
+       const Napi::Function& cb, bool add) override;
 
-  KafkaConsumer(const Napi::CallbackInfo& info);
+  explicit KafkaConsumer(const Napi::CallbackInfo& info);
   //  KafkaConsumer(Conf *, Conf *);
   ~KafkaConsumer();
 

@@ -44,7 +44,8 @@ Napi::Value NodeRdKafkaBuildInFeatures(const Napi::CallbackInfo &info) {
   delete config;
 }
 
-void defconst(Napi::Env env, Napi::Object target, const char *name, Napi::Value value) {
+void defconst(Napi::Env env, Napi::Object target, const char *name,
+    Napi::Value value) {
   target.Set(Napi::String::New(env, name), value);
 }
 
@@ -52,17 +53,24 @@ void ConstantsInit(Napi::Env env, Napi::Object exports) {
   Napi::Object topicConstants = Napi::Object::New(env);
 
   // RdKafka Error Code definitions
-  defconst(env, topicConstants, "RdKafka::Topic::PARTITION_UA", Number::New(env, RdKafka::Topic::PARTITION_UA));
-  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_BEGINNING", Number::New(env, RdKafka::Topic::OFFSET_BEGINNING));
-  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_END", Number::New(env, RdKafka::Topic::OFFSET_END));
-  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_STORED", Number::New(env, RdKafka::Topic::OFFSET_STORED));
-  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_INVALID", Number::New(env, RdKafka::Topic::OFFSET_INVALID));
+  defconst(env, topicConstants, "RdKafka::Topic::PARTITION_UA", Number::New(env,
+      RdKafka::Topic::PARTITION_UA));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_BEGINNING",
+      Number::New(env, RdKafka::Topic::OFFSET_BEGINNING));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_END", Number::New(env,
+      RdKafka::Topic::OFFSET_END));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_STORED",
+      Number::New(env, RdKafka::Topic::OFFSET_STORED));
+  defconst(env, topicConstants, "RdKafka::Topic::OFFSET_INVALID",
+      Number::New(env, RdKafka::Topic::OFFSET_INVALID));
 
   (exports).Set(Napi::String::New(env, "topic"), topicConstants);
 
-  (exports).Set(Napi::String::New(env, "err2str"),Napi::Function::New(env, NodeRdKafkaErr2Str));
+  (exports).Set(Napi::String::New(env, "err2str"),
+      Napi::Function::New(env, NodeRdKafkaErr2Str));
 
-  (exports).Set(Napi::String::New(env, "features"), Napi::Function::New(env, NodeRdKafkaBuildInFeatures));
+  (exports).Set(Napi::String::New(env, "features"), Napi::Function::New(env,
+      NodeRdKafkaBuildInFeatures));
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -73,7 +81,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   ConstantsInit(env, exports);
 
   (exports).Set(Napi::String::New(env, "librdkafkaVersion"),
-		Napi::String::New(env, RdKafka::version_str().c_str()));
+    Napi::String::New(env, RdKafka::version_str().c_str()));
   return exports;
 }
 

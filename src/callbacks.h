@@ -12,7 +12,6 @@
 
 #include <uv.h>
 #include <napi.h>
-#include <uv.h>
 
 #include <vector>
 #include <deque>
@@ -30,7 +29,7 @@ class Dispatcher {
  public:
   Dispatcher();
   ~Dispatcher();
-  void Dispatch(const int, Napi::Value []);
+  void Dispatch(const int, Napi::Value[]);
   void AddCallback(const Napi::Function&);
   void RemoveCallback(const Napi::Function&);
   bool HasCallbacks();
@@ -46,9 +45,9 @@ class Dispatcher {
 
  private:
   inline static void func(uv_async_t *async) {
-     Dispatcher *dispatcher =
-	    static_cast<Dispatcher*>(async->data);
-     dispatcher->Flush();
+    Dispatcher *dispatcher =
+      static_cast<Dispatcher*>(async->data);
+    dispatcher->Flush();
   }
   static void AsyncHandleCloseCallback(uv_handle_t *);
 
@@ -94,7 +93,7 @@ class Event : public RdKafka::EventCb {
  * Delivery report class
  *
  * Class exists because the callback needs to be able to give information
- * to the v8 main thread that it can use to formulate its object.
+ * to the main thread that it can use to formulate its object.
  */
 class DeliveryReport {
  public:
@@ -166,18 +165,18 @@ struct rebalance_event_t {
   std::vector<event_topic_partition_t> partitions;
 
   rebalance_event_t(RdKafka::ErrorCode p_err,
-	std::vector<RdKafka::TopicPartition*> p_partitions):
-	err(p_err) {
+      std::vector<RdKafka::TopicPartition*> p_partitions):
+      err(p_err) {
     // Iterate over the topic partitions because we won't have them later
     for (size_t topic_partition_i = 0;
       topic_partition_i < p_partitions.size(); topic_partition_i++) {
       RdKafka::TopicPartition* topic_partition =
-	p_partitions[topic_partition_i];
+          p_partitions[topic_partition_i];
 
       event_topic_partition_t tp(
-	topic_partition->topic(),
-	topic_partition->partition(),
-	topic_partition->offset());
+          topic_partition->topic(),
+          topic_partition->partition(),
+          topic_partition->offset());
 
       partitions.push_back(tp);
     }
@@ -189,19 +188,19 @@ struct offset_commit_event_t {
   std::vector<event_topic_partition_t> partitions;
 
   offset_commit_event_t(RdKafka::ErrorCode p_err,
-    const std::vector<RdKafka::TopicPartition*> &p_partitions):
-    err(p_err) {
+      const std::vector<RdKafka::TopicPartition*> &p_partitions):
+      err(p_err) {
     // Iterate over the topic partitions because we won't have them later
     for (size_t topic_partition_i = 0;
       topic_partition_i < p_partitions.size(); topic_partition_i++) {
       RdKafka::TopicPartition* topic_partition =
-	p_partitions[topic_partition_i];
+          p_partitions[topic_partition_i];
 
       // Just reuse this thing because it's the same exact thing we need
       event_topic_partition_t tp(
-	topic_partition->topic(),
-	topic_partition->partition(),
-	topic_partition->offset());
+          topic_partition->topic(),
+          topic_partition->partition(),
+          topic_partition->offset());
 
       partitions.push_back(tp);
     }
@@ -224,8 +223,6 @@ class Rebalance : public RdKafka::RebalanceCb {
     std::vector<RdKafka::TopicPartition*> &);
 
   RebalanceDispatcher dispatcher;
- // private:
- //  v8::Persistent<v8::Function> m_cb;
 };
 
 class OffsetCommitDispatcher : public Dispatcher {
@@ -243,8 +240,6 @@ class OffsetCommit : public RdKafka::OffsetCommitCb {
   void offset_commit_cb(RdKafka::ErrorCode, std::vector<RdKafka::TopicPartition*> &);  // NOLINT
 
   OffsetCommitDispatcher dispatcher;
- // private:
- //  v8::Persistent<v8::Function> m_cb;
 };
 
 class OAuthBearerTokenRefreshDispatcher : public Dispatcher {

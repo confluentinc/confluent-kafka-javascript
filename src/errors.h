@@ -51,9 +51,10 @@ class Baton {
   bool m_isRetriable;
   bool m_isTxnRequiresAbort;
 };
-  
+
 Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &);
-Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &, const std::string &);
+Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &,
+    const std::string &);
 Napi::Error RdKafkaError(const Napi::Env &env, const RdKafka::ErrorCode &err,
                          std::string errstr, bool isFatal, bool isRetriable,
                          bool isTxnRequiresAbort);

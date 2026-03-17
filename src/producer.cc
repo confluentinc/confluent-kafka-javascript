@@ -32,20 +32,22 @@ namespace NodeKafka {
 
 Producer::Producer(const Napi::CallbackInfo &info)
   : Connection(info), m_dr_cb(), m_partitioner_cb() {
-
   Napi::Env env = info.Env();
   if (!info.IsConstructCall()) {
-    Napi::Error::New(env, "non-constructor invocation not supported").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "non-constructor invocation not supported")
+        .ThrowAsJavaScriptException();
     return;
   }
 
   if (info.Length() < 2) {
-    Napi::Error::New(env, "You must supply global and topic configuration").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "You must supply global and topic configuration")
+        .ThrowAsJavaScriptException();
     return;
   }
 
   if (!info[0].IsObject()) {
-    Napi::Error::New(env, "Global configuration data must be specified").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Global configuration data must be specified")
+        .ThrowAsJavaScriptException();
     return;
   }
 
@@ -53,7 +55,7 @@ Producer::Producer(const Napi::CallbackInfo &info)
 
   Conf* gconfig =
     Conf::create(RdKafka::Conf::CONF_GLOBAL,
-		 (info[0].ToObject()), errstr);
+     (info[0].ToObject()), errstr);
 
   if (!gconfig) {
     Napi::Error::New(env, errstr.c_str()).ThrowAsJavaScriptException();
@@ -64,8 +66,8 @@ Producer::Producer(const Napi::CallbackInfo &info)
   Conf* tconfig = nullptr;
   if (info[1].IsObject()) {
     tconfig = Conf::create(
-			   RdKafka::Conf::CONF_TOPIC,
-			   (info[1].ToObject()), errstr);
+         RdKafka::Conf::CONF_TOPIC,
+         (info[1].ToObject()), errstr);
 
     if (!tconfig) {
       // No longer need this since we aren't instantiating anything
@@ -101,38 +103,39 @@ void Producer::Init(const Napi::Env& env, Napi::Object exports) {
 
       InstanceMethod("configureCallbacks", &Producer::NodeConfigureCallbacks),
 
-	/*
-	 * @brief Methods to do with establishing state
-	 */
+  /*
+   * @brief Methods to do with establishing state
+   */
 
-	InstanceMethod("connect", &Producer::NodeConnect),
-	InstanceMethod("disconnect", &Producer::NodeDisconnect),
-	InstanceMethod("getMetadata", &Producer::NodeGetMetadata),
-	InstanceMethod("queryWatermarkOffsets", &Producer::NodeQueryWatermarkOffsets),  // NOLINT
-	InstanceMethod("poll", &Producer::NodePoll),
-	InstanceMethod("setPollInBackground", &Producer::NodeSetPollInBackground),
-	InstanceMethod("setSaslCredentials", &Producer::NodeSetSaslCredentials),
-	InstanceMethod("setOAuthBearerToken", &Producer::NodeSetOAuthBearerToken),
-	InstanceMethod("setOAuthBearerTokenFailure", &Producer::NodeSetOAuthBearerTokenFailure),
+  InstanceMethod("connect", &Producer::NodeConnect),
+  InstanceMethod("disconnect", &Producer::NodeDisconnect),
+  InstanceMethod("getMetadata", &Producer::NodeGetMetadata),
+  InstanceMethod("queryWatermarkOffsets", &Producer::NodeQueryWatermarkOffsets),  // NOLINT
+  InstanceMethod("poll", &Producer::NodePoll),
+  InstanceMethod("setPollInBackground", &Producer::NodeSetPollInBackground),
+  InstanceMethod("setSaslCredentials", &Producer::NodeSetSaslCredentials),
+  InstanceMethod("setOAuthBearerToken", &Producer::NodeSetOAuthBearerToken),
+  InstanceMethod("setOAuthBearerTokenFailure",
+      &Producer::NodeSetOAuthBearerTokenFailure),
 
-	/*
-	 * @brief Methods exposed to do with message production
-	 */
+  /*
+   * @brief Methods exposed to do with message production
+   */
 
-	InstanceMethod("setPartitioner", &Producer::NodeSetPartitioner),
-	InstanceMethod("produce", &Producer::NodeProduce),
+  InstanceMethod("setPartitioner", &Producer::NodeSetPartitioner),
+  InstanceMethod("produce", &Producer::NodeProduce),
 
-	InstanceMethod("flush", &Producer::NodeFlush),
+  InstanceMethod("flush", &Producer::NodeFlush),
 
-	/*
-	 * @brief Methods exposed to do with transactions
-	 */
+  /*
+   * @brief Methods exposed to do with transactions
+   */
 
-	InstanceMethod("initTransactions", &Producer::NodeInitTransactions),
-	InstanceMethod("beginTransaction", &Producer::NodeBeginTransaction),
-	InstanceMethod("commitTransaction", &Producer::NodeCommitTransaction),
-	InstanceMethod("abortTransaction", &Producer::NodeAbortTransaction),
-	InstanceMethod("sendOffsetsToTransaction", &Producer::NodeSendOffsetsToTransaction), // NOLINT
+  InstanceMethod("initTransactions", &Producer::NodeInitTransactions),
+  InstanceMethod("beginTransaction", &Producer::NodeBeginTransaction),
+  InstanceMethod("commitTransaction", &Producer::NodeCommitTransaction),
+  InstanceMethod("abortTransaction", &Producer::NodeAbortTransaction),
+  InstanceMethod("sendOffsetsToTransaction", &Producer::NodeSendOffsetsToTransaction), // NOLINT
       });
 
 
@@ -215,8 +218,8 @@ Baton Producer::Produce(void* message, size_t size, RdKafka::Topic* topic,
     if (IsConnected()) {
       RdKafka::Producer* producer = dynamic_cast<RdKafka::Producer*>(m_client);
       response_code = producer->produce(topic, partition,
-	    RdKafka::Producer::RK_MSG_COPY,
-	    message, size, key, key_len, opaque);
+      RdKafka::Producer::RK_MSG_COPY,
+      message, size, key, key_len, opaque);
     } else {
       response_code = RdKafka::ERR__STATE;
     }
@@ -285,10 +288,10 @@ Baton Producer::Produce(void* message, size_t size, std::string topic,
       RdKafka::Producer* producer = dynamic_cast<RdKafka::Producer*>(m_client);
       // This one is a bit different
       response_code = producer->produce(topic, partition,
-	    RdKafka::Producer::RK_MSG_COPY,
-	    message, size,
-	    key, key_len,
-	    timestamp, headers, opaque);
+      RdKafka::Producer::RK_MSG_COPY,
+      message, size,
+      key, key_len,
+      timestamp, headers, opaque);
     } else {
       response_code = RdKafka::ERR__STATE;
     }
@@ -435,7 +438,8 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
   // Need to extract the message data here.
   if (info.Length() < 3) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify a topic, partition, and message").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a topic, partition, and message")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -460,7 +464,8 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     message_buffer_length = 0;
     message_buffer_data = NULL;
   } else if (!info[2].IsBuffer()) {
-    Napi::Error::New(env, "Message must be a buffer or null").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Message must be a buffer or null")
+        .ThrowAsJavaScriptException();
     return env.Null();
   } else {
     Napi::Object message_buffer_object = info[2].ToObject();
@@ -473,14 +478,15 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     // which should be more memory-efficient and allow v8 to dispose of the
     // buffer sooner
 
-    message_buffer_length = message_buffer_object.As<Napi::Buffer<char>>().Length();
+    message_buffer_length = message_buffer_object.As<Napi::Buffer<char>>()
+        .Length();
     message_buffer_data = message_buffer_object.As<Napi::Buffer<char>>().Data();
     if (message_buffer_data == NULL) {
       // empty string message buffer should not end up as null message
       Napi::Object message_buffer_object_emptystring =
-	  Napi::Buffer<char>::New(env, new char[0], 0);
+    Napi::Buffer<char>::New(env, new char[0], 0);
       message_buffer_length =
-	  message_buffer_object_emptystring.As<Napi::Buffer<char>>().Length();
+    message_buffer_object_emptystring.As<Napi::Buffer<char>>().Length();
       message_buffer_data = message_buffer_object_emptystring.As<Napi::Buffer<char>>().Data(); // NOLINT
     }
   }
@@ -509,9 +515,11 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     if (key_buffer_data == NULL) {
       // empty string key buffer should not end up as null key
       Napi::Object key_buffer_object_emptystring =
-	  Napi::Buffer<char>::New(env, new char[0], 0);
-      key_buffer_length = key_buffer_object_emptystring.As<Napi::Buffer<char>>().Length();
-      key_buffer_data = key_buffer_object_emptystring.As<Napi::Buffer<char>>().Data();
+    Napi::Buffer<char>::New(env, new char[0], 0);
+      key_buffer_length = key_buffer_object_emptystring
+          .As<Napi::Buffer<char>>().Length();
+      key_buffer_data = key_buffer_object_emptystring.As<Napi::Buffer<char>>()
+          .Data();
     }
   } else {
     // If it was a string just use the utf8 value.
@@ -528,7 +536,8 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
 
   if (info.Length() > 4 && !info[4].IsUndefined() && !info[4].IsNull()) {
     if (!info[4].IsNumber()) {
-      Napi::Error::New(env, "Timestamp must be a number").ThrowAsJavaScriptException();
+      Napi::Error::New(env, "Timestamp must be a number")
+          .ThrowAsJavaScriptException();
       return env.Null();
     }
 
@@ -552,43 +561,44 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
 
     if (v8Headers.Length() >= 1) {
       for (unsigned int i = 0; i < v8Headers.Length(); i++) {
-	Napi::Object header = (v8Headers).Get(i)
-	  .ToObject();
-	if (header.IsEmpty()) {
-	  continue;
-	}
+  Napi::Object header = (v8Headers).Get(i)
+    .ToObject();
+  if (header.IsEmpty()) {
+    continue;
+  }
 
-	Napi::Array props = header.GetPropertyNames();
+  Napi::Array props = header.GetPropertyNames();
 
-	// TODO: Other properties in the list of properties should not be
-	// ignored, but they are. This is a bug, need to handle it either in JS
-	// or here.
-	Napi::Value jsKey = props.Get(0u);
+  // TODO: Other properties in the list of properties should not be
+  // ignored, but they are. This is a bug, need to handle it either in JS
+  // or here.
+  Napi::Value jsKey = props.Get(0u);
 
-	// The key must be a string.
-	if (!jsKey.IsString()) {
-	  Napi::Error::New(env, "Header key must be a string").ThrowAsJavaScriptException();
-	  continue;
-	}
-	std::string key = jsKey.As<Napi::String>().Utf8Value();
+  // The key must be a string.
+  if (!jsKey.IsString()) {
+    Napi::Error::New(env, "Header key must be a string")
+        .ThrowAsJavaScriptException();
+    continue;
+  }
+  std::string key = jsKey.As<Napi::String>().Utf8Value();
 
-	// Valid types for the header are string or buffer.
-	// Other types will throw an error.
-	Napi::Value v8Value = header.Get(jsKey.As<Napi::String>());
+  // Valid types for the header are string or buffer.
+  // Other types will throw an error.
+  Napi::Value v8Value = header.Get(jsKey.As<Napi::String>());
 
-	if (v8Value.IsBuffer()) {
-	  const char* value = v8Value.As<Napi::Buffer<char>>().Data();
-	  const size_t value_len = v8Value.As<Napi::Buffer<char>>().Length();
-	  headers.push_back(RdKafka::Headers::Header(key, value, value_len));
-	} else if (v8Value.IsString()) {
-	  std::string uValue = v8Value.As<Napi::String>().Utf8Value();
-	  std::string value(uValue);
-	  headers.push_back(
-	      RdKafka::Headers::Header(key, value.c_str(), value.size()));
-	} else {
-	  Napi::Error::New(env, "Header value must be a string or buffer").ThrowAsJavaScriptException();
-
-	}
+  if (v8Value.IsBuffer()) {
+    const char* value = v8Value.As<Napi::Buffer<char>>().Data();
+    const size_t value_len = v8Value.As<Napi::Buffer<char>>().Length();
+    headers.push_back(RdKafka::Headers::Header(key, value, value_len));
+  } else if (v8Value.IsString()) {
+    std::string uValue = v8Value.As<Napi::String>().Utf8Value();
+    std::string value(uValue);
+    headers.push_back(
+        RdKafka::Headers::Header(key, value.c_str(), value.size()));
+  } else {
+    Napi::Error::New(env, "Header value must be a string or buffer")
+        .ThrowAsJavaScriptException();
+  }
       }
     }
   }
@@ -660,7 +670,8 @@ Napi::Value Producer::NodeSetPartitioner(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -675,7 +686,8 @@ Napi::Value Producer::NodeConnect(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -699,7 +711,8 @@ Napi::Value Producer::NodePoll(const Napi::CallbackInfo &info) {
   Napi::HandleScope scope(env);
 
   if (!this->IsConnected()) {
-    Napi::Error::New(env, "Producer is disconnected").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Producer is disconnected")
+        .ThrowAsJavaScriptException();
     return env.Null();
   } else {
     this->Poll();
@@ -748,7 +761,8 @@ Napi::Value Producer::NodeFlush(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 2 || !info[1].IsFunction() || !info[0].IsNumber()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify a timeout and a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a timeout and a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -758,7 +772,8 @@ Napi::Value Producer::NodeFlush(const Napi::CallbackInfo &info) {
   Napi::FunctionReference *callback = new Napi::FunctionReference();
   callback->Reset(cb);
 
-  Napi::AsyncWorker* worker = new Workers::ProducerFlush(callback, this, timeout_ms);
+  Napi::AsyncWorker* worker = new Workers::ProducerFlush(callback, this,
+      timeout_ms);
   worker->Queue();
 
   return env.Null();
@@ -770,7 +785,8 @@ Napi::Value Producer::NodeDisconnect(const Napi::CallbackInfo &info) {
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
     // Just throw an exception
-    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -791,7 +807,8 @@ Napi::Value Producer::NodeInitTransactions(const Napi::CallbackInfo &info) {
   Napi::HandleScope scope(env);
 
   if (info.Length() < 2 || !info[1].IsFunction() || !info[0].IsNumber()) {
-    Napi::Error::New(env, "Need to specify a timeout and a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a timeout and a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -801,7 +818,8 @@ Napi::Value Producer::NodeInitTransactions(const Napi::CallbackInfo &info) {
   Napi::FunctionReference *callback = new Napi::FunctionReference();
   callback->Reset(cb);
 
-  Napi::AsyncWorker* worker = new Workers::ProducerInitTransactions(callback, this, timeout_ms);
+  Napi::AsyncWorker* worker = new Workers::ProducerInitTransactions(callback,
+      this, timeout_ms);
   worker->Queue();
 
   return env.Null();
@@ -812,7 +830,8 @@ Napi::Value Producer::NodeBeginTransaction(const Napi::CallbackInfo &info) {
   Napi::HandleScope scope(env);
 
   if (info.Length() < 1 || !info[0].IsFunction()) {
-    Napi::Error::New(env, "Need to specify a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -820,7 +839,8 @@ Napi::Value Producer::NodeBeginTransaction(const Napi::CallbackInfo &info) {
   Napi::FunctionReference *callback = new Napi::FunctionReference();
   callback->Reset(cb);
 
-  Napi::AsyncWorker* worker = new Workers::ProducerBeginTransaction(callback, this);
+  Napi::AsyncWorker* worker = new Workers::ProducerBeginTransaction(callback,
+      this);
   worker->Queue();
 
   return env.Null();
@@ -831,7 +851,8 @@ Napi::Value Producer::NodeCommitTransaction(const Napi::CallbackInfo &info) {
   Napi::HandleScope scope(env);
 
   if (info.Length() < 2 || !info[1].IsFunction() || !info[0].IsNumber()) {
-    Napi::Error::New(env, "Need to specify a timeout and a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a timeout and a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -841,7 +862,8 @@ Napi::Value Producer::NodeCommitTransaction(const Napi::CallbackInfo &info) {
   Napi::FunctionReference *callback = new Napi::FunctionReference();
   callback->Reset(cb);
 
-  Napi::AsyncWorker* worker = new Workers::ProducerCommitTransaction(callback, this, timeout_ms);
+  Napi::AsyncWorker* worker = new Workers::ProducerCommitTransaction(callback,
+      this, timeout_ms);
   worker->Queue();
 
   return env.Null();
@@ -852,7 +874,8 @@ Napi::Value Producer::NodeAbortTransaction(const Napi::CallbackInfo &info) {
   Napi::HandleScope scope(env);
 
   if (info.Length() < 2 || !info[1].IsFunction() || !info[0].IsNumber()) {
-    Napi::Error::New(env, "Need to specify a timeout and a callback").ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Need to specify a timeout and a callback")
+        .ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -884,11 +907,9 @@ Producer::NodeSendOffsetsToTransaction(const Napi::CallbackInfo &info) {
   }
   if (!info[1].IsObject()) {
     return ThrowError(env, "Kafka consumer must be provided");
-
   }
   if (!info[2].IsNumber()) {
     return ThrowError(env, "Timeout must be provided");
-
   }
   if (!info[3].IsFunction()) {
     return ThrowError(env, "Need to specify a callback");

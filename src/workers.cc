@@ -9,13 +9,13 @@
  */
 #include "src/workers.h"
 
+#include <string>
+#include <vector>
+
 #include "src/producer.h"
 #include "src/kafka-consumer.h"
 #include "src/admin.h"
 #include "src/connection.h"
-
-#include <string>
-#include <vector>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -45,9 +45,9 @@ namespace Handle {
 
 template<class T>
 OffsetsForTimes<T>::OffsetsForTimes(Napi::FunctionReference *callback,
-				 Connection<T>* handle,
-				 std::vector<RdKafka::TopicPartition*> & t,
-				 const int & timeout_ms) :
+    Connection<T>* handle,
+    std::vector<RdKafka::TopicPartition*> & t,
+    const int & timeout_ms) :
   ErrorAwareWorker(callback),
   m_handle(handle),
   m_topic_partitions(t),
@@ -73,7 +73,7 @@ void OffsetsForTimes<T>::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::TopicPartition::ToV8Array(env, m_topic_partitions);
@@ -220,7 +220,8 @@ void ConnectionQueryWatermarkOffsets<T>::OnError() {
  * @sa NodeKafka::Producer::Connect
  */
 
-ProducerConnect::ProducerConnect(Napi::FunctionReference *callback, Producer* producer):
+ProducerConnect::ProducerConnect(Napi::FunctionReference *callback,
+    Producer* producer):
   ErrorAwareWorker(callback),
   producer(producer) {}
 
@@ -341,8 +342,9 @@ void ProducerFlush::OnOK() {
  * @sa NodeKafka::Producer::InitTransactions
  */
 
-ProducerInitTransactions::ProducerInitTransactions(Napi::FunctionReference *callback,
-  Producer* producer, const int & timeout_ms):
+ProducerInitTransactions::ProducerInitTransactions(
+    Napi::FunctionReference *callback,
+    Producer* producer, const int & timeout_ms):
   ErrorAwareWorker(callback),
   producer(producer),
   m_timeout_ms(timeout_ms) {}
@@ -389,8 +391,9 @@ void ProducerInitTransactions::OnError() {
  * @sa NodeKafka::Producer::BeginTransaction
  */
 
-ProducerBeginTransaction::ProducerBeginTransaction(Napi::FunctionReference* callback,
-						   Producer* producer)
+ProducerBeginTransaction::ProducerBeginTransaction(
+    Napi::FunctionReference* callback,
+    Producer* producer)
     : ErrorAwareWorker(callback), producer(producer) {}
 
 ProducerBeginTransaction::~ProducerBeginTransaction() {}
@@ -436,8 +439,9 @@ void ProducerBeginTransaction::OnError() {
  * @sa NodeKafka::Producer::CommitTransaction
  */
 
-ProducerCommitTransaction::ProducerCommitTransaction(Napi::FunctionReference *callback,
-  Producer* producer, const int & timeout_ms):
+ProducerCommitTransaction::ProducerCommitTransaction(
+    Napi::FunctionReference *callback,
+    Producer* producer, const int & timeout_ms):
   ErrorAwareWorker(callback),
   producer(producer),
   m_timeout_ms(timeout_ms) {}
@@ -484,8 +488,9 @@ void ProducerCommitTransaction::OnError() {
  * @sa NodeKafka::Producer::AbortTransaction
  */
 
-ProducerAbortTransaction::ProducerAbortTransaction(Napi::FunctionReference *callback,
-  Producer* producer, const int & timeout_ms):
+ProducerAbortTransaction::ProducerAbortTransaction(
+    Napi::FunctionReference *callback,
+    Producer* producer, const int & timeout_ms):
   ErrorAwareWorker(callback),
   producer(producer),
   m_timeout_ms(timeout_ms) {}
@@ -548,7 +553,7 @@ ProducerSendOffsetsToTransaction::~ProducerSendOffsetsToTransaction() {}
 
 void ProducerSendOffsetsToTransaction::Execute() {
   Baton b = producer->SendOffsetsToTransaction(m_topic_partitions, consumer,
-					       m_timeout_ms);
+      m_timeout_ms);
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
@@ -640,8 +645,9 @@ void KafkaConsumerConnect::OnError() {
  * @sa NodeKafka::KafkaConsumer::Disconnect
  */
 
-KafkaConsumerDisconnect::KafkaConsumerDisconnect(Napi::FunctionReference *callback,
-  KafkaConsumer* consumer):
+KafkaConsumerDisconnect::KafkaConsumerDisconnect(
+    Napi::FunctionReference *callback,
+    KafkaConsumer* consumer):
   ErrorAwareWorker(callback),
   consumer(consumer) {}
 
@@ -700,17 +706,18 @@ void KafkaConsumerDisconnect::OnError() {
  * @sa NodeKafka::KafkaConsumer::GetMessage
  */
 
-KafkaConsumerConsumeLoop::KafkaConsumerConsumeLoop(Napi::FunctionReference *callback,
-				     KafkaConsumer* consumer,
-				     const int & timeout_ms,
-				     const int & timeout_sleep_delay_ms) :
+KafkaConsumerConsumeLoop::KafkaConsumerConsumeLoop(
+    Napi::FunctionReference *callback,
+    KafkaConsumer* consumer,
+    const int & timeout_ms,
+    const int & timeout_sleep_delay_ms) :
   MessageWorker(callback),
   consumer(consumer),
   m_looping(true),
   m_timeout_ms(timeout_ms),
   m_timeout_sleep_delay_ms(timeout_sleep_delay_ms) {
   uv_thread_create(&thread_event_loop, KafkaConsumerConsumeLoop::ConsumeLoop,
-		   reinterpret_cast<void*>(this));
+      reinterpret_cast<void*>(this));
 }
 
 KafkaConsumerConsumeLoop::~KafkaConsumerConsumeLoop() {}
@@ -737,35 +744,35 @@ void KafkaConsumerConsumeLoop::ConsumeLoop(void* arg) {
     if (ec == RdKafka::ERR_NO_ERROR) {
       RdKafka::Message *message = b.data<RdKafka::Message*>();
       switch (message->err()) {
-	case RdKafka::ERR__PARTITION_EOF:
-	  bus.Send(message);
-	  break;
+        case RdKafka::ERR__PARTITION_EOF:
+          bus.Send(message);
+          break;
 
-	case RdKafka::ERR__TIMED_OUT:
-	case RdKafka::ERR__TIMED_OUT_QUEUE:
-	  delete message;
-	  if (consumerLoop->m_timeout_sleep_delay_ms > 0) {
-	    // If it is timed out this could just mean there were no
-	    // new messages fetched quickly enough. This isn't really
-	    // an error that should kill us.
-	    #ifndef _WIN32
-	    usleep(consumerLoop->m_timeout_sleep_delay_ms*1000);
-	    #else
-	    _sleep(consumerLoop->m_timeout_sleep_delay_ms);
-	    #endif
-	  }
-	  break;
-	case RdKafka::ERR_NO_ERROR:
-	  bus.Send(message);
-	  break;
-	default:
-	  // Unknown error. We need to break out of this
-	  consumerLoop->SetErrorBaton(b);
-	  consumerLoop->m_looping = false;
-	  break;
-	}
+        case RdKafka::ERR__TIMED_OUT:
+        case RdKafka::ERR__TIMED_OUT_QUEUE:
+          delete message;
+          if (consumerLoop->m_timeout_sleep_delay_ms > 0) {
+            // If it is timed out this could just mean there were no
+            // new messages fetched quickly enough. This isn't really
+            // an error that should kill us.
+            #ifndef _WIN32
+            usleep(consumerLoop->m_timeout_sleep_delay_ms*1000);
+            #else
+            _sleep(consumerLoop->m_timeout_sleep_delay_ms);
+            #endif
+          }
+          break;
+        case RdKafka::ERR_NO_ERROR:
+          bus.Send(message);
+          break;
+        default:
+          // Unknown error. We need to break out of this
+          consumerLoop->SetErrorBaton(b);
+          consumerLoop->m_looping = false;
+          break;
+      }
     } else if (ec == RdKafka::ERR_UNKNOWN_TOPIC_OR_PART ||
-	       ec == RdKafka::ERR_TOPIC_AUTHORIZATION_FAILED) {
+         ec == RdKafka::ERR_TOPIC_AUTHORIZATION_FAILED) {
       bus.SendWarning(ec);
     } else {
       // Unknown error. We need to break out of this
@@ -776,12 +783,12 @@ void KafkaConsumerConsumeLoop::ConsumeLoop(void* arg) {
 }
 
 void KafkaConsumerConsumeLoop::HandleMessageCallback(RdKafka::Message* msg,
-						     RdKafka::ErrorCode ec) {
+    RdKafka::ErrorCode ec) {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 4;
-  napi_value argv[argc];
+  napi_value argv[4];
 
   argv[0] = env.Null();
   if (msg == NULL) {
@@ -792,23 +799,23 @@ void KafkaConsumerConsumeLoop::HandleMessageCallback(RdKafka::Message* msg,
     argv[3] = env.Null();
     switch (msg->err()) {
       case RdKafka::ERR__PARTITION_EOF: {
-	argv[1] = env.Null();
-	Napi::Object eofEvent = Napi::Object::New(env);
+        argv[1] = env.Null();
+        Napi::Object eofEvent = Napi::Object::New(env);
 
-	(eofEvent).Set(Napi::String::New(env, "topic"),
-	  Napi::String::New(env, msg->topic_name()));
-	(eofEvent).Set(Napi::String::New(env, "offset"),
-	  Napi::Number::New(env, msg->offset()));
-	(eofEvent).Set(Napi::String::New(env, "partition"),
-	  Napi::Number::New(env, msg->partition()));
+        (eofEvent).Set(Napi::String::New(env, "topic"),
+          Napi::String::New(env, msg->topic_name()));
+        (eofEvent).Set(Napi::String::New(env, "offset"),
+          Napi::Number::New(env, msg->offset()));
+        (eofEvent).Set(Napi::String::New(env, "partition"),
+          Napi::Number::New(env, msg->partition()));
 
-	argv[2] = eofEvent;
-	break;
+        argv[2] = eofEvent;
+        break;
       }
       default:
-	argv[1] = Conversion::Message::ToV8Object(env, msg);
-	argv[2] = env.Null();
-	break;
+        argv[1] = Conversion::Message::ToV8Object(env, msg);
+        argv[2] = env.Null();
+        break;
     }
 
     // We can delete msg now
@@ -844,11 +851,12 @@ void KafkaConsumerConsumeLoop::OnError() {
  * @see NodeKafka::KafkaConsumer::GetMessage
  */
 
-KafkaConsumerConsumeNum::KafkaConsumerConsumeNum(Napi::FunctionReference *callback,
-				     KafkaConsumer* consumer,
-				     const uint32_t & num_messages,
-				     const int & timeout_ms,
-				     bool timeout_only_for_first_message) :
+KafkaConsumerConsumeNum::KafkaConsumerConsumeNum(
+    Napi::FunctionReference *callback,
+    KafkaConsumer* consumer,
+    const uint32_t & num_messages,
+    const int & timeout_ms,
+    bool timeout_only_for_first_message) :
   ErrorAwareWorker(callback),
   m_consumer(consumer),
   m_num_messages(num_messages),
@@ -870,49 +878,49 @@ void KafkaConsumerConsumeNum::Execute() {
       RdKafka::Message *message = b.data<RdKafka::Message*>();
       RdKafka::ErrorCode errorCode = message->err();
       switch (errorCode) {
-	case RdKafka::ERR__PARTITION_EOF:
-	  // If partition EOF and have consumed messages, retry with timeout 1
-	  // This allows getting ready messages, while not waiting for new ones
-	  if (m_messages.size() > eof_event_count) {
-	    timeout_ms = 1;
-	  }
+        case RdKafka::ERR__PARTITION_EOF:
+          // If partition EOF and have consumed messages, retry with timeout 1
+          // This allows getting ready messages, while not waiting for new ones
+          if (m_messages.size() > eof_event_count) {
+            timeout_ms = 1;
+          }
 
-	  // We will only go into this code path when `enable.partition.eof`
-	  // is set to true. In this case, consumer is also interested in EOF
-	  // messages, so we return an EOF message
-	  m_messages.push_back(message);
-	  eof_event_count += 1;
-	  break;
-	case RdKafka::ERR__TIMED_OUT:
-	case RdKafka::ERR__TIMED_OUT_QUEUE:
-	  // Break of the loop if we timed out
-	  delete message;
-	  looping = false;
-	  break;
-	case RdKafka::ERR_NO_ERROR:
-	  m_messages.push_back(b.data<RdKafka::Message*>());
+          // We will only go into this code path when `enable.partition.eof`
+          // is set to true. In this case, consumer is also interested in EOF
+          // messages, so we return an EOF message
+          m_messages.push_back(message);
+          eof_event_count += 1;
+          break;
+        case RdKafka::ERR__TIMED_OUT:
+        case RdKafka::ERR__TIMED_OUT_QUEUE:
+          // Break of the loop if we timed out
+          delete message;
+          looping = false;
+          break;
+        case RdKafka::ERR_NO_ERROR:
+          m_messages.push_back(b.data<RdKafka::Message*>());
 
-	  // This allows getting ready messages, while not waiting for new ones.
-	  // This is useful when we want to get the as many messages as possible
-	  // within the timeout but not wait if we already have one or more
-	  // messages.
-	  if (m_timeout_only_for_first_message) {
-	    timeout_ms = 1;
-	  }
+          // This allows getting ready messages, while not waiting for new ones.
+          // This is useful when we want to get the as many messages as possible
+          // within the timeout but not wait if we already have one or more
+          // messages.
+          if (m_timeout_only_for_first_message) {
+            timeout_ms = 1;
+          }
 
-	  break;
-	default:
-	  // Set the error for any other errors and break
-	  delete message;
-	  if (m_messages.size() == eof_event_count) {
-	    SetErrorBaton(Baton(errorCode));
-	  }
-	  looping = false;
-	  break;
+          break;
+        default:
+          // Set the error for any other errors and break
+          delete message;
+          if (m_messages.size() == eof_event_count) {
+            SetErrorBaton(Baton(errorCode));
+          }
+          looping = false;
+          break;
       }
     } else {
       if (m_messages.size() == eof_event_count) {
-	SetErrorBaton(b);
+        SetErrorBaton(b);
       }
       looping = false;
     }
@@ -923,7 +931,7 @@ void KafkaConsumerConsumeNum::OnOK() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
   const unsigned int argc = 3;
-  napi_value argv[argc];
+  napi_value argv[3];
   argv[0] = env.Null();
 
   Napi::Array returnArray = Napi::Array::New(env);
@@ -933,35 +941,35 @@ void KafkaConsumerConsumeNum::OnOK() {
     int returnArrayIndex = -1;
     int eofEventsArrayIndex = -1;
     for (std::vector<RdKafka::Message*>::iterator it = m_messages.begin();
-	it != m_messages.end(); ++it) {
+  it != m_messages.end(); ++it) {
       RdKafka::Message* message = *it;
 
       switch (message->err()) {
-	case RdKafka::ERR_NO_ERROR:
-	  ++returnArrayIndex;
-	  (returnArray).Set(returnArrayIndex,
-		   Conversion::Message::ToV8Object(env, message));
-	  break;
-	case RdKafka::ERR__PARTITION_EOF:
-	  ++eofEventsArrayIndex;
+  case RdKafka::ERR_NO_ERROR:
+    ++returnArrayIndex;
+    (returnArray).Set(returnArrayIndex,
+       Conversion::Message::ToV8Object(env, message));
+    break;
+  case RdKafka::ERR__PARTITION_EOF:
+    ++eofEventsArrayIndex;
 
-	  // create EOF event
-	  Napi::Object eofEvent = Napi::Object::New(env);
+    // create EOF event
+    Napi::Object eofEvent = Napi::Object::New(env);
 
-	  (eofEvent).Set(Napi::String::New(env, "topic"),
-	    Napi::String::New(env, message->topic_name()));
-	  (eofEvent).Set(Napi::String::New(env, "offset"),
-	    Napi::Number::New(env, message->offset()));
-	  (eofEvent).Set(Napi::String::New(env, "partition"),
-	    Napi::Number::New(env, message->partition()));
+    (eofEvent).Set(Napi::String::New(env, "topic"),
+      Napi::String::New(env, message->topic_name()));
+    (eofEvent).Set(Napi::String::New(env, "offset"),
+      Napi::Number::New(env, message->offset()));
+    (eofEvent).Set(Napi::String::New(env, "partition"),
+      Napi::Number::New(env, message->partition()));
 
-	  // also store index at which position in the message array this event
-	  // was emitted this way, we can later emit it at the right point in
-	  // time
-	  (eofEvent).Set(Napi::String::New(env, "messageIndex"),
-		   Napi::Number::New(env, returnArrayIndex));
+    // also store index at which position in the message array this event
+    // was emitted this way, we can later emit it at the right point in
+    // time
+    (eofEvent).Set(Napi::String::New(env, "messageIndex"),
+       Napi::Number::New(env, returnArrayIndex));
 
-	  (eofEventsArray).Set(eofEventsArrayIndex, eofEvent);
+    (eofEventsArray).Set(eofEventsArrayIndex, eofEvent);
       }
 
       delete message;
@@ -980,7 +988,7 @@ void KafkaConsumerConsumeNum::OnError() {
 
   if (m_messages.size() > 0) {
     for (std::vector<RdKafka::Message*>::iterator it = m_messages.begin();
-	it != m_messages.end(); ++it) {
+  it != m_messages.end(); ++it) {
       RdKafka::Message* message = *it;
       delete message;
     }
@@ -1003,9 +1011,10 @@ void KafkaConsumerConsumeNum::OnError() {
  * @see NodeKafka::KafkaConsumer::GetMessage
  */
 
-KafkaConsumerConsume::KafkaConsumerConsume(Napi::FunctionReference *callback,
-				     KafkaConsumer* consumer,
-				     const int & timeout_ms) :
+KafkaConsumerConsume::KafkaConsumerConsume(
+    Napi::FunctionReference *callback,
+    KafkaConsumer* consumer,
+    const int & timeout_ms) :
   ErrorAwareWorker(callback),
   consumer(consumer),
   m_timeout_ms(timeout_ms) {}
@@ -1032,7 +1041,7 @@ void KafkaConsumerConsume::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::Message::ToV8Object(env, m_message);
@@ -1062,10 +1071,11 @@ void KafkaConsumerConsume::OnError() {
  * @see RdKafka::KafkaConsumer::Committed
  */
 
-KafkaConsumerCommitted::KafkaConsumerCommitted(Napi::FunctionReference *callback,
-				     KafkaConsumer* consumer,
-				     std::vector<RdKafka::TopicPartition*> & t,
-				     const int & timeout_ms) :
+KafkaConsumerCommitted::KafkaConsumerCommitted(
+    Napi::FunctionReference *callback,
+    KafkaConsumer* consumer,
+    std::vector<RdKafka::TopicPartition*> & t,
+    const int & timeout_ms) :
   ErrorAwareWorker(callback),
   m_consumer(consumer),
   m_topic_partitions(t),
@@ -1088,7 +1098,7 @@ void KafkaConsumerCommitted::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::TopicPartition::ToV8Array(env, m_topic_partitions);
@@ -1143,7 +1153,7 @@ void KafkaConsumerCommitCb::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  napi_value argv[argc];
+  napi_value argv[1];
 
   argv[0] = env.Null();
 
@@ -1172,10 +1182,11 @@ void KafkaConsumerCommitCb::OnError() {
  *         seek to work. Use assign() to set the starting offset.
  */
 
-KafkaConsumerSeek::KafkaConsumerSeek(Napi::FunctionReference *callback,
-				     KafkaConsumer* consumer,
-				     const RdKafka::TopicPartition * toppar,
-				     const int & timeout_ms) :
+KafkaConsumerSeek::KafkaConsumerSeek(
+    Napi::FunctionReference *callback,
+    KafkaConsumer* consumer,
+    const RdKafka::TopicPartition * toppar,
+    const int & timeout_ms) :
   ErrorAwareWorker(callback),
   m_consumer(consumer),
   m_toppar(toppar),
@@ -1207,7 +1218,7 @@ void KafkaConsumerSeek::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  napi_value argv[argc];
+  napi_value argv[1];
 
   argv[0] = env.Null();
 
@@ -1230,10 +1241,11 @@ void KafkaConsumerSeek::OnError() {
  * This callback will create a topic
  *
  */
-AdminClientCreateTopic::AdminClientCreateTopic(Napi::FunctionReference *callback,
-					       AdminClient* client,
-					       rd_kafka_NewTopic_t* topic,
-					       const int & timeout_ms) :
+AdminClientCreateTopic::AdminClientCreateTopic(
+    Napi::FunctionReference *callback,
+    AdminClient* client,
+    rd_kafka_NewTopic_t* topic,
+    const int & timeout_ms) :
   ErrorAwareWorker(callback),
   m_client(client),
   m_topic(topic),
@@ -1256,7 +1268,7 @@ void AdminClientCreateTopic::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  napi_value argv[argc];
+  napi_value argv[1];
 
   argv[0] = env.Null();
 
@@ -1279,10 +1291,11 @@ void AdminClientCreateTopic::OnError() {
  * This callback will delete a topic
  *
  */
-AdminClientDeleteTopic::AdminClientDeleteTopic(Napi::FunctionReference *callback,
-					       AdminClient* client,
-					       rd_kafka_DeleteTopic_t* topic,
-					       const int & timeout_ms) :
+AdminClientDeleteTopic::AdminClientDeleteTopic(
+    Napi::FunctionReference *callback,
+    AdminClient* client,
+    rd_kafka_DeleteTopic_t* topic,
+    const int & timeout_ms) :
   ErrorAwareWorker(callback),
   m_client(client),
   m_topic(topic),
@@ -1305,7 +1318,7 @@ void AdminClientDeleteTopic::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  napi_value argv[argc];
+  napi_value argv[1];
 
   argv[0] = env.Null();
 
@@ -1329,10 +1342,10 @@ void AdminClientDeleteTopic::OnError() {
  *
  */
 AdminClientCreatePartitions::AdminClientCreatePartitions(
-					 Napi::FunctionReference *callback,
-					 AdminClient* client,
-					 rd_kafka_NewPartitions_t* partitions,
-					 const int & timeout_ms) :
+    Napi::FunctionReference *callback,
+    AdminClient* client,
+    rd_kafka_NewPartitions_t* partitions,
+    const int & timeout_ms) :
   ErrorAwareWorker(callback),
   m_client(client),
   m_partitions(partitions),
@@ -1355,7 +1368,7 @@ void AdminClientCreatePartitions::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 1;
-  napi_value argv[argc];
+  napi_value argv[1];
 
   argv[0] = env.Null();
 
@@ -1379,7 +1392,8 @@ void AdminClientCreatePartitions::OnError() {
  *
  */
 AdminClientListGroups::AdminClientListGroups(
-    Napi::FunctionReference* callback, AdminClient* client, bool is_match_states_set,
+    Napi::FunctionReference* callback, AdminClient* client,
+        bool is_match_states_set,
     std::vector<rd_kafka_consumer_group_state_t>& match_states,
     bool is_match_types_set,
     std::vector<rd_kafka_consumer_group_type_t>& match_types,
@@ -1400,8 +1414,8 @@ AdminClientListGroups::~AdminClientListGroups() {
 
 void AdminClientListGroups::Execute() {
   Baton b = m_client->ListGroups(m_is_match_states_set, m_match_states,
-				 m_is_match_types_set, m_match_types,
-				 m_timeout_ms, &m_event_response);
+         m_is_match_types_set, m_match_types,
+         m_timeout_ms, &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
@@ -1412,7 +1426,7 @@ void AdminClientListGroups::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
 
@@ -1458,7 +1472,7 @@ AdminClientDescribeGroups::~AdminClientDescribeGroups() {
 
 void AdminClientDescribeGroups::Execute() {
   Baton b = m_client->DescribeGroups(m_groups, m_include_authorized_operations,
-				     m_timeout_ms, &m_event_response);
+             m_timeout_ms, &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
@@ -1469,7 +1483,7 @@ void AdminClientDescribeGroups::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDescribeConsumerGroupsResult(
@@ -1518,7 +1532,7 @@ AdminClientDeleteGroups::~AdminClientDeleteGroups() {
 
 void AdminClientDeleteGroups::Execute() {
   Baton b = m_client->DeleteGroups(m_group_list, m_group_cnt, m_timeout_ms,
-				   &m_event_response);
+           &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
@@ -1529,7 +1543,7 @@ void AdminClientDeleteGroups::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDeleteGroupsResult(
@@ -1581,8 +1595,8 @@ AdminClientListConsumerGroupOffsets::~AdminClientListConsumerGroupOffsets() {
 
 void AdminClientListConsumerGroupOffsets::Execute() {
   Baton b = m_client->ListConsumerGroupOffsets(m_req, m_req_cnt,
-					       m_require_stable_offsets,
-					       m_timeout_ms, &m_event_response);
+                 m_require_stable_offsets,
+                 m_timeout_ms, &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
@@ -1592,7 +1606,7 @@ void AdminClientListConsumerGroupOffsets::OnOK() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromListConsumerGroupOffsetsResult(
@@ -1644,8 +1658,8 @@ AdminClientDeleteRecords::~AdminClientDeleteRecords() {
 
 void AdminClientDeleteRecords::Execute() {
   Baton b = m_client->DeleteRecords(m_del_records, m_del_records_cnt,
-				    m_operation_timeout_ms, m_timeout_ms,
-				    &m_event_response);
+            m_operation_timeout_ms, m_timeout_ms,
+            &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
@@ -1656,7 +1670,7 @@ void AdminClientDeleteRecords::OnOK() {
   Napi::HandleScope scope(env);
 
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDeleteRecordsResult(
@@ -1703,7 +1717,7 @@ AdminClientDescribeTopics::~AdminClientDescribeTopics() {
 
 void AdminClientDescribeTopics::Execute() {
   Baton b = m_client->DescribeTopics(m_topics, m_include_authorized_operations,
-				     m_timeout_ms, &m_event_response);
+             m_timeout_ms, &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
@@ -1713,7 +1727,7 @@ void AdminClientDescribeTopics::OnOK() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromDescribeTopicsResult(
@@ -1759,7 +1773,7 @@ AdminClientListOffsets::~AdminClientListOffsets() {
 
 void AdminClientListOffsets::Execute() {
   Baton b = m_client->ListOffsets(m_partitions, m_timeout_ms, m_isolation_level,
-				  &m_event_response);
+          &m_event_response);
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     SetErrorBaton(b);
   }
@@ -1769,7 +1783,7 @@ void AdminClientListOffsets::OnOK() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
   const unsigned int argc = 2;
-  napi_value argv[argc];
+  napi_value argv[2];
 
   argv[0] = env.Null();
   argv[1] = Conversion::Admin::FromListOffsetsResult(
