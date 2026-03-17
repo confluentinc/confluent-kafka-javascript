@@ -13,11 +13,8 @@
 #include <vector>
 #include <list>
 
-using Nan::MaybeLocal;
-using Nan::Maybe;
-using v8::Local;
-using v8::String;
-using v8::Object;
+using Napi::String;
+using Napi::Object;
 using std::cout;
 using std::endl;
 
@@ -34,55 +31,41 @@ void Conf::DumpConfig(std::list<std::string> *dump) {
   std::cout << std::endl;
 }
 
-Conf * Conf::create(RdKafka::Conf::ConfType type, v8::Local<v8::Object> object, std::string &errstr) {  // NOLINT
-  v8::Local<v8::Context> context = Nan::GetCurrentContext();
+Conf * Conf::create(RdKafka::Conf::ConfType type, Napi::Object object, std::string &errstr) {  // NOLINT
   Conf* rdconf = static_cast<Conf*>(RdKafka::Conf::create(type));
 
-  v8::MaybeLocal<v8::Array> _property_names = object->GetOwnPropertyNames(
-    Nan::GetCurrentContext());
-  v8::Local<v8::Array> property_names = _property_names.ToLocalChecked();
+  Napi::Array property_names = object.GetPropertyNames();
 
-  for (unsigned int i = 0; i < property_names->Length(); ++i) {
+  for (unsigned int i = 0; i < property_names.Length(); ++i) {
     std::string string_value;
     std::string string_key;
 
-    v8::Local<v8::Value> key = Nan::Get(property_names, i).ToLocalChecked();
-    v8::Local<v8::Value> value = Nan::Get(object, key).ToLocalChecked();
+    Napi::Value key = property_names.Get(i);
+    Napi::Value value = object.Get(key);
 
-    if (key->IsString()) {
-      Nan::Utf8String utf8_key(key);
-      string_key = std::string(*utf8_key);
+    if (key.IsString()) {
+      string_key = key.As<Napi::String>().Utf8Value();
     } else {
       continue;
     }
 
-    if (!value->IsFunction()) {
-#if NODE_MAJOR_VERSION > 6
-      if (value->IsInt32()) {
-        string_value = std::to_string(
-          value->Int32Value(context).ToChecked());
-      } else if (value->IsUint32()) {
-        string_value = std::to_string(
-          value->Uint32Value(context).ToChecked());
-      } else if (value->IsBoolean()) {
-        const bool v = Nan::To<bool>(value).ToChecked();
-        string_value = v ? "true" : "false";
+    if (!value.IsFunction()) {
+      if (value.IsNumber()) {
+        string_value = std::to_string(value.As<Napi::Number>().Int32Value());
+      } else if (value.IsBoolean()) {
+        string_value = value.As<Napi::Boolean>().Value() ? "true" : "false";
       } else {
-        Nan::Utf8String utf8_value(value.As<v8::String>());
-        string_value = std::string(*utf8_value);
+        // Use JS ToString coercion (mirrors NAN's value->ToString()->Utf8Value())
+        // so that e.g. undefined becomes "undefined" rather than throwing.
+        string_value = value.ToString().Utf8Value();
       }
-#else
-      Nan::Utf8String utf8_value(value.As<v8::String>());
-      string_value = std::string(*utf8_value);
-#endif
-      if (rdconf->set(string_key, string_value, errstr)
-        != Conf::CONF_OK) {
-          delete rdconf;
-          return NULL;
+      if (rdconf->set(string_key, string_value, errstr) != Conf::CONF_OK) {
+        delete rdconf;
+        return NULL;
       }
     } else {
-     // Do nothing - NodeConfigureCallbacks will handle this for each
-     // of the three client types, called from within JavaScript.
+      // Do nothing - NodeConfigureCallbacks will handle this for each
+      // of the three client types, called from within JavaScript.
     }
   }
 
@@ -91,7 +74,7 @@ Conf * Conf::create(RdKafka::Conf::ConfType type, v8::Local<v8::Object> object, 
 
 void Conf::ConfigureCallback(
   const std::string &string_key,
-  const v8::Local<v8::Function> &cb,
+  const Napi::Function &cb,
   bool add, std::string &errstr) {
   if (string_key.compare("rebalance_cb") == 0) {
     NodeKafka::Callbacks::Rebalance *rebalance = rebalance_cb();
