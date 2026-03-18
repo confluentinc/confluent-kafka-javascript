@@ -157,7 +157,6 @@ AdminClient::AdminClient(const Napi::CallbackInfo& info): Connection(info) {
 
   Connection *connection = NULL;
   Conf *gconfig = NULL;
-  AdminClient *client = NULL;
 
   if (info.Length() >= 3 && !info[2].IsNull() && !info[2].IsUndefined()) {
     if (!info[2].IsObject()) {

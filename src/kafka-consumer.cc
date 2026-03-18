@@ -51,8 +51,6 @@ KafkaConsumer::KafkaConsumer(const Napi::CallbackInfo& info)
 
   std::string errstr;
 
-  Napi::Object i1 = info[0].ToObject();
-
   Conf* gconfig =
     Conf::create(RdKafka::Conf::CONF_GLOBAL, info[0].ToObject(), errstr);
 

@@ -140,8 +140,6 @@ Napi::Value Topic::NodeGetName(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  Topic* topic = this;
-
   return Napi::String::From(env, this->name());
 }
 
