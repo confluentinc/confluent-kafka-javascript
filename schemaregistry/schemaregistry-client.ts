@@ -118,6 +118,7 @@ export interface RuleSet {
   migrationRules?: Rule[];
   domainRules?: Rule[];
   encodingRules?: Rule[];
+  enableAt?: string;
 }
 
 /**
