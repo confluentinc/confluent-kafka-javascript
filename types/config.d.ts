@@ -1,4 +1,4 @@
-// ====== Generated from librdkafka 2.13.2 file CONFIGURATION.md ======
+// ====== Generated from librdkafka 2.14.0-RC1 file CONFIGURATION.md ======
 // Code that generated this is a derivative work of the code from Nam Nguyen
 // https://gist.github.com/ntgn81/066c2c8ec5b4238f85d1e9168a04e3fb
 
@@ -637,6 +637,13 @@ export interface GlobalConfig {
      * OAuth/OIDC issuer token endpoint HTTP(S) URI used to retrieve token. Only used when `sasl.oauthbearer.method` is set to "oidc".
      */
     "sasl.oauthbearer.token.endpoint.url"?: string;
+
+    /**
+     * JWT claim name to use as the subject (principal) when validating OIDC access tokens. Must be present in the JWT payload with a non-empty value. Should match the broker's `sasl.oauthbearer.sub.claim.name` configuration for consistent authentication. Only used when `sasl.oauthbearer.method` is set to "oidc".
+     *
+     * @default sub
+     */
+    "sasl.oauthbearer.sub.claim.name"?: string;
 
     /**
      * OAuth grant type to use when communicating with the identity provider.
