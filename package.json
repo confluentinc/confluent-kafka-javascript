@@ -1,9 +1,9 @@
 {
   "name": "@confluentinc/kafka-javascript",
-  "version": "1.8.2",
+  "version": "1.9.0-rc1",
   "description": "Node.js bindings for librdkafka",
-  "librdkafka": "2.13.2",
-  "librdkafka_win": "2.13.2",
+  "librdkafka": "2.14.0-RC1",
+  "librdkafka_win": "2.14.0-RC1",
   "main": "lib/index.js",
   "types": "types/index.d.ts",
   "scripts": {
