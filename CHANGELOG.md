@@ -1,9 +1,8 @@
 
-# confluent-kafka-javascript 1.x.x
+# confluent-kafka-javascript 1.9.0-RC1
 
 ## Enhancements
-1. Add AssociatedNameStrategy (#454)
-2. Add enableAt to RuleSet (#470)
+1. References librdkafka v2.14.0-RC1. Refer to the [librdkafka v2.14.0-RC1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.14.0-RC1) for more information.
 
 
 # confluent-kafka-javascript 1.8.2
