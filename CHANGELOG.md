@@ -1,8 +1,10 @@
 
-# confluent-kafka-javascript 1.9.0-rc1
+# confluent-kafka-javascript 1.9.0
+
+v1.9.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
-1. References librdkafka v2.14.0-RC1. Refer to the [librdkafka v2.14.0-RC1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.14.0-RC1) for more information.
+1. References librdkafka v2.14.0. Refer to the [librdkafka v2.14.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.14.0) for more information.
 2. Add AssociatedNameStrategy (#454).
 3. Add enableAt to RuleSet (#470).
 
