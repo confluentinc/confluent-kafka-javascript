@@ -700,4 +700,30 @@ NAN_METHOD(Connection::NodeName) {
   info.GetReturnValue().Set(Nan::New(name).ToLocalChecked());
 }
 
+NAN_METHOD(Connection::NodeGetClusterId) {
+  Connection* obj = ObjectWrap::Unwrap<Connection>(info.This());
+
+  int timeout_ms = 200;
+  if (info[0]->IsNumber()) {
+    Nan::Maybe<int64_t> maybeTimeout = Nan::To<int64_t>(info[0]);
+    if (!maybeTimeout.IsNothing()) {
+      timeout_ms = static_cast<int>(maybeTimeout.FromJust());
+    }
+  }
+
+  if (!obj->IsConnected()) {
+    info.GetReturnValue().Set(Nan::Null());
+    return;
+  }
+
+  std::string cluster_id = obj->m_client->clusterid(timeout_ms);
+  if (cluster_id.empty()) {
+    info.GetReturnValue().Set(Nan::Null());
+    return;
+  }
+
+  info.GetReturnValue().Set(
+    Nan::New<v8::String>(cluster_id).ToLocalChecked());
+}
+
 }  // namespace NodeKafka
