@@ -143,7 +143,7 @@ blocks:
           type: s1-prod-ubuntu24-04-amd64-1
       prologue:
         commands:
-          - npm install
+          - npm ci
           - cd schemaregistry
       jobs:
         - name: "Test"
@@ -190,7 +190,7 @@ blocks:
             - docker compose -f test/docker/docker-compose.yml up -d && sleep 30
             - export NODE_OPTIONS='--max-old-space-size=1536'
             - cd examples/performance
-            - npm install
+            - npm ci
             - bash -c '../../ci/tests/run_perf_test.sh'
             - rm -rf ./node_modules
 
