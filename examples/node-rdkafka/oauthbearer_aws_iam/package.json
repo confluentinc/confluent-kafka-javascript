@@ -1,0 +1,15 @@
+{
+  "name": "oauthbearer_aws_iam",
+  "version": "1.0.0",
+  "description": "AWS IAM OAUTHBEARER authentication (node-rdkafka API)",
+  "main": "oauthbearer_aws_iam.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@confluentinc/kafka-javascript": "file:../../..",
+    "@confluentinc/kafka-javascript-oauthbearer-aws": "file:../../../oauthbearer-aws"
+  }
+}

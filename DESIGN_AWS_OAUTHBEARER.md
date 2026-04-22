@@ -1,8 +1,8 @@
 # Design: AWS STS `GetWebIdentityToken` OAUTHBEARER Provider — JavaScript
 
-**Status:** Draft — pending AWS SDK floor verification and first implementation
+**Status:** Draft — M1 complete (scaffolding, AWS SDK floor bisected, dep-graph invariant proven). M2–M8 pending.
 **Owner:** prashah@confluent.io
-**Last updated:** 2026-04-21
+**Last updated:** 2026-04-22
 
 ## 1. Context
 
@@ -87,9 +87,58 @@ Existing hand-rolled examples to mirror:
 
 [package.json:63-67](package.json#L63-L67) already declares `workspaces: [".", "schemaregistry", "schemaregistry-examples"]`. Adding a fourth workspace entry is a one-line change; no root-level tooling changes required.
 
-### 4d. `GetWebIdentityTokenCommand` in AWS SDK JS v3 — **pending verification**
+### 4d. `GetWebIdentityTokenCommand` in AWS SDK JS v3
 
-`@aws-sdk/client-sts` is the v3 service client. The operation went GA 2025-11-19 across AWS SDKs; Python confirmed `boto3>=1.42.25` (2026-01-12), Go confirmed `aws-sdk-go-v2/service/sts >= v1.41.0`, .NET confirmed `AWSSDK.SecurityToken >= 3.7.503.2` (all same-day-or-later ship). The JS v3 floor needs the same bisection against `aws/aws-sdk-js-v3` — likely a client-sts release from late November 2025 or later. Since `schemaregistry` already floors at `^3.975.0` (Feb 2026), any reasonable floor is comfortably below the existing pin; confirming at implementation time is low-risk. See §11 open item 1.
+Bisected against `aws/aws-sdk-js-v3` on 2026-04-22 via `gh api`:
+
+| Event | Commit | Date | `clients/client-sts` `package.json` `version` |
+|---|---|---|---|
+| `feat(client-sts): ... GetWebIdentityToken API ...` | [f9fed01](https://github.com/aws/aws-sdk-js-v3/commit/f9fed01) | 2025-11-19T19:14:52Z | `3.934.0` (in-source, unpublished) |
+| `Publish v3.935.0` | [c31b14b](https://github.com/aws/aws-sdk-js-v3/commit/c31b14b) | 2025-11-19T19:38:37Z | **`3.935.0`** — first on npm with the command |
+
+Verification: `clients/client-sts/src/commands/GetWebIdentityTokenCommand.ts` is **404 Not Found** at the `Publish v3.934.0` ref ([3b6a4d9](https://github.com/aws/aws-sdk-js-v3/commit/3b6a4d9), 2025-11-18T19:34:55Z) and **present** at `c31b14b`. Asymmetry is the invariant.
+
+**Target for this package: `@aws-sdk/client-sts >= 3.935.0`** as the correctness floor. In the new package's [oauthbearer-aws/package.json](oauthbearer-aws/package.json) we pin `^3.975.0` to match [schemaregistry/package.json:32-33](schemaregistry/package.json#L32-L33) — avoids peer-dep fan-out for users installing both. `3.975.0` is 40 patch releases above the correctness floor, so the practical guarantee is the same.
+
+Cross-language consistency: same-day ship with Go (`aws-sdk-go-v2/service/sts v1.41.0`, 2025-11-19), .NET (`AWSSDK.SecurityToken 3.7.504`, 2025-11-19), Python (`boto3 1.42.25`, 2026-01-12).
+
+### 4e. Dep-graph invariant proof
+
+Measured 2026-04-22 via two scratch projects in `/tmp/`, each installing the branch's packed tarballs (`npm pack` on `dev_prashah_IAM_Javascript_POC` → `.tgz` files in repo root) with `--ignore-scripts`:
+
+```bash
+# Scenario A: only core
+cd /tmp/ckjs-no-aws
+npm install --ignore-scripts $REPO/confluentinc-kafka-javascript-1.9.0.tgz
+
+# Scenario B: core + opt-in package
+cd /tmp/ckjs-aws
+npm install --ignore-scripts \
+  $REPO/confluentinc-kafka-javascript-1.9.0.tgz \
+  $REPO/confluentinc-kafka-javascript-oauthbearer-aws-1.9.0.tgz
+```
+
+Invariant check (each scenario run independently):
+
+```bash
+find node_modules/@aws-sdk -maxdepth 1 -mindepth 1 -type d 2>/dev/null | grep -q . \
+  && echo LEAKED || echo OK
+npm ls --all --parseable 2>/dev/null | grep -c '/@aws-sdk/'
+```
+
+| Metric | Scenario A (opt-out) | Scenario B (opt-in) | Delta |
+|---|---|---|---|
+| `find @aws-sdk` result | **OK** (0 dirs) | **LEAKED** (29 dirs) | +29 |
+| `npm ls --all \| grep @aws-sdk` | 0 paths | 29 paths | +29 |
+| `node_modules` top-level packages | 24 | 34 | +10 |
+| `node_modules` total packages (`npm ls --all`) | 25 | 111 | +86 |
+| `node_modules` size on disk | 6,028,961 B (7.6 MB) | 12,929,441 B (24 MB)* | +6,900,480 B |
+
+\* `du -sh` rounds up to filesystem-block boundaries; the byte total from `find | stat` is authoritative.
+
+Asymmetry is the whole guarantee: a user who installs **only** `@confluentinc/kafka-javascript` sees **zero** `@aws-sdk/*` directories in `node_modules`. A user who also installs `@confluentinc/kafka-javascript-oauthbearer-aws` pays for the 29-package AWS SDK fan-out (client-sts + credential-providers + all `@aws-sdk/credential-provider-*` and `middleware-*` transitives that land as peers at the top level).
+
+This is the same shape as the Go plan's 21.6 MB vs 11.4 MB binary measurement and the .NET plan's 2 AWS SDK DLLs vs 0 AWS SDK DLLs measurement — one clean invariant proven three different ways across three languages.
 
 ## 5. Architecture
 
@@ -363,7 +412,7 @@ The existing repo-wide test harness ([jest.config.js](jest.config.js)) already i
 
 ## 11. Open items
 
-1. **AWS SDK JS v3 floor for `GetWebIdentityTokenCommand`.** Bisect against `aws/aws-sdk-js-v3` to find the first `@aws-sdk/client-sts` version shipping the command. Likely a late-November 2025 release; since [schemaregistry/package.json](schemaregistry/package.json) already floors at `^3.975.0` (Feb 2026), keeping the new package at the same floor is safe and avoids peer-dep fan-out for users installing both.
+1. ~~**AWS SDK JS v3 floor for `GetWebIdentityTokenCommand`.**~~ ✅ Resolved 2026-04-22 (M1). First npm release: `@aws-sdk/client-sts@3.935.0` (2025-11-19). Package pins `^3.975.0` for schemaregistry alignment. See §4d.
 2. **Package naming.** Current proposal: `@confluentinc/kafka-javascript-oauthbearer-aws`. Alternatives: `@confluentinc/kafka-javascript-aws-iam`, `@confluentinc/kafka-oauthbearer-aws`. Naming is locked by first publish — decide before v1. Leaning on the current proposal for symmetry with `@confluentinc/schemaregistry`.
 3. **Eager vs lazy credential resolution in the constructor.** Eager surfaces misconfiguration at startup; lazy avoids a cold-start cost until first refresh. Go/.NET/Python all lean eager. Align.
 4. **Release automation.** [ci/prepublish.js](ci/prepublish.js) and downstream npm publish tasks need to know about the new package. Audit and update.
