@@ -77,6 +77,7 @@ step tracked with the owner.
 | `OutboundWebIdentityFederationNotEnabledException` | Admin has not run `aws iam enable-outbound-web-identity-federation` on the account. |
 | Test times out at 20s | Network egress to STS regional endpoint (`sts.<region>.amazonaws.com`) is blocked. For VPC-bound runners, configure an STS VPC endpoint and set `stsEndpoint` in the config. |
 | `DescribeReal` skipped | `RUN_AWS_STS_REAL` is not exactly `"1"`. Check the shell has exported it. |
+| `TypeError: A dynamic import callback was invoked without --experimental-vm-modules` | Jest's CJS VM rejects the dynamic `import()` inside `@aws-sdk/credential-provider-node`. The `make e2e` target sets `NODE_OPTIONS='--experimental-vm-modules'` to enable it. If you invoke jest directly, export that env var first. |
 
 ### CloudTrail footprint
 

@@ -22,4 +22,5 @@ test:
 	$(JEST) $(TEST_DIR)
 
 e2e:
+	NODE_OPTIONS='--experimental-vm-modules' \
 	RUN_AWS_STS_REAL=1 $(JEST) --config $(E2E_DIR)/jest.config.js
