@@ -1,7 +1,7 @@
 # Implementation Plan: AWS OAUTHBEARER npm Package
 
 **Companion document to** [DESIGN_AWS_OAUTHBEARER.md](DESIGN_AWS_OAUTHBEARER.md).
-**Status:** Draft — ready to execute. No code written yet.
+**Status:** M1–M7 complete and validated on EC2 against real AWS STS. M8 (release wiring) pending.
 **Last updated:** 2026-04-22.
 
 This document describes the execution path. For design rationale, public API shape, and rejected alternatives, see the design doc.
@@ -696,25 +696,48 @@ rm -f $REPO/confluentinc-kafka-javascript-*.tgz \
 
 One `sts:GetWebIdentityToken` call recorded in CloudTrail per Scenario 1 run.
 
-### The zero-cost property, quantified (template)
+### The zero-cost property, quantified — measured 2026-04-22
+
+Validated on EC2 `ip-172-31-1-146`, `eu-north-1`, role `ktrue-iam-sts-test-role`, account `708975691912`, Amazon Linux 2023, Node 18.20.8. Measurements from `/tmp/{no-aws-consumer,aws-consumer}` — each a fresh `npm init -y` project that installed the packed tarballs from the branch with `--ignore-scripts`.
 
 | Metric | Scenario 1 (opt-in) | Scenario 2 (opt-out) | Delta |
 |---|---|---|---|
-| `node_modules` size | TBD | TBD | TBD |
-| `@aws-sdk/*` package count | TBD | **0** | TBD |
-| `npm ls` @aws-sdk entries | TBD | **0** | TBD |
-| Real JWT minted at runtime | TBD (expect 1256 chars, principal `arn:aws:iam::708975691912:role/ktrue-iam-sts-test-role`) | n/a | — |
+| `node_modules` size | 12,985,713 B (24 MB) | 6,063,797 B (7.7 MB) | **+6,921,916 B (+114%)** |
+| Total packages (`npm ls --all`) | 111 | 25 | +86 |
+| `@aws-sdk/*` top-level dirs | 29 | **0** | +29 |
+| File-system invariant check | `LEAKED` (expected) | **`OK`** | — |
+| Real JWT minted at runtime | **1256 chars**, principal `arn:aws:iam::708975691912:role/ktrue-iam-sts-test-role`, expiry 300 s | n/a | — |
 
-The AWS SDK delta will be the pure cost of the opt-in — `@aws-sdk/client-sts` + `@aws-sdk/credential-providers` + their `@smithy/*` transitives. Everything else (core bindings, `nan`, `node-pre-gyp`, the prebuilt librdkafka binary) is byte-identical between the two.
+The 6.9 MB delta is entirely the opt-in user's AWS SDK cost — `@aws-sdk/client-sts` + `@aws-sdk/credential-providers` + their 27 `@smithy/*`/`@aws-sdk/credential-provider-*`/`middleware-*` transitives. Everything else (core bindings, `nan`, `node-pre-gyp`, the prebuilt librdkafka binary) is byte-identical between the two.
 
-### Cross-language mint consistency
+### Cross-language mint consistency — confirmed
 
-The 1256-byte JWT length should reproduce exactly what the Go, .NET, and librdkafka-native clients have observed on this same EC2 box / role / audience. AWS STS is the single source of truth; every client's glue layer is verified by convergence on this number. Cross-references:
+1256-char JWT reproduced exactly across all four clients on the same EC2 box / role / audience:
 
-- Go plan post-implementation, Scenario 1: "1256-byte JWT via IMDS credentials on each invocation"
-- .NET plan post-implementation, Scenario 1: "JWT length : 1256 chars"
-- librdkafka project memory, Probe A / M7: "1256-byte JWT minted"
-- This test, Scenario 1: (to be filled in)
+| Client | JWT length | Principal | Source |
+|---|---|---|---|
+| librdkafka (C) | 1256 | `arn:aws:iam::708975691912:role/ktrue-iam-sts-test-role` | librdkafka project memory, Probe A / M7 |
+| Go (submodule) | 1256 | same | `confluent-kafka-go` IMPL_PLAN Scenario 1 |
+| .NET (NuGet) | 1256 | same | `confluent-kafka-dotnet` IMPL_PLAN Scenario 1 |
+| **JS (npm, this)** | **1256** | **same** | this plan, Scenario 1 (above) |
+
+AWS STS is the single source of truth; every client's glue layer is proven correct by convergence on the same byte count and principal.
+
+### Phase 1 — M7 jest e2e tests, executed 2026-04-22
+
+```
+PASS e2e/provider-real.e2e.ts
+  AwsStsTokenProvider — real AWS STS
+    ✓ mints a valid JWT (140 ms)
+    ✓ produces a JWT whose length matches cross-language observation (56 ms)
+    ✓ re-invoking token() hits STS each time (no internal caching) (67 ms)
+  provider-real.e2e — gate
+    ✓ skips real-AWS tests unless RUN_AWS_STS_REAL=1
+
+Tests: 4 passed, 4 total. Time: 3.014 s.
+```
+
+Three real `sts:GetWebIdentityToken` calls recorded in CloudTrail. Required `NODE_OPTIONS='--experimental-vm-modules'` (baked into the `make e2e` target) so jest's CJS VM accepts the dynamic `import()` inside `@aws-sdk/credential-provider-node`.
 
 ---
 
