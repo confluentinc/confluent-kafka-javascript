@@ -377,23 +377,42 @@ async function transform(ctx: RuleContext, schema: DereferencedJSONSchema, path:
       schema.type = originalType
     }
   }
-  if (schema.allOf != null && schema.allOf.length > 0) {
-    let subschema = validateSubschemas(schema.allOf, msg)
-    if (subschema != null) {
-      return await transform(ctx, subschema, path, msg, fieldTransform)
+  const hasAllOf = schema.allOf != null && schema.allOf.length > 0
+  const hasAnyOf = schema.anyOf != null && schema.anyOf.length > 0
+  const hasOneOf = schema.oneOf != null && schema.oneOf.length > 0
+  if (hasAllOf || hasAnyOf || hasOneOf) {
+    if (hasAllOf) {
+      for (let subschema of schema.allOf!) {
+        msg = await transform(ctx, subschema, path, msg, fieldTransform)
+      }
+    } else if (hasOneOf) {
+      for (let subschema of schema.oneOf!) {
+        if (validateSubschema(subschema, msg) != null) {
+          msg = await transform(ctx, subschema, path, msg, fieldTransform)
+          break
+        }
+      }
+    } else {
+      // anyOf
+      for (let subschema of schema.anyOf!) {
+        if (validateSubschema(subschema, msg) != null) {
+          msg = await transform(ctx, subschema, path, msg, fieldTransform)
+        }
+      }
     }
-  }
-  if (schema.anyOf != null && schema.anyOf.length > 0) {
-    let subschema = validateSubschemas(schema.anyOf, msg)
-    if (subschema != null) {
-      return await transform(ctx, subschema, path, msg, fieldTransform)
+    // Also visit sibling properties/items at this level
+    // (siblings to allOf/anyOf/oneOf).
+    if (schema.properties != null && msg != null && typeof msg === 'object' && !Array.isArray(msg)) {
+      for (let [propName, propSchema] of Object.entries(schema.properties)) {
+        await transformField(ctx, path, propName, msg, propSchema, fieldTransform)
+      }
     }
-  }
-  if (schema.oneOf != null && schema.oneOf.length > 0) {
-    let subschema = validateSubschemas(schema.oneOf, msg)
-    if (subschema != null) {
-      return await transform(ctx, subschema, path, msg, fieldTransform)
+    if (schema.items != null && Array.isArray(msg)) {
+      for (let i = 0; i < msg.length; i++) {
+        msg[i] = await transform(ctx, schema.items, path, msg[i], fieldTransform)
+      }
     }
+    return msg
   }
   if (schema.items != null) {
     if (Array.isArray(msg)) {
@@ -472,16 +491,13 @@ function validateSubtypes(schema: DereferencedJSONSchema, msg: any): Dereference
   return null
 }
 
-function validateSubschemas(subschemas: DereferencedJSONSchema[], msg: any): DereferencedJSONSchema | null {
-  for (let subschema of subschemas) {
-    try {
-      validateJSON(msg, subschema)
-      return subschema
-    } catch (error) {
-      // ignore
-    }
+function validateSubschema(subschema: DereferencedJSONSchema, msg: any): DereferencedJSONSchema | null {
+  try {
+    validateJSON(msg, subschema)
+    return subschema
+  } catch (error) {
+    return null
   }
-  return null
 }
 
 function getType(schema: DereferencedJSONSchema): FieldType {
