@@ -665,6 +665,169 @@ describe('JsonSerializer', () => {
     expect(obj2.payload.messageId).toEqual('12345-suffix');
     expect(obj2.payload.timestamp).toEqual(obj.payload.timestamp);
   })
+  it('cel field transform allOf', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let serConfig: JsonSerializerConfig = {
+      useLatestVersion: true,
+    }
+    let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    let encRule: Rule = {
+      name: 'test-cel',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITE,
+      type: 'CEL_FIELD',
+      tags: ['PII'],
+      expr: "value + '-suffix'"
+    }
+    let ruleSet: RuleSet = {
+      domainRules: [encRule]
+    }
+
+    let schema = JSON.stringify({
+      type: 'object',
+      properties: {
+        pins: {
+          type: 'object',
+          allOf: [
+            { properties: { pin: { 'confluent:tags': ['PII'], type: ['string', 'null'] } } },
+            { properties: { npin: { 'confluent:tags': ['PII'], type: ['string', 'null'] } } }
+          ]
+        }
+      }
+    })
+
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema,
+      ruleSet
+    }
+
+    await client.register(subject, info, false)
+
+    let obj = { pins: { pin: 'P123456789', npin: 'NP00012345678' } }
+    let bytes = await ser.serialize(topic, obj)
+
+    let deserConfig: JsonDeserializerConfig = {}
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.pins.pin).toEqual('P123456789-suffix');
+    expect(obj2.pins.npin).toEqual('NP00012345678-suffix');
+  })
+  it('cel field transform nested anyOf', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let serConfig: JsonSerializerConfig = {
+      useLatestVersion: true,
+    }
+    let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    let encRule: Rule = {
+      name: 'test-cel',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITE,
+      type: 'CEL_FIELD',
+      tags: ['PII'],
+      expr: "value + '-suffix'"
+    }
+    let ruleSet: RuleSet = {
+      domainRules: [encRule]
+    }
+
+    let schema = JSON.stringify({
+      type: 'object',
+      properties: {
+        pins: {
+          type: 'object',
+          anyOf: [
+            { properties: { pin: { 'confluent:tags': ['PII'], type: ['string', 'null'] } } },
+            { properties: { npin: { 'confluent:tags': ['PII'], type: ['string', 'null'] } } }
+          ]
+        }
+      }
+    })
+
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema,
+      ruleSet
+    }
+
+    await client.register(subject, info, false)
+
+    let obj = { pins: { pin: 'P123456789', npin: 'NP00012345678' } }
+    let bytes = await ser.serialize(topic, obj)
+
+    let deserConfig: JsonDeserializerConfig = {}
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.pins.pin).toEqual('P123456789-suffix');
+    expect(obj2.pins.npin).toEqual('NP00012345678-suffix');
+  })
+  it('cel field transform sibling anyOf', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let serConfig: JsonSerializerConfig = {
+      useLatestVersion: true,
+    }
+    let ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    let encRule: Rule = {
+      name: 'test-cel',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITE,
+      type: 'CEL_FIELD',
+      tags: ['PII'],
+      expr: "value + '-suffix'"
+    }
+    let ruleSet: RuleSet = {
+      domainRules: [encRule]
+    }
+
+    let schema = JSON.stringify({
+      type: 'object',
+      properties: {
+        pins: {
+          type: 'object',
+          anyOf: [
+            { required: ['pin'] },
+            { required: ['npin'] }
+          ],
+          properties: {
+            pin: { 'confluent:tags': ['PII'], type: ['string', 'null'] },
+            npin: { 'confluent:tags': ['PII'], type: ['string', 'null'] }
+          }
+        }
+      }
+    })
+
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema,
+      ruleSet
+    }
+
+    await client.register(subject, info, false)
+
+    let obj = { pins: { pin: 'P123456789', npin: 'NP00012345678' } }
+    let bytes = await ser.serialize(topic, obj)
+
+    let deserConfig: JsonDeserializerConfig = {}
+    let deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.pins.pin).toEqual('P123456789-suffix');
+    expect(obj2.pins.npin).toEqual('NP00012345678-suffix');
+  })
   it('basic encryption', async () => {
     let conf: ClientConfig = {
       baseURLs: [baseURL],
