@@ -22,8 +22,13 @@ test:
 
 # Real-AWS integration tests. Gated by RUN_AWS_STS_REAL=1 inside the test files.
 # Pass extra env vars (AWS_REGION, AUDIENCE) on the command line.
+#
+# NODE_OPTIONS=--experimental-vm-modules is required because the AWS SDK's
+# @aws-sdk/credential-provider-node uses dynamic ESM `import()` internally,
+# which jest's CJS VM rejects without this flag.
 e2e:
-	RUN_AWS_STS_REAL=1 $(JEST) $(E2E_DIR)
+	RUN_AWS_STS_REAL=1 NODE_OPTIONS='--experimental-vm-modules' \
+		$(JEST) --config ./e2e/jest.config.js
 
 build:
 	rm -rf ./dist && tsc -p tsconfig-build.json
