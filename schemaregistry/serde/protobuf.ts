@@ -465,6 +465,10 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
 
   toMessageDescFromIndexes(fd: DescFile, msgIndexes: number[]): DescMessage {
     let index = msgIndexes[0]
+    if (index < 0 || index >= fd.messages.length) {
+      throw new SerializationError(
+        `message index ${index} out of range, schema has ${fd.messages.length} top-level message(s)`)
+    }
     if (msgIndexes.length === 1) {
       return fd.messages[index]
     }
@@ -473,6 +477,10 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
 
   toNestedMessageDesc(parent: DescMessage, msgIndexes: number[]): DescMessage {
     let index = msgIndexes[0]
+    if (index < 0 || index >= parent.nestedMessages.length) {
+      throw new SerializationError(
+        `message index ${index} out of range, message has ${parent.nestedMessages.length} nested message(s)`)
+    }
     if (msgIndexes.length === 1) {
       return parent.nestedMessages[index]
     }
