@@ -138,8 +138,11 @@ export class SchemaId {
     if (count < 0) {
       return [0, [0]]
     }
-    const msgIndexes = []
+    const msgIndexes: number[] = []
     for (let i = 0; i < count; i++) {
+      if (bw.pos >= payload.length) {
+        return [0, [0]]
+      }
       const idx = bw.readVarInt()
       // A negative index is impossible in a valid Confluent wire format; it means
       // we are reading protobuf payload bytes instead of message index bytes.

@@ -626,10 +626,10 @@ describe('ProtobufDeserializerMissingIndexes', () => {
     })
     const fullBytes = await ser.serialize(topic, obj)
     
-	// cflt wire format is: magic(1) + schemaId(4) + msgIndexCount(1+) + protobuf
-	// non-compliant producers that omit the message-index byte produce:
-	//   magic(1) + schemaId(4) + protobuf
-	// we can sim that by dropping byte 5 (the 0x00 shorthand count byte).
+    // cflt wire format is: magic(1) + schemaId(4) + msgIndexCount(1+) + protobuf
+    // non-compliant producers that omit the message-index byte produce:
+    //   magic(1) + schemaId(4) + protobuf
+    // we can sim that by dropping byte 5 (the 0x00 shorthand count byte).
     const bytesWithoutIndexes = Buffer.concat([fullBytes.slice(0, 5), fullBytes.slice(6)])
 
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
