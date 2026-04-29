@@ -602,3 +602,39 @@ describe('ProtobufSerdeWithAssociatedNameStrategy', () => {
     await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 })
+
+describe('ProtobufDeserializerMissingIndexes', () => {
+  afterEach(async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+    await client.deleteSubject(subject, false)
+    await client.deleteSubject(subject, true)
+  })
+
+  it('deserializes successfully when producer omits message index bytes', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    // Serialize normally so the schema is registered and we get valid protobuf bytes.
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, { autoRegisterSchemas: true })
+    ser.registry.add(AuthorSchema)
+    const obj = create(AuthorSchema, {
+      name: 'Kafka',
+      id: 123,
+      picture: Buffer.from([1, 2]),
+      works: ['The Castle', 'The Trial']
+    })
+    const fullBytes = await ser.serialize(topic, obj)
+    
+    // cflt wire format is: magic(1) + schemaId(4) + msgIndexCount(1+) + protobuf
+    // non-compliant producers that omit the message-index byte produce:
+    //   magic(1) + schemaId(4) + protobuf
+    // we can sim that by dropping byte 5 (the 0x00 shorthand count byte).
+    const bytesWithoutIndexes = Buffer.concat([fullBytes.slice(0, 5), fullBytes.slice(6)])
+
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    // Before the fix this threw: TypeError: Cannot read properties of undefined (reading 'nestedMessages')
+    const obj2 = await deser.deserialize(topic, bytesWithoutIndexes)
+    expect(obj2).toEqual(obj)
+  })
+})

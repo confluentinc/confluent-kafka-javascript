@@ -132,9 +132,24 @@ export class SchemaId {
     if (count == 0) {
       return [1, [0]]
     }
-    const msgIndexes = []
+    // A negative count means the first byte was a protobuf field tag (the producer
+    // omitted message index bytes for a single-message schema). Treat as absent and
+    // use the default index [0] with zero bytes consumed so the payload is intact.
+    if (count < 0) {
+      return [0, [0]]
+    }
+    const msgIndexes: number[] = []
     for (let i = 0; i < count; i++) {
-      msgIndexes.push(bw.readVarInt())
+      if (bw.pos >= payload.length) {
+        return [0, [0]]
+      }
+      const idx = bw.readVarInt()
+      // A negative index is impossible in a valid Confluent wire format; it means
+      // we are reading protobuf payload bytes instead of message index bytes.
+      if (idx < 0) {
+        return [0, [0]]
+      }
+      msgIndexes.push(idx)
     }
     return [bw.pos, msgIndexes]
   }
