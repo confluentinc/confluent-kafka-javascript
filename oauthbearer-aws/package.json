@@ -1,0 +1,45 @@
+{
+  "name": "@confluentinc/kafka-javascript-oauthbearer-aws",
+  "version": "1.9.0",
+  "description": "AWS IAM OAUTHBEARER token provider for @confluentinc/kafka-javascript",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "LICENSE.txt",
+    "README.md",
+    "dist/"
+  ],
+  "peerDependencies": {
+    "@confluentinc/kafka-javascript": "^1.9.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sts": "^3.975.0",
+    "@aws-sdk/credential-providers": "^3.975.0"
+  },
+  "devDependencies": {
+    "@confluentinc/kafka-javascript": "file:..",
+    "@types/jest": "^29.5.13",
+    "@types/node": "^20.16.1",
+    "aws-sdk-client-mock": "^4.1.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.9.2"
+  },
+  "scripts": {
+    "lint": "make lint",
+    "test": "make test",
+    "build": "rm -rf ./dist && tsc -p tsconfig-build.json"
+  },
+  "keywords": [
+    "kafka",
+    "oauthbearer",
+    "aws",
+    "iam",
+    "sts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:confluentinc/confluent-kafka-javascript.git"
+  },
+  "license": "MIT"
+}
