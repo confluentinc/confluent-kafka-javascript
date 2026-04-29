@@ -11,6 +11,9 @@ Dockerfile
 deps/librdkafka/config.h
 /schemaregistry
 /schemaregistry-examples
+/oauthbearer-aws
+DESIGN_OAUTHBEARER_HYBRID_AUTOWIRE.md
+IMPLEMENTATION_PLAN_OAUTHBEARER_HYBRID_AUTOWIRE.md
 /build
 .github
 .vscode
