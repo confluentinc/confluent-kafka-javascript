@@ -611,7 +611,7 @@ describe('ProtobufDeserializerMissingIndexes', () => {
     await client.deleteSubject(subject, true)
   })
 
-  it('deserializes successfully when producer omits message index bytes', async () => {
+  it('throws a descriptive error when producer omits message index bytes', async () => {
     const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
     const client = SchemaRegistryClient.newClient(conf)
 
@@ -625,7 +625,7 @@ describe('ProtobufDeserializerMissingIndexes', () => {
       works: ['The Castle', 'The Trial']
     })
     const fullBytes = await ser.serialize(topic, obj)
-    
+
     // cflt wire format is: magic(1) + schemaId(4) + msgIndexCount(1+) + protobuf
     // non-compliant producers that omit the message-index byte produce:
     //   magic(1) + schemaId(4) + protobuf
@@ -633,8 +633,7 @@ describe('ProtobufDeserializerMissingIndexes', () => {
     const bytesWithoutIndexes = Buffer.concat([fullBytes.slice(0, 5), fullBytes.slice(6)])
 
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
-    // Before the fix this threw: TypeError: Cannot read properties of undefined (reading 'nestedMessages')
-    const obj2 = await deser.deserialize(topic, bytesWithoutIndexes)
-    expect(obj2).toEqual(obj)
+    // Clients must throw a descriptive error rather than silently falling back.
+    await expect(deser.deserialize(topic, bytesWithoutIndexes)).rejects.toThrow('message indexes are absent or malformed')
   })
 })

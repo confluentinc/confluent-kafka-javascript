@@ -132,22 +132,22 @@ export class SchemaId {
     if (count == 0) {
       return [1, [0]]
     }
-    // A negative count means the first byte was a protobuf field tag (the producer
-    // omitted message index bytes for a single-message schema). Treat as absent and
-    // use the default index [0] with zero bytes consumed so the payload is intact.
+    // A negative count means the first byte was a protobuf field tag rather than a
+    // valid varint count; the message index bytes are absent or malformed.
     if (count < 0) {
-      return [0, [0]]
+      throw new SerializationError('message indexes are absent or malformed')
     }
     const msgIndexes: number[] = []
     for (let i = 0; i < count; i++) {
       if (bw.pos >= payload.length) {
-        return [0, [0]]
+        // Buffer exhausted before all indexes were read; indexes are malformed.
+        throw new SerializationError('message indexes are absent or malformed')
       }
       const idx = bw.readVarInt()
-      // A negative index is impossible in a valid Confluent wire format; it means
-      // we are reading protobuf payload bytes instead of message index bytes.
+      // A negative index is impossible in a valid Confluent wire format; the
+      // payload does not contain valid message index bytes.
       if (idx < 0) {
-        return [0, [0]]
+        throw new SerializationError('message indexes are absent or malformed')
       }
       msgIndexes.push(idx)
     }

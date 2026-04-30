@@ -11,22 +11,18 @@ describe('readMessageIndexes', () => {
     expect(bytesRead).toEqual(1)
   })
 
-  it('returns [0] with 0 bytes consumed when count zigzag-decodes to negative (absent indexes)', () => {
+  it('throws SerializationError when count zigzag-decodes to negative (absent indexes)', () => {
     const schemaId = new SchemaId("PROTOBUF")
     // 0x09 = raw 9, zigzag decode = -5 (field 1, 64-bit wire type in protobuf)
     const payload = Buffer.from([0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-    const [bytesRead, indexes] = schemaId.readMessageIndexes(payload)
-    expect(indexes).toEqual([0])
-    expect(bytesRead).toEqual(0)
+    expect(() => schemaId.readMessageIndexes(payload)).toThrow('message indexes are absent or malformed')
   })
 
-  it('returns [0] with 0 bytes consumed when first index is negative (absent indexes, positive count)', () => {
+  it('throws SerializationError when first index is negative (absent indexes, positive count)', () => {
     const schemaId = new SchemaId("PROTOBUF")
     // 0x0a = count 5 (field 1, wire type 2 in protobuf), 0x05 = raw 5, zigzag = -3
     const payload = Buffer.from([0x0a, 0x05, 0x68, 0x65, 0x6c, 0x6c, 0x6f])
-    const [bytesRead, indexes] = schemaId.readMessageIndexes(payload)
-    expect(indexes).toEqual([0])
-    expect(bytesRead).toEqual(0)
+    expect(() => schemaId.readMessageIndexes(payload)).toThrow('message indexes are absent or malformed')
   })
 
   it('reads valid positive message indexes normally', () => {
