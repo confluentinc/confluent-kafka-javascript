@@ -249,6 +249,11 @@ export abstract class Serde {
     config: { [key: string]: string },
     getRecordName: RecordNameFunc
   ): void {
+    // If the user supplied a custom subjectNameStrategy function and didn't
+    // explicitly request a built-in strategy type, preserve their function.
+    if (strategyType == null && this.conf.subjectNameStrategy != null) {
+      return
+    }
     const effectiveType = strategyType ?? SubjectNameStrategyType.ASSOCIATED
     // ASSOCIATED requires special handling with client and config
     if (effectiveType === SubjectNameStrategyType.ASSOCIATED) {
