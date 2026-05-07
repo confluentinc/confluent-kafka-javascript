@@ -1717,3 +1717,46 @@ describe('JsonSerdeWithAssociatedNameStrategy', () => {
     await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 })
+
+describe('JsonSerdeWithCustomSubjectNameStrategy', () => {
+  it('invokes a user-supplied subjectNameStrategy function', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const customSubject = 'my-custom-subject'
+    const info: SchemaInfo = { schemaType: 'JSON', schema: demoSchema }
+    const id = await client.register(customSubject, info, false)
+    expect(id).toBeGreaterThan(0)
+
+    let invocations = 0
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategy: (_topic, _serdeType) => {
+        invocations++
+        return customSubject
+      }
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }
+    const bytes = await ser.serialize(topic, obj)
+    expect(invocations).toBeGreaterThan(0)
+
+    const deserConfig: JsonDeserializerConfig = {
+      subjectNameStrategy: (_topic, _serdeType) => customSubject
+    }
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+
+    await client.deleteSubject(customSubject, false)
+    await client.deleteSubject(customSubject, true)
+  })
+})
