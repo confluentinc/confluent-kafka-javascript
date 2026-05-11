@@ -1,6 +1,40 @@
 import { describe, expect, it } from '@jest/globals';
 import {SchemaId} from "../../serde/serde";
 
+describe('readMessageIndexes', () => {
+  it('returns [0] for zero-count shorthand, consuming 1 byte', () => {
+    const schemaId = new SchemaId("PROTOBUF")
+    // 0x00 = count 0, meaning default index [0]
+    const payload = Buffer.from([0x00, 0x0a, 0x05, 0x68, 0x65, 0x6c, 0x6c, 0x6f])
+    const [bytesRead, indexes] = schemaId.readMessageIndexes(payload)
+    expect(indexes).toEqual([0])
+    expect(bytesRead).toEqual(1)
+  })
+
+  it('throws SerializationError when count zigzag-decodes to negative (absent indexes)', () => {
+    const schemaId = new SchemaId("PROTOBUF")
+    // 0x09 = raw 9, zigzag decode = -5 (field 1, 64-bit wire type in protobuf)
+    const payload = Buffer.from([0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    expect(() => schemaId.readMessageIndexes(payload)).toThrow('message indexes are absent or malformed')
+  })
+
+  it('throws SerializationError when first index is negative (absent indexes, positive count)', () => {
+    const schemaId = new SchemaId("PROTOBUF")
+    // 0x0a = count 5 (field 1, wire type 2 in protobuf), 0x05 = raw 5, zigzag = -3
+    const payload = Buffer.from([0x0a, 0x05, 0x68, 0x65, 0x6c, 0x6c, 0x6f])
+    expect(() => schemaId.readMessageIndexes(payload)).toThrow('message indexes are absent or malformed')
+  })
+
+  it('reads valid positive message indexes normally', () => {
+    const schemaId = new SchemaId("PROTOBUF")
+    // 0x06 = count 3, then indexes 1, 2, 3 (zigzag encoded as 0x02 0x04 0x06)
+    const payload = Buffer.from([0x06, 0x02, 0x04, 0x06])
+    const [bytesRead, indexes] = schemaId.readMessageIndexes(payload)
+    expect(indexes).toEqual([1, 2, 3])
+    expect(bytesRead).toEqual(4)
+  })
+})
+
 describe('SchemaGuid', () => {
   it('schema guid', () => {
     const schemaId = new SchemaId("AVRO")

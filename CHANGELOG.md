@@ -1,3 +1,9 @@
+# confluent-kafka-javascript 1.x.x
+
+## Fixes
+1. Handle anyOf/allOf in JSON transforms (#479)
+2. Preserve custom subjectNameStrategy in serde constructors (#482)
+
 
 # confluent-kafka-javascript 1.9.0
 
