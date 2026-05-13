@@ -499,7 +499,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   }
 }
 
-function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
+export function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
   fullyQualifyTypeNames(fileDesc)
   const resolve = (depName: string) => {
     if (isBuiltin(depName)) {

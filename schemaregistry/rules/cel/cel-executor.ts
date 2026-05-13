@@ -3,13 +3,28 @@ import {RuleContext, RuleExecutor} from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
 import stringify from "json-stringify-deterministic";
 import {LRUCache} from "lru-cache";
-import {celEnv, parse, plan} from "@bufbuild/cel";
-import { STRINGS_EXT_FUNCS } from "@bufbuild/cel/ext/strings";
+import {CelEnv, celEnv, parse, plan} from "@bufbuild/cel";
+import { strings as STRINGS_EXT_FUNCS } from "@bufbuild/cel/ext";
+import { DescMessage, fromBinary } from "@bufbuild/protobuf";
+import { reflect } from "@bufbuild/protobuf/reflect";
+import { FileDescriptorProtoSchema, timestampNow } from "@bufbuild/protobuf/wkt";
+import { newFileRegistry } from "../../serde/protobuf";
+import { DECIMAL_FUNCS } from "./decimal-funcs";
+import { TIMESTAMP_FUNCS } from "./timestamp-funcs";
 
 export class CelExecutor implements RuleExecutor {
   config: Map<string, string> | null = null
-  env = celEnv({ funcs: STRINGS_EXT_FUNCS });
+  env: CelEnv = celEnv({
+    funcs: [...STRINGS_EXT_FUNCS, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS],
+  });
   cache: LRUCache<string, any> = new LRUCache({max: 1000})
+  // Parsed proto descriptors keyed by schema string. Used to wrap raw proto
+  // Messages as ReflectMessage before passing to CEL, so @bufbuild/cel's
+  // `toCel` skips its WKT-only registry lookup. The wrap is transitive: once
+  // the outer message is a ReflectMessage, nested message fields stay as
+  // ReflectMessages too (see field.js:reflectMsgToCel), so any non-WKT type
+  // reachable through the schema's file descriptor resolves correctly.
+  protoDescCache: LRUCache<string, DescMessage> = new LRUCache({max: 1000})
 
   static register(): CelExecutor {
     const executor = new CelExecutor()
@@ -27,9 +42,42 @@ export class CelExecutor implements RuleExecutor {
 
   async transform(ctx: RuleContext, msg: any): Promise<any> {
     const args = {
-      message: msg
+      message: this.wrapForCel(ctx, msg),
     }
     return await this.execute(ctx, msg, args)
+  }
+
+  /**
+   * Wraps a raw proto Message in a ReflectMessage so {@code @bufbuild/cel}
+   * recognizes it without a registry lookup. For non-proto targets or when
+   * the descriptor cannot be resolved, returns msg unchanged.
+   */
+  wrapForCel(ctx: RuleContext, msg: any): any {
+    if (
+      ctx.target?.schemaType !== "PROTOBUF" ||
+      msg == null ||
+      typeof msg !== "object" ||
+      typeof msg.$typeName !== "string" ||
+      !ctx.target.schema
+    ) {
+      return msg
+    }
+    const typeName: string = msg.$typeName
+    const schema: string = ctx.target.schema
+    const cacheKey = `${schema}::${typeName}`
+    let desc = this.protoDescCache.get(cacheKey)
+    if (desc == null) {
+      const fileDesc = fromBinary(
+        FileDescriptorProtoSchema, Buffer.from(schema, "base64"))
+      const fileRegistry = newFileRegistry(fileDesc, new Map())
+      const found = fileRegistry.getMessage(typeName)
+      if (found == null) {
+        return msg
+      }
+      desc = found
+      this.protoDescCache.set(cacheKey, desc)
+    }
+    return reflect(desc, msg)
   }
 
   async execute(ctx: RuleContext, msg: any, args: { [key: string]: any }): Promise<any> {
@@ -69,6 +117,12 @@ export class CelExecutor implements RuleExecutor {
       const parsedExpr = parse(expr)
       program = plan(this.env, parsedExpr)
       this.cache.set(ruleJson, program)
+    }
+    // `now` is bound lazily, fresh per evaluation. Only inject when the
+    // expression references it. Each rule evaluation sees a freshly-captured
+    // UTC instant — mirrors the protovalidate / Python pattern.
+    if (expr.includes("now") && args["now"] === undefined) {
+      args["now"] = timestampNow()
     }
     return program(args)
   }
