@@ -1245,6 +1245,204 @@ describe('AvroSerializer', () => {
       expect(err).toBeInstanceOf(SerializationError)
     }
   })
+
+  const decimalSchema = `
+{
+  "name": "DecSchema",
+  "type": "record",
+  "fields": [
+    {
+      "name": "decField",
+      "type": { "type": "bytes", "logicalType": "decimal", "precision": 10, "scale": 2 }
+    }
+  ]
+}
+`
+  const tsSchema = `
+{
+  "name": "TsSchema",
+  "type": "record",
+  "fields": [
+    {
+      "name": "tsField",
+      "type": { "type": "long", "logicalType": "timestamp-millis" }
+    }
+  ]
+}
+`
+
+  it('cel decimal passes', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'decimals.gt(decimal(message.decField), decimal("10.00"))'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    // 12.34 = unscaled 1234 = 0x04D2
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.decField).toEqual(obj.decField)
+  })
+
+  it('cel decimal fails', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'decimals.lt(decimal(message.decField), decimal("10.00"))'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    try {
+      await ser.serialize(topic, obj)
+      expect(true).toBe(false)
+    } catch (err) {
+      expect(err).toBeInstanceOf(SerializationError)
+    }
+  })
+
+  it('cel decimal arithmetic', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'decimals.eq(decimals.add(decimal(message.decField), decimal("1.66")), decimal("14.00"))'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.decField).toEqual(obj.decField)
+  })
+
+  it('cel decimal string', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'string(decimal(message.decField)) == "12.34"'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.decField).toEqual(obj.decField)
+  })
+
+  it('cel field decimal value is scaled', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // The field rule's `value` binding must be the scaled decimal (12.34), not the unscaled
+    // integer (1234); string(decimal(value)) distinguishes them.
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+      expr: 'name == "decField" ; string(decimal(value)) == "12.34"'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.decField).toEqual(obj.decField)
+  })
+
+  it('cel field decimal transform requantizes', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // 12.34 * 2.0 = 24.680 (scale 3); the schema is scale 2, so the returned decimal must be
+    // re-quantized and written back as 24.68 (unscaled 2468 = 0x09A4), not 246.80.
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'TRANSFORM', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+      expr: 'name == "decField" ; decimals.mul(decimal(value), decimal("2.0"))'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.decField).toEqual(Buffer.from([0x09, 0xA4]))
+  })
+
+  it('cel timestamp millis passes', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'timestamp.of(message.tsField) < now'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { tsField: 1577836800000 } // 2020-01-01 UTC
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.tsField).toEqual(obj.tsField)
+  })
+
+  it('cel timestamp millis fails', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'timestamp.of(message.tsField) > now'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { tsField: 1577836800000 } // 2020-01-01 UTC
+    try {
+      await ser.serialize(topic, obj)
+      expect(true).toBe(false)
+    } catch (err) {
+      expect(err).toBeInstanceOf(SerializationError)
+    }
+  })
+
+  it('cel field timestamp value is a timestamp', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // The field rule's `value` binding must be a self-describing timestamp, so the 1-arg
+    // timestamp.of(value) works (no unit literal).
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+      expr: 'name == "tsField" ; timestamp.of(value) < now'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { tsField: 1577836800000 }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.tsField).toEqual(obj.tsField)
+  })
+
+  it('cel field timestamp transform', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // A field rule returning a Timestamp must re-encode to the field's epoch unit (millis).
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'TRANSFORM', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+      expr: 'name == "tsField" ; timestamp.of(value)'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { tsField: 1577836800000 }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.tsField).toEqual(1577836800000)
+  })
+
   it('basic encryption', async () => {
     let conf: ClientConfig = {
       baseURLs: [baseURL],
