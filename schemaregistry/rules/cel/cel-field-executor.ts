@@ -6,7 +6,7 @@ import {
   RuleContext,
 } from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
-import {CelExecutor} from "./cel-executor";
+import {CelExecutor, unwrapAvroFieldFromCel, wrapAvroFieldForCel} from "./cel-executor";
 import {celFromScalar} from "@bufbuild/cel";
 import type {DescField} from "@bufbuild/protobuf";
 import type {ScalarValue} from "@bufbuild/protobuf/reflect";
@@ -62,19 +62,32 @@ export class CelFieldExecutorTransform implements FieldTransform {
     if (!fieldCtx.isPrimitive()) {
       return fieldValue
     }
+    // Bind `value` the way the field's declared type implies. For Protobuf that means converting
+    // a scalar through its descriptor (celScalarValue): protobuf-es picks whichever JS type is
+    // convenient - a number for an int32, a bigint for both int64 and uint64 - and CEL reads those
+    // as double and int, leaving a rule written against the field's own type without a matching
+    // overload; FieldType cannot express the difference, so the field itself travels on the
+    // context. For Avro it means a decimal/timestamp field arrives as a self-describing
+    // Decimal/Timestamp (scale/unit from the schema), matching `decimal(message.field)` and the
+    // other clients.
+    let value = celScalarValue(fieldCtx, fieldValue)
+    if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
+      value = wrapAvroFieldForCel(fieldValue, fieldCtx.fullName, ctx.target.schema)
+    }
     const args = {
-      // Present the value the way the field's declared type implies: protobuf-es picks
-      // whichever JS type is convenient - a number for an int32, a bigint for both int64
-      // and uint64 - and CEL reads those as double and int, leaving a rule written against
-      // the field's own type without a matching overload. FieldType cannot express the
-      // difference, so the field itself travels on the context.
-      value: celScalarValue(fieldCtx, fieldValue),
+      value,
       fullName: fieldCtx.fullName,
       name: fieldCtx.name,
       typeName: fieldCtx.typeName(),
       tags: Array.from(fieldCtx.tags),
       message: fieldCtx.containingMessage
     }
-    return await this.executor.execute(ctx, fieldValue, args)
+    const result = await this.executor.execute(ctx, fieldValue, args)
+    // Encode a returned Decimal/Timestamp back to the field's Avro form (bytes/epoch at the
+    // schema scale/unit) so avsc can serialize it; a bool condition result passes through.
+    if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
+      return unwrapAvroFieldFromCel(result, fieldCtx.fullName, ctx.target.schema)
+    }
+    return result
   }
 }
