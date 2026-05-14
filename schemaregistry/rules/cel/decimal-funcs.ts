@@ -209,7 +209,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     return d.isNegative() ? -1n : 1n;
   }),
   celFunc("decimals.scale", [DYN], INT, (a) => BigInt(toDecimal(a).decimalPlaces())),
-  celFunc("decimals.precision", [DYN], INT, (a) => BigInt(toDecimal(a).precision(true))),
+  celFunc("decimals.prec", [DYN], INT, (a) => BigInt(toDecimal(a).precision(true))),
 
   // ---- rounding family ----
   celFunc("decimals.round", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_HALF_UP))),
