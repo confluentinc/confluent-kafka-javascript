@@ -182,9 +182,8 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     decimalFromBytesScale(bytes, scale),
   ),
 
-  // ---- comparison ----
+  // ---- comparison (no `.ne` — rules use `!decimals.eq(...)`) ----
   celFunc("decimals.eq", [DYN, DYN], BOOL, (a, b) => toDecimal(a).cmp(toDecimal(b)) === 0),
-  celFunc("decimals.ne", [DYN, DYN], BOOL, (a, b) => toDecimal(a).cmp(toDecimal(b)) !== 0),
   celFunc("decimals.lt", [DYN, DYN], BOOL, (a, b) => toDecimal(a).cmp(toDecimal(b)) < 0),
   celFunc("decimals.le", [DYN, DYN], BOOL, (a, b) => toDecimal(a).cmp(toDecimal(b)) <= 0),
   celFunc("decimals.gt", [DYN, DYN], BOOL, (a, b) => toDecimal(a).cmp(toDecimal(b)) > 0),
@@ -208,18 +207,25 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     if (d.isZero()) return 0n;
     return d.isNegative() ? -1n : 1n;
   }),
-  celFunc("decimals.scale", [DYN], INT, (a) => BigInt(toDecimal(a).decimalPlaces())),
-  celFunc("decimals.prec", [DYN], INT, (a) => BigInt(toDecimal(a).precision(true))),
 
   // ---- rounding family ----
   celFunc("decimals.round", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_HALF_UP))),
   celFunc("decimals.round", [DYN, INT], DECIMAL_TYPE, (a, scale) =>
     decimalToCel(toDecimal(a).toDP(Number(scale), Decimal.ROUND_HALF_UP)),
   ),
-  celFunc("decimals.trunc", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_DOWN))),
-  celFunc("decimals.trunc", [DYN, INT], DECIMAL_TYPE, (a, scale) =>
-    decimalToCel(toDecimal(a).toDP(Number(scale), Decimal.ROUND_DOWN)),
-  ),
+  // Flink's TRUNCATE early-returns when the target scale is at-or-finer than
+  // the current scale — it's a no-op there, so the result keeps the input's
+  // representation. Without this guard, toDP(n>=cur, DOWN) would zero-pad and
+  // string(trunc(x, n>=cur)) would diverge from Flink.
+  celFunc("decimals.trunc", [DYN], DECIMAL_TYPE, (a) => {
+    const d = toDecimal(a);
+    return decimalToCel(d.decimalPlaces() <= 0 ? d : d.toDP(0, Decimal.ROUND_DOWN));
+  }),
+  celFunc("decimals.trunc", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
+    const d = toDecimal(a);
+    const target = Number(scale);
+    return decimalToCel(target >= d.decimalPlaces() ? d : d.toDP(target, Decimal.ROUND_DOWN));
+  }),
   celFunc("decimals.floor", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_FLOOR))),
   celFunc("decimals.ceil", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_CEIL))),
 
