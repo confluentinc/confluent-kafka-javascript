@@ -457,7 +457,7 @@ class KafkaConsumerSeek : public ErrorAwareWorker {
 class KafkaConsumerConsumeNum : public ErrorAwareWorker {
  public:
   KafkaConsumerConsumeNum(Nan::Callback*, NodeKafka::KafkaConsumer*,
-    const uint32_t &, const int &, bool);
+    const uint32_t &, const int &, bool, bool);
   ~KafkaConsumerConsumeNum();
 
   void Execute();
@@ -468,6 +468,7 @@ class KafkaConsumerConsumeNum : public ErrorAwareWorker {
   const uint32_t m_num_messages;
   const int m_timeout_ms;
   const bool m_timeout_only_for_first_message;
+  const bool m_timeout_shared_by_batch;
   std::vector<RdKafka::Message*> m_messages;
 };
 
