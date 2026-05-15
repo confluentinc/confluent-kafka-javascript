@@ -455,7 +455,7 @@ export type Admin = {
     topics?: string[],
     includeAuthorizedOperations?: boolean,
     timeout?: number
-  }): Promise<{ topics: Array<ITopicMetadata> }>
+  }): Promise<Array<ITopicMetadata>>
   fetchTopicOffsets(topic: string,
     options?: {
       timeout?: number,
