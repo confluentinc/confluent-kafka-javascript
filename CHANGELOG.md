@@ -3,6 +3,7 @@
 ## Fixes
 1. Handle anyOf/allOf in JSON transforms (#479)
 2. Preserve custom subjectNameStrategy in serde constructors (#482)
+3. Correct the TypeScript return type of `admin.fetchTopicMetadata` to `Promise<Array<ITopicMetadata>>` (#367)
 
 
 # confluent-kafka-javascript 1.9.0
