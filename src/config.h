@@ -10,7 +10,8 @@
 #ifndef SRC_CONFIG_H_
 #define SRC_CONFIG_H_
 
-#include <nan.h>
+#include <napi.h>
+#include <uv.h>
 #include <iostream>
 #include <vector>
 #include <list>
@@ -26,7 +27,7 @@ class Conf : public RdKafka::Conf {
  public:
   ~Conf();
 
-  static Conf* create(RdKafka::Conf::ConfType, v8::Local<v8::Object>, std::string &);  // NOLINT
+  static Conf* create(RdKafka::Conf::ConfType, Napi::Object, std::string &);  // NOLINT
   static void DumpConfig(std::list<std::string> *);
 
   void listen();
@@ -34,7 +35,7 @@ class Conf : public RdKafka::Conf {
 
   void ConfigureCallback(
     const std::string &string_key,
-    const v8::Local<v8::Function> &cb,
+    const Napi::Function &cb,
     bool add, std::string &errstr);
 
   bool is_sasl_oauthbearer() const;
