@@ -50,7 +50,6 @@ jest.mock('../../../lib/rdkafka', () => {
 const { Kafka } = require('../../../lib/kafkajs');
 const LibrdKafkaError = require('../../../lib/error');
 const RdKafkaMock = require('../../../lib/rdkafka');
-const { timeStamp } = require('console');
 
 function makeLogger() {
   const logger = {
@@ -65,13 +64,13 @@ function makeLogger() {
 }
 
 function brokerError() {
-  return LibrdKafkaError.create(new Error('local: broker transport failure'));
+  return LibrdKafkaError.create(new Error('Local: broker transport failure'));
 }
 
-function expectStringFirstArg(mockFn) {
+function expectStringFirstArg(mockFn, err) {
   expect(mockFn).toHaveBeenCalled();
   const [firstArg, secondArg] = mockFn.mock.calls[mockFn.mock.calls.length - 1];
-  expect(typeof firstArg).toBe('string');
+  expect(firstArg).toEqual(`Error: ${err.message}`);
   expect(secondArg).toEqual(expect.objectContaining({
     fac: 'BINDING',
     name: expect.any(String),
@@ -79,7 +78,7 @@ function expectStringFirstArg(mockFn) {
   }));
 }
 
-describe('user-supplied logger receives a string as the first arg on event.error', () => {
+describe('user-supplied logger receives a string as the first arg on error callbacks', () => {
   beforeEach(() => {
     RdKafkaMock.__captured.producer = null;
     RdKafkaMock.__captured.consumer = null;
@@ -91,9 +90,10 @@ describe('user-supplied logger receives a string as the first arg on event.error
     const producer = new Kafka({ kafkaJS: { brokers: ['x:1'], logger } }).producer();
     producer.connect().catch(() => {});
 
-    RdKafkaMock.__captured.producer.emit('event.error', brokerError());
+    const err = brokerError();
+    RdKafkaMock.__captured.producer.emit('event.error', err);
 
-    expectStringFirstArg(logger.error);
+    expectStringFirstArg(logger.error, err);
   });
 
   it('Consumer #errorCb passes a string to logger.error', async () => {
@@ -102,9 +102,10 @@ describe('user-supplied logger receives a string as the first arg on event.error
     const consumer = kafka.consumer({ kafkaJS: { groupId: 'g' } });
     consumer.connect().catch(() => {});
 
-    RdKafkaMock.__captured.consumer.emit('event.error', brokerError());
+    const err = brokerError();
+    RdKafkaMock.__captured.consumer.emit('event.error', err);
 
-    expectStringFirstArg(logger.error);
+    expectStringFirstArg(logger.error, err);
   });
 
   it('Admin #errorCb passes a string to logger.error', async () => {
@@ -112,8 +113,9 @@ describe('user-supplied logger receives a string as the first arg on event.error
     const admin = new Kafka({ kafkaJS: { brokers: ['x:1'], logger } }).admin();
     await admin.connect();
 
-    RdKafkaMock.__captured.admin._listeners.error(brokerError());
+    const err = brokerError();
+    RdKafkaMock.__captured.admin._listeners.error(err);
 
-    expectStringFirstArg(logger.error);
+    expectStringFirstArg(logger.error, err);
   });
 });
