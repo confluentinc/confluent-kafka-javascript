@@ -382,15 +382,25 @@ export enum AclOperationTypes {
     IDEMPOTENT_WRITE = 12,
 }
 
+export type MemberAssignment = {
+    topicPartitions: TopicPartition[]
+}
+
 export type MemberDescription = {
     clientHost: string
     clientId: string
     memberId: string
-    memberAssignment: Buffer
-    memberMetadata: Buffer
+    /**
+     * @deprecated Always null from the native binding; reserved for future use.
+     */
+    memberAssignment: Buffer | null
+    /**
+     * @deprecated Always null from the native binding; reserved for future use.
+     */
+    memberMetadata: Buffer | null
     groupInstanceId?: string,
-    assignment: TopicPartition[]
-    targetAssignment?: TopicPartition[]
+    assignment: MemberAssignment
+    targetAssignment?: MemberAssignment
 }
 
 export type Node = {
