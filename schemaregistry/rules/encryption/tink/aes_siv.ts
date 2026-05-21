@@ -5,7 +5,7 @@
 
 import {Aead} from './aead';
 
-// @ts-expect-error miscreant does not have types
+// @ts-ignore miscreant types are not always resolvable via its package exports
 import {SIV, SoftCryptoProvider} from "@hackbg/miscreant-esm";
 
 /**
@@ -22,7 +22,7 @@ export class AesSiv extends Aead {
   async encrypt(plaintext: Uint8Array<ArrayBuffer>, associatedData?: Uint8Array<ArrayBuffer>):
       Promise<Uint8Array<ArrayBuffer>> {
     let key = await SIV.importKey(this.key, "AES-CMAC-SIV", new SoftCryptoProvider());
-    return key.seal(plaintext, associatedData != null ? [associatedData] : []);
+    return new Uint8Array(await key.seal(plaintext, associatedData != null ? [associatedData] : []));
   }
 
   /**
@@ -30,7 +30,7 @@ export class AesSiv extends Aead {
   async decrypt(ciphertext: Uint8Array<ArrayBuffer>, associatedData?: Uint8Array<ArrayBuffer>):
       Promise<Uint8Array<ArrayBuffer>> {
     let key = await SIV.importKey(this.key, "AES-CMAC-SIV", new SoftCryptoProvider());
-    return key.open(ciphertext, associatedData != null? [associatedData] : []);
+    return new Uint8Array(await key.open(ciphertext, associatedData != null? [associatedData] : []));
   }
 }
 
