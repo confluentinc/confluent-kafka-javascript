@@ -1,22 +1,22 @@
 # confluent-kafka-javascript 1.x.x
 
 ## Fixes
-
 1. Handle anyOf/allOf in JSON transforms (#479)
 2. Preserve custom subjectNameStrategy in serde constructors (#482)
 3. Correct the TypeScript return type of `admin.fetchTopicMetadata` to `Promise<Array<ITopicMetadata>>` (#367)
 4. Correct the TypeScript `MemberDescription` shape returned by `admin.describeGroups` so `assignment`/`targetAssignment` wrap a `topicPartitions` array and `memberAssignment`/`memberMetadata` are nullable (#487)
 5. Correct the TypeScript `FetchOffsetsPartition.error` type returned by `admin.fetchOffsets` to `LibrdKafkaError | null`, matching the runtime which always populates the field. It never referened undefined. (#489)
 
+
 # confluent-kafka-javascript 1.9.0
 
 v1.9.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
-
 1. References librdkafka v2.14.0. Refer to the [librdkafka v2.14.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.14.0) for more information.
 2. Add AssociatedNameStrategy (#454).
 3. Add enableAt to RuleSet (#470).
+
 
 # confluent-kafka-javascript 1.8.2
 
@@ -45,7 +45,7 @@ v1.8.0 is a feature release. It is supported for all usage.
 2. Export CelExecutor/CelFieldExecutor in schemaregistry index.ts (#412).
 3. Minor improvement to rule failure message (#419).
 4. Prevent a condition that causes fetch failures when max
-   batch size is set or the default one and there's a low consumption
+   batch size is set or the default one and there's a low consumption 
    rate (#418 @LucioFranco, #424).
 
 ## Fixes
@@ -60,14 +60,14 @@ v1.7.0 is a feature release. It is supported for all usage.
 ### Enhancements
 
 1. References librdkafka v2.12.1. Refer to the [librdkafka v2.12.1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.12.1) for more information.
-2. Configurable batch size through the `js.consumer.max.batch.size` property
-   and cache size through the `js.consumer.max.cache.size.per.worker.ms`
+2. Configurable batch size through the `js.consumer.max.batch.size` property 
+   and cache size through the `js.consumer.max.cache.size.per.worker.ms` 
    property (#393).
 3. Statistics callback now available when using the promisified API with all
    client types (#399).
 4. Fix for at-least-once guarantee not ensured in case a seek happens on one
-   partition and there are messages being fetched about other partitions (#393).
-5. Avoid returning a negative lag in case there is no cached offset for
+partition and there are messages being fetched about other partitions (#393).
+5. Avoid returning a negative lag in case there is no cached offset for 
    the HWM (#406).
 
 # confluent-kafka-javascript 1.6.0
@@ -78,7 +78,8 @@ v1.6.0 is a feature release. It is supported for all usage.
 
 1. References librdkafka v2.12.0. Refer to the [librdkafka v2.12.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.12.0) for more information.
 2. OAuth OIDC method example for Kafka metadata based authentication with
-   an Azure IMDS endpoint using an attached managed identity as principal (#377).
+  an Azure IMDS endpoint using an attached managed identity as principal (#377).
+
 
 # confluent-kafka-javascript 1.5.0
 
@@ -88,9 +89,11 @@ v1.5.0 is a feature release. It is supported for all usage.
 
 1. Adds support for `highWatermark`, `offsetLag()`, and `offsetLagLow()` in `eachBatch` callback (#317).
 
+
 ## Fixes
 
 1. Fix issue of delay of up to 5s in receiving messages after pause and resume, or seek (#285, #363).
+
 
 # confluent-kafka-javascript v1.4.1
 
@@ -99,6 +102,7 @@ v1.4.1 is a maintenance release. It is supported for all usage.
 ## Enhancements
 
 1. References librdkafka v2.11.1. Refer to the [librdkafka v2.11.1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.11.1) for more information.
+
 
 # confluent-kafka-javascript v1.4.0
 
@@ -110,6 +114,7 @@ v1.4.0 is a feature release. It is supported for all usage.
 2. [KIP-848] `describeGroups()` now supports KIP-848 introduced `consumer` groups. Two new fields for consumer group type and target assignment have also been added. Type defines whether this group is a `classic` or `consumer` group. Target assignment is only valid for the `consumer` protocol and it defaults to being undefined (#329).
 3. [KIP-848] Admin API for listing consumer groups now has an optional filter to return only groups of given types (#328).
 4. Add support for Node v24 pre-built binaries (@weyert, #307, #337).
+
 
 # confluent-kafka-javascript v1.3.2
 
@@ -126,6 +131,7 @@ v1.3.2 is a maintenance release. It is supported for all usage.
 1. Fix missing await during JSON deserialization (#301)
 2. Fix possible NPE in CSFLE executor (#305)
 
+
 # confluent-kafka-javascript v1.3.1
 
 v1.3.1 is a maintenance release. It is supported for all usage.
@@ -137,6 +143,7 @@ v1.3.1 is a maintenance release. It is supported for all usage.
    are consumed (#300)
 2. Fix type definition for `Kafka()` constructor and for passing topic configurations
    to the `producer()` and `consumer()` in the promisified API (@davidkhala, #297, #321).
+
 
 # confluent-kafka-javascript v1.3.0
 
@@ -153,6 +160,7 @@ v1.3.0 is a feature release. It is supported for all usage.
 3. Fix token fetch to return after successful request (#278)
 4. Add loose OAuth authorization (#289)
 
+
 # confluent-kafka-javascript v1.2.0
 
 v1.2.0 is a feature release. It is supported for all usage.
@@ -167,6 +175,7 @@ v1.2.0 is a feature release. It is supported for all usage.
 1. Fixes an issue where the `eachBatch` callback was being called for the same partition concurrently (#224).
 2. Uses a Debian based builder instead of an Ubuntu based builder to ensure compatibility with older, but supported versions of Linux (#228).
 
+
 # confluent-kafka-javascript v1.1.0
 
 v1.1.0 is a feature release. It is supported for all usage.
@@ -175,6 +184,7 @@ v1.1.0 is a feature release. It is supported for all usage.
 
 1. Ensure algorithm query param is passed for CSFLE (#230)
 2. Handle records nested in arrays/maps when searching for tags (#231)
+
 
 # confluent-kafka-javascript v1.0.0
 
@@ -191,6 +201,7 @@ v1.0.0 is a feature release. It is supported for all usage.
 
 1. Fixes an issue where `uv_async_init` was being called off the event loop thread,
    causing the node process to hang (#190).
+
 
 # confluent-kafka-javascript v0.6.1
 
@@ -215,7 +226,7 @@ v0.6.0 is a limited availability maintenance release. It is supported for all us
 ### Schema Registry
 
 1. Add AWS AssumeRole support to AWS KMS. You can now specify a role arn, and optional
-   role session name and optional role external id.
+role session name and optional role external id.
 
 2. Ensure different key ids use different client instances.
 
@@ -224,6 +235,7 @@ v0.6.0 is a limited availability maintenance release. It is supported for all us
 v0.5.2 is a limited availability maintenance release. It is supported for all usage.
 
 Note: v0.5.2 has no code changes from v0.5.1, version is bumped to sync with @confluentinc/schemaregistry.
+
 
 # confluent-kafka-javascript v0.5.1
 
@@ -234,12 +246,13 @@ v0.5.1 is a limited availability maintenance release. It is supported for all us
 1. Fix an issue where `sendOffsets` wasn't working correctly in the transactional
    producer (#172).
 
+
 # confluent-kafka-javascript v0.5.0
 
 v0.5.0 is a limited availability feature release. It is supported for all usage.
 
 Note: v0.5.0 was not released because of the bug mentioned in v0.5.1 section. Instead,
-v0.5.1 was released with the fix directly.
+      v0.5.1 was released with the fix directly.
 
 ## Enhancements
 
@@ -252,6 +265,7 @@ v0.5.1 was released with the fix directly.
 
 1. Fixes an issue with unresolved raced Promises leaking in the consumer (#151).
 2. Removes schemaregistry dependencies from root package.json to prevent issues with Node 18 (#162).
+
 
 # confluent-kafka-javascript v0.4.0
 
@@ -266,6 +280,7 @@ v0.4.0 is a limited availability feature release. It is supported for all usage.
    the same node process (#135).
 4. Add pre-built binaries for macOS (Intel).
 
+
 # confluent-kafka-javascript v0.3.0
 
 v0.3.0 is a limited availability feature release. It is supported for all usage.
@@ -275,6 +290,7 @@ v0.3.0 is a limited availability feature release. It is supported for all usage.
 1. References librdkafka v2.6.0. Refer to the [librdkafka v2.6.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.6.0) for more information.
 1. Minor optimization to reduce schema ID lookups (#123).
 
+
 # confluent-kafka-javascript v0.2.1
 
 v0.2.1 is a limited availability release. It is supported for all usage.
@@ -283,6 +299,7 @@ v0.2.1 is a limited availability release. It is supported for all usage.
 
 1. Update README, docs, and examples for Confluent's Schema Registry client.
 
+
 # confluent-kafka-javascript v0.2.0
 
 v0.2.0 is a limited availability release. It is supported for all usage.
@@ -290,6 +307,7 @@ v0.2.0 is a limited availability release. It is supported for all usage.
 ## Features
 
 1. Switch to using `librdkafka` on the latest released tag `v2.5.3` instead of `master`.
+
 
 # confluent-kafka-javascript v0.1.17-devel
 
@@ -313,6 +331,7 @@ v0.1.17-devel is a pre-production, early-access release.
 2. Do not mutate arguments in run, pause and resume (Issue [#61](https://github.com/confluentinc/confluent-kafka-javascript/issues/61)).
 3. Fix a segmentation fault in `listGroups` when passing `matchConsumerGroupStates` as undefined.
 
+
 # confluent-kafka-javascript v0.1.16-devel
 
 v0.1.16-devel is a pre-production, early-access release.
@@ -323,6 +342,7 @@ v0.1.16-devel is a pre-production, early-access release.
 2. Add true `eachBatch` support to consumer.
 3. Add a `leaderEpoch` field to the topic partitions where required (listing, committing, etc.).
 
+
 # confluent-kafka-javascript v0.1.15-devel
 
 v0.1.15-devel is a pre-production, early-access release.
@@ -330,6 +350,7 @@ v0.1.15-devel is a pre-production, early-access release.
 ## Features
 
 1. Add Node v22 builds and bump librdkafka version on each version bump of this library.
+
 
 # confluent-kafka-javascript v0.1.14-devel
 
@@ -347,6 +368,7 @@ v0.1.14-devel is a pre-production, early-access release.
 1. Fix issues with the header conversions from promisified API to the non-promisified API to match
    the type signature and allow Buffers to be passed as header values in the C++ layer.
 
+
 # confluent-kafka-javascript v0.1.13-devel
 
 v0.1.13-devel is a pre-production, early-access release.
@@ -360,6 +382,7 @@ v0.1.13-devel is a pre-production, early-access release.
 
 1. Fix memory leak in incremental assign (@martijnimhoff, #35).
 2. Fix various issues with typings, and reconcile typings, JavaScript code, and MIGRATION.md to be consistent.
+
 
 # confluent-kafka-javascript v0.1.12-devel
 
@@ -379,6 +402,7 @@ v0.1.12-devel is a pre-production, early-access release.
 4. Fix type definitions and make `KafkaJS` and `RdKafka` separate namespaces, while maintaining compatibility
    with node-rdkafka's type definitions.
 
+
 # confluent-kafka-javascript v0.1.11-devel
 
 v0.1.11-devel is a pre-production, early-access release.
@@ -388,6 +412,7 @@ v0.1.11-devel is a pre-production, early-access release.
 1. Add support for `eachBatch` in the Consumer API (partial support for API compatibility).
 2. Add support for `listGroups`, `describeGroups` and `deleteGroups` in the Admin API.
 
+
 # confluent-kafka-javascript v0.1.10-devel
 
 v0.1.10-devel is a pre-production, early-access release.
@@ -395,6 +420,7 @@ v0.1.10-devel is a pre-production, early-access release.
 ## Features
 
 1. Pre-built binaries for Windows (x64) added on an experimental basis.
+
 
 # confluent-kafka-javascript v0.1.9-devel
 
