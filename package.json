@@ -5,7 +5,7 @@
   "librdkafka": "2.14.0",
   "librdkafka_win": "2.14.0",
   "main": "lib/index.js",
-  "types": "types/index.d.ts",
+  "types": "index.d.ts",
   "scripts": {
     "configure": "node-gyp configure",
     "build": "node-gyp build",
