@@ -6,6 +6,8 @@
 3. Correct the TypeScript return type of `admin.fetchTopicMetadata` to `Promise<Array<ITopicMetadata>>` (#367)
 4. Correct the TypeScript `MemberDescription` shape returned by `admin.describeGroups` so `assignment`/`targetAssignment` wrap a `topicPartitions` array and `memberAssignment`/`memberMetadata` are nullable (#487)
 5. Correct the TypeScript `FetchOffsetsPartition.error` type returned by `admin.fetchOffsets` to `LibrdKafkaError | null`, matching the runtime which always populates the field. It never returnes undefined. (#489)
+6. Correct broken "types" path so TS consumers get types (#484)
+7. Resolve IHeaders import for installed clients (#492)
 
 
 # confluent-kafka-javascript 1.9.0
