@@ -30,7 +30,7 @@ import { LRUCache } from "lru-cache";
 import { generateSchema } from "./json-util";
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
-import {IHeaders} from "../../types/kafkajs";
+import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const JSON_TYPE = "JSON"
 

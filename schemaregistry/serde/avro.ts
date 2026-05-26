@@ -20,7 +20,7 @@ import Field = types.Field
 import { LRUCache } from 'lru-cache'
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
-import {IHeaders} from "../../types/kafkajs";
+import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const AVRO_TYPE = "AVRO"
 
