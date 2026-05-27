@@ -8,6 +8,7 @@
 5. Correct the TypeScript `FetchOffsetsPartition.error` type returned by `admin.fetchOffsets` to `LibrdKafkaError | null`, matching the runtime which always populates the field. It never returnes undefined. (#489)
 6. Correct broken "types" path so TS consumers get types (#484)
 7. Resolve IHeaders import for installed clients (#492)
+8. Fix error callback passing and object to the logger instead of a string (#483)
 
 
 # confluent-kafka-javascript 1.9.0
