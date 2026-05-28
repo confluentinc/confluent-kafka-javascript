@@ -1,4 +1,7 @@
-# confluent-kafka-javascript 1.x.x
+# confluent-kafka-javascript 1.9.1-rc1
+
+## Enhancements
+1. References librdkafka v2.14.2-RC3. Refer to the [librdkafka v2.14.2-RC3 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.14.2-RC3) for more information.
 
 ## Fixes
 1. Handle anyOf/allOf in JSON transforms (#479)
@@ -9,6 +12,7 @@
 6. Correct broken "types" path so TS consumers get types (#484)
 7. Resolve IHeaders import for installed clients (#492)
 8. Fix error callback passing and object to the logger instead of a string (#483)
+9. Fix security vulnerabilities in dependencies (#478)
 
 
 # confluent-kafka-javascript 1.9.0
