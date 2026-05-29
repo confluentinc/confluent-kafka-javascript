@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ckjs-perf-scale.configMapName" . }}
+  labels:
+    {{- include "ckjs-perf-scale.labels" . | nindent 4 }}
+data:
+  KAFKA_BROKERS: {{ .Values.kafka.brokers | quote }}
+  SECURITY_PROTOCOL: {{ .Values.kafka.securityProtocol | quote }}
+  SASL_USERNAME: {{ .Values.kafka.saslUsername | quote }}
+  KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
+  {{- if .Values.kafka.topic2 }}
+  KAFKA_TOPIC2: {{ .Values.kafka.topic2 | quote }}
+  {{- end }}
+  MODE: {{ .Values.producer.mode | quote }}
+  MESSAGE_COUNT: {{ .Values.producer.messageCount | quote }}
+  MESSAGE_SIZE: {{ .Values.producer.messageSize | quote }}
+  PRODUCER_BATCH_SIZE: {{ .Values.producer.batchSize | quote }}
+  COMPRESSION: {{ .Values.producer.compression | quote }}
+  PARTITIONS: {{ .Values.producer.partitions | quote }}
+  PARTITIONS_CONSUMED_CONCURRENTLY: {{ .Values.producer.partitionsConsumedConcurrently | quote }}
+  TERMINATE_TIMEOUT_MS: {{ .Values.producer.terminateTimeoutMs | quote }}
+  PRODUCE_TO_SECOND_TOPIC: {{ .Values.producer.produceToSecondTopic | quote }}
+  AUTO_COMMIT: {{ .Values.producer.autoCommit | quote }}
+  CONCURRENT_RUN: {{ .Values.producer.concurrentRun | quote }}
+  CONSUMER_MODE: {{ .Values.producer.consumerMode | quote }}
+  CONSUMER_MAX_BATCH_SIZE: {{ .Values.producer.consumerMaxBatchSize | quote }}
+  USE_CKJS_PRODUCER_EVERYWHERE: {{ .Values.producer.useCKJSProducerEverywhere | quote }}
+  AUTO_COMMIT_ON_BATCH_END: {{ .Values.producer.autoCommitOnBatchEnd | quote }}
+  IS_HIGHER_LATENCY_CLUSTER: {{ .Values.producer.isHigherLatencyCluster | quote }}
+  USE_KEYS: {{ .Values.producer.useKeys | quote }}
+  SKIP_CTP_TEST: {{ .Values.producer.skipCTPTest | quote }}
+  STATISTICS_INTERVAL_MS: {{ .Values.producer.statisticsIntervalMs | quote }}

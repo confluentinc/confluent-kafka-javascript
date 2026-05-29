@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ckjs-perf-scale.producerJobName" . }}
+  labels:
+    {{- include "ckjs-perf-scale.labels" . | nindent 4 }}
+    app.kubernetes.io/component: producer
+spec:
+  parallelism: {{ .Values.replicaCount }}
+  completions: {{ .Values.replicaCount }}
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "ckjs-perf-scale.labels" . | nindent 8 }}
+        app.kubernetes.io/component: producer
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: workspace
+          emptyDir: {}
+      initContainers:
+        - name: setup
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: SOURCE_REPO
+              value: {{ .Values.source.repo | quote }}
+            - name: SOURCE_REF
+              value: {{ .Values.source.ref | quote }}
+            - name: DEBIAN_FRONTEND
+              value: noninteractive
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -eo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                curl git build-essential python3 ca-certificates \
+                libssl-dev libcurl4-openssl-dev zlib1g-dev libsasl2-dev libzstd-dev
+              export NVM_DIR=/workspace/nvm
+              mkdir -p "$NVM_DIR"
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh \
+                | PROFILE=/dev/null bash
+              . "$NVM_DIR/nvm.sh"
+              nvm install --lts
+              nvm use --lts
+              cd /workspace
+              git clone "$SOURCE_REPO" repo
+              cd repo
+              git checkout "$SOURCE_REF"
+              git submodule update --init --recursive
+              CKJS_LINKING=dynamic npm install --build-from-source=@confluentinc/kafka-javascript
+              cd examples/performance
+              npm install
+              echo "===== init complete ====="
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      containers:
+        - name: producer
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ckjs-perf-scale.configMapName" . }}
+            - secretRef:
+                name: {{ include "ckjs-perf-scale.secretName" . }}
+          env:
+            - name: DEBIAN_FRONTEND
+              value: noninteractive
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -eo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                ca-certificates libssl3 libcurl4 zlib1g libsasl2-2 libzstd1
+              export NVM_DIR=/workspace/nvm
+              . "$NVM_DIR/nvm.sh"
+              cd /workspace/repo/examples/performance
+              exec node performance-consolidated.js --producer
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
