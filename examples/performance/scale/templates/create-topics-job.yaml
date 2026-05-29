@@ -21,54 +21,11 @@ spec:
         app.kubernetes.io/component: create-topics
     spec:
       restartPolicy: Never
-      volumes:
-        - name: workspace
-          emptyDir: {}
-      initContainers:
-        - name: setup
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          env:
-            - name: SOURCE_REPO
-              value: {{ .Values.source.repo | quote }}
-            - name: SOURCE_REF
-              value: {{ .Values.source.ref | quote }}
-            - name: DEBIAN_FRONTEND
-              value: noninteractive
-          command: ["/bin/bash", "-lc"]
-          args:
-            - |
-              set -eo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                curl git build-essential python3 ca-certificates \
-                libssl-dev libcurl4-openssl-dev zlib1g-dev libsasl2-dev libzstd-dev
-              export NVM_DIR=/workspace/nvm
-              mkdir -p "$NVM_DIR"
-              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh \
-                | PROFILE=/dev/null bash
-              . "$NVM_DIR/nvm.sh"
-              nvm install --lts
-              nvm use --lts
-              cd /workspace
-              git clone "$SOURCE_REPO" repo
-              cd repo
-              git checkout "$SOURCE_REF"
-              git submodule update --init --recursive
-              CKJS_LINKING=dynamic npm install --build-from-source=@confluentinc/kafka-javascript
-              cd examples/performance
-              npm install
-              echo "===== init complete ====="
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
       containers:
         - name: create-topics
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            - name: DEBIAN_FRONTEND
-              value: noninteractive
             - name: KAFKA_BROKERS
               value: {{ .Values.kafka.brokers | quote }}
             - name: SECURITY_PROTOCOL
@@ -87,18 +44,6 @@ spec:
               value: {{ .Values.producer.mode | quote }}
             - name: PARTITIONS
               value: {{ .Values.producer.partitions | quote }}
-          command: ["/bin/bash", "-lc"]
-          args:
-            - |
-              set -eo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                ca-certificates libssl3 libcurl4 zlib1g libsasl2-2 libzstd1
-              export NVM_DIR=/workspace/nvm
-              . "$NVM_DIR/nvm.sh"
-              cd /workspace/repo/examples/performance
-              exec node performance-consolidated.js --create-topics
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
+          workingDir: /opt/ckjs/examples/performance
+          command: ["node", "performance-consolidated.js", "--create-topics"]
 {{- end }}

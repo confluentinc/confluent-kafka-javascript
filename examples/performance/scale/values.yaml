@@ -2,12 +2,18 @@
 # The Job's parallelism and completions are both set to this value.
 replicaCount: 4
 
+# Prebuilt image produced by examples/performance/scale/Dockerfile. Build it
+# (with the desired SOURCE_REF baked in), push it to a registry the cluster
+# can pull from, then point these at that registry/tag.
 image:
-  repository: ubuntu
-  tag: "24.04"
+  repository: confluentinc/ckjs-perf-scale
+  tag: latest
   pullPolicy: IfNotPresent
 
-# Git source cloned by the init container at pod start.
+# Git source baked into the prebuilt image at BUILD time via the Dockerfile's
+# SOURCE_REPO / SOURCE_REF build args. These keys are no longer consumed at
+# pod runtime (the code is already in the image); kept here for reference so
+# values.yaml documents which ref the image is expected to contain.
 source:
   repo: https://github.com/confluentinc/confluent-kafka-javascript.git
   ref: dev_performance_test_improvements_2

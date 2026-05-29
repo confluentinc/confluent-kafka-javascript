@@ -21,45 +21,6 @@ spec:
         - name: workspace
           emptyDir: {}
       initContainers:
-        - name: setup
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          env:
-            - name: SOURCE_REPO
-              value: {{ .Values.source.repo | quote }}
-            - name: SOURCE_REF
-              value: {{ .Values.source.ref | quote }}
-            - name: DEBIAN_FRONTEND
-              value: noninteractive
-          command: ["/bin/bash", "-lc"]
-          args:
-            - |
-              set -eo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                curl git build-essential python3 ca-certificates \
-                libssl-dev libcurl4-openssl-dev zlib1g-dev libsasl2-dev libzstd-dev
-              export NVM_DIR=/workspace/nvm
-              mkdir -p "$NVM_DIR"
-              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh \
-                | PROFILE=/dev/null bash
-              . "$NVM_DIR/nvm.sh"
-              nvm install --lts
-              nvm use --lts
-              cd /workspace
-              git clone "$SOURCE_REPO" repo
-              cd repo
-              git checkout "$SOURCE_REF"
-              git submodule update --init --recursive
-              CKJS_LINKING=dynamic npm install --build-from-source=@confluentinc/kafka-javascript
-              cd examples/performance
-              npm install
-              echo "===== init complete ====="
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
         # Native sidecar (restartPolicy: Always on an initContainer).
         # Stays alive after the main `producer` container exits so that
         # scale.py can `kubectl cp` the producer's log files out of the
@@ -96,20 +57,19 @@ spec:
                 name: {{ include "ckjs-perf-scale.configMapName" . }}
             - secretRef:
                 name: {{ include "ckjs-perf-scale.secretName" . }}
-          env:
-            - name: DEBIAN_FRONTEND
-              value: noninteractive
-          command: ["/bin/bash", "-lc"]
+          # The app is baked into the image at /opt/ckjs/examples/performance,
+          # but its log files are written relative to the working directory
+          # (e.g. ./confluent-producer.log). Run from the shared workspace
+          # volume at the path scale.py copies from
+          # (REMOTE_WORKDIR=/workspace/repo/examples/performance) so the
+          # log-keeper sidecar can expose them for `kubectl cp`.
+          command: ["/bin/sh", "-c"]
           args:
             - |
-              set -eo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                ca-certificates libssl3 libcurl4 zlib1g libsasl2-2 libzstd1
-              export NVM_DIR=/workspace/nvm
-              . "$NVM_DIR/nvm.sh"
+              set -e
+              mkdir -p /workspace/repo/examples/performance
               cd /workspace/repo/examples/performance
-              exec node performance-consolidated.js --producer
+              exec node /opt/ckjs/examples/performance/performance-consolidated.js --producer
           volumeMounts:
             - name: workspace
               mountPath: /workspace
