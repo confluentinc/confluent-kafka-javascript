@@ -1,0 +1,63 @@
+# Number of producer pods to run in parallel.
+# The Job's parallelism and completions are both set to this value.
+replicaCount: 4
+
+image:
+  repository: ubuntu
+  tag: "24.04"
+  pullPolicy: IfNotPresent
+
+# Git source cloned by the init container at pod start.
+source:
+  repo: https://github.com/confluentinc/confluent-kafka-javascript.git
+  ref: dev_performance_test_improvements_2
+
+# When true, a pre-install/pre-upgrade hook Job runs `--create-topics` once
+# before the multi-pod producer Job starts (avoids N pods racing to
+# delete+recreate the same topic). Disable to skip topic setup.
+createTopics: true
+
+# Per-pod resource requests/limits. Empty by default.
+resources: {}
+
+# Native sidecar that keeps the pod's filesystem reachable after the producer
+# container exits, so scale.py can `kubectl cp` log files out of /workspace.
+logKeeper:
+  # Maximum time (s) the sidecar lingers after the producer exits before
+  # the kubelet escalates SIGTERM to SIGKILL. Bounds the cp window.
+  terminationGracePeriodSeconds: 900
+
+# Connectivity / auth — emitted as env vars to the producer pods.
+kafka:
+  brokers: "lkc-devcmv86137-apdk2qwd.us-west-2.aws.accesspoint.glb.devel.cpdev.cloud:9092"
+  securityProtocol: "sasl_ssl"
+  saslUsername: "254D3PQULKRPIUFA"
+  # Required. Provide via a values override file or --set
+  # (e.g. -f secret-values.yaml or --set kafka.saslPassword=...).
+  saslPassword: ""
+  topic: "test-freight21"
+  # KAFKA_TOPIC2 — only used if produceToSecondTopic is true.
+  topic2: ""
+
+# All environment variables consumed by performance-consolidated.js.
+# Defaults match the user's reference command line.
+producer:
+  mode: "confluent"
+  messageCount: 50000
+  messageSize: 1536
+  batchSize: 2048
+  compression: "GZIP"
+  partitions: 1024
+  partitionsConsumedConcurrently: 1024
+  terminateTimeoutMs: 30000
+  produceToSecondTopic: false
+  autoCommit: 3000
+  concurrentRun: true
+  consumerMode: "eachBatch"
+  consumerMaxBatchSize: -1
+  useCKJSProducerEverywhere: false
+  autoCommitOnBatchEnd: true
+  isHigherLatencyCluster: true
+  useKeys: true
+  skipCTPTest: true
+  statisticsIntervalMs: 5000
