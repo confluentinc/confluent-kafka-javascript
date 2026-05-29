@@ -31,3 +31,4 @@ data:
   USE_KEYS: {{ .Values.producer.useKeys | quote }}
   SKIP_CTP_TEST: {{ .Values.producer.skipCTPTest | quote }}
   STATISTICS_INTERVAL_MS: {{ .Values.producer.statisticsIntervalMs | quote }}
+  LIMIT_RPS: {{ .Values.producer.limitRPS | quote }}

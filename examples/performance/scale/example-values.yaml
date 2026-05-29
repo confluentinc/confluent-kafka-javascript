@@ -43,3 +43,4 @@ producer:
   useKeys: true
   skipCTPTest: true
   statisticsIntervalMs: 5000
+  # limitRPS: 5000
