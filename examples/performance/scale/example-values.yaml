@@ -13,6 +13,9 @@ source:
   repo: https://github.com/confluentinc/confluent-kafka-javascript.git
   ref: dev_performance_test_improvements_2
 
+image:
+  repository: confluentinc/ckjs-perf-scale
+
 kafka:
   brokers: "broker-host:9092"
   securityProtocol: "sasl_ssl"

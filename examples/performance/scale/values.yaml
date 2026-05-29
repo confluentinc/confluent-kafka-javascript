@@ -7,8 +7,8 @@ replicaCount: 4
 # can pull from, then point these at that registry/tag.
 image:
   repository: confluentinc/ckjs-perf-scale
-  tag: latest
-  pullPolicy: IfNotPresent
+  tag: ckjs-perf-scale
+  pullPolicy: Always
 
 # Git source baked into the prebuilt image at BUILD time via the Dockerfile's
 # SOURCE_REPO / SOURCE_REF build args. These keys are no longer consumed at
@@ -35,13 +35,13 @@ logKeeper:
 
 # Connectivity / auth — emitted as env vars to the producer pods.
 kafka:
-  brokers: "lkc-devcmv86137-apdk2qwd.us-west-2.aws.accesspoint.glb.devel.cpdev.cloud:9092"
+  brokers: ""
   securityProtocol: "sasl_ssl"
-  saslUsername: "254D3PQULKRPIUFA"
+  saslUsername: ""
   # Required. Provide via a values override file or --set
   # (e.g. -f secret-values.yaml or --set kafka.saslPassword=...).
   saslPassword: ""
-  topic: "test-freight21"
+  topic: ""
   # KAFKA_TOPIC2 — only used if produceToSecondTopic is true.
   topic2: ""
 

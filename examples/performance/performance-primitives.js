@@ -132,7 +132,7 @@ function newCompatibleProducer(parameters, compression) {
         'sticky.partitioning.linger.ms': '200',
         'message.max.bytes': '2148352',
         'batch.size': '2097152',
-        'max.in.flight': '10',
+        'max.in.flight': '20',
     } : {};
     return new CompatibleProducer(
         new Kafka({

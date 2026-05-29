@@ -12,6 +12,7 @@ import datetime as dt
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 PRODUCER_RATE_RE = re.compile(
@@ -50,6 +51,17 @@ def run(cmd, check=True, capture=False):
 
 
 def helm_install(release, namespace, values_file, timeout_s, set_overrides):
+    # No --wait / --wait-for-jobs: the producer Job never reaches "Complete"
+    # until its log-keeper sidecar exits, and the sidecar only exits once
+    # scale.py touches /workspace/.shutdown (release_sidecar) — which happens
+    # *after* this returns.  Waiting on the Job here would deadlock until the
+    # terminationGracePeriodSeconds elapses and the sidecar is SIGKILLed, by
+    # which point its filesystem is gone and the logs can't be copied.
+    #
+    # helm still runs and waits for the pre-install create-topics hook Job
+    # regardless of these flags, so topic setup still completes first.  We
+    # wait for the producer *container* ourselves (wait_for_producer_pods /
+    # wait_producer_container_done) before copying logs.
     cmd = [
         "helm",
         "upgrade",
@@ -61,8 +73,6 @@ def helm_install(release, namespace, values_file, timeout_s, set_overrides):
         "-n",
         namespace,
         "--create-namespace",
-        "--wait",
-        "--wait-for-jobs",
         "--timeout",
         f"{timeout_s}s",
     ]
@@ -104,6 +114,70 @@ def list_producer_pods(release, namespace):
         if names:
             return names
     return []
+
+
+def producer_job_completions(release, namespace):
+    """Read .spec.completions off the producer Job (== expected pod count)."""
+    result = run(
+        [
+            "kubectl", "-n", namespace, "get", "job",
+            f"{release}-producer", "-o", "jsonpath={.spec.completions}",
+        ],
+        capture=True,
+        check=False,
+    )
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return 0
+
+
+def wait_for_producer_pods(release, namespace, timeout_s, poll_s=5):
+    """Wait until the producer Job has spawned all its pods.
+
+    helm_install no longer waits for the Job, so the pods may not exist yet
+    when it returns.  Block until we see as many pods as the Job's
+    .spec.completions (falling back to >=1 if completions is unknown), or the
+    timeout elapses, then return whatever pods exist.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        expected = producer_job_completions(release, namespace)
+        pods = list_producer_pods(release, namespace)
+        if pods and (expected == 0 or len(pods) >= expected):
+            return pods
+        time.sleep(poll_s)
+    return list_producer_pods(release, namespace)
+
+
+def producer_container_state(pod, namespace):
+    """Return the producer container's terminated reason, or '' if it is still
+    running / not yet started."""
+    result = run(
+        [
+            "kubectl", "-n", namespace, "get", "pod", pod, "-o",
+            "jsonpath={.status.containerStatuses[?(@.name=='producer')]"
+            ".state.terminated.reason}",
+        ],
+        capture=True,
+        check=False,
+    )
+    return result.stdout.strip()
+
+
+def wait_producer_container_done(pod, namespace, timeout_s, poll_s=5):
+    """Block until the pod's `producer` container has terminated (Completed or
+    Error), so its log files are fully written.  The log-keeper sidecar keeps
+    the pod alive, so this returns while the pod's filesystem is still
+    reachable for `kubectl cp`.  Returns the terminated reason, or '' on
+    timeout."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        reason = producer_container_state(pod, namespace)
+        if reason:
+            return reason
+        time.sleep(poll_s)
+    return ""
 
 
 def fetch_pod_log(pod, namespace):
@@ -242,7 +316,7 @@ def main():
         failed = True
         # Continue anyway — we still want to capture whatever logs exist.
 
-    pods = list_producer_pods(args.release, args.namespace)
+    pods = wait_for_producer_pods(args.release, args.namespace, args.timeout)
     if not pods:
         print(
             f"no producer pods found for release={args.release} ns={args.namespace}",
@@ -251,6 +325,15 @@ def main():
 
     pod_results = []  # list of (pod_name, rate_or_None, log_text, copied_files)
     for pod in pods:
+        # Wait for the producer container to finish (the log-keeper sidecar
+        # keeps the pod up) so its log files are complete before we copy them.
+        reason = wait_producer_container_done(pod, args.namespace, args.timeout)
+        if not reason:
+            print(
+                f"producer container in {pod} did not terminate within "
+                f"{args.timeout}s; copying logs anyway",
+                file=sys.stderr,
+            )
         try:
             log_text = fetch_pod_log(pod, args.namespace)
         except subprocess.CalledProcessError as e:
@@ -316,7 +399,7 @@ def main():
     if not args.keep:
         helm_uninstall(args.release, args.namespace)
 
-    if failed or not pod_results or any(r is None for (_, r, _) in pod_results):
+    if failed or not pod_results or any(r is None for (_, r, _, _) in pod_results):
         sys.exit(1)
 
 
