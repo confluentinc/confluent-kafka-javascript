@@ -1,0 +1,46 @@
+# Example input for scale.py. Copy this file, fill in saslPassword, then run:
+#
+#   python3 examples/performance/scale/scale.py my-values.yaml
+#
+# Override any of the chart's defaults here. Everything not set falls back
+# to examples/performance/scale/values.yaml.
+
+replicaCount: 4
+
+# The confluent-kafka-javascript branch/tag/SHA cloned by the init container.
+# Override via `--ref <ref>` on scale.py, or by editing here.
+source:
+  repo: https://github.com/confluentinc/confluent-kafka-javascript.git
+  ref: dev_performance_test_improvements_2
+
+image:
+  repository: confluentinc/ckjs-perf-scale
+
+kafka:
+  brokers: "broker-host:9092"
+  securityProtocol: "sasl_ssl"
+  saslUsername: "REPLACE_ME"
+  saslPassword: "REPLACE_ME"
+  topic: "test-topic"
+
+producer:
+  mode: "confluent"
+  messageCount: 50000
+  messageSize: 1536
+  batchSize: 2048
+  compression: "GZIP"
+  partitions: 1024
+  partitionsConsumedConcurrently: 1024
+  terminateTimeoutMs: 30000
+  produceToSecondTopic: false
+  autoCommit: 3000
+  concurrentRun: true
+  consumerMode: "eachBatch"
+  consumerMaxBatchSize: -1
+  useCKJSProducerEverywhere: false
+  autoCommitOnBatchEnd: true
+  isHigherLatencyCluster: true
+  useKeys: true
+  skipCTPTest: true
+  statisticsIntervalMs: 5000
+  # limitRPS: 5000
