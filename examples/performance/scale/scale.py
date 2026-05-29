@@ -9,7 +9,6 @@ into a single log file, parses `=== Producer Rate:  <number>` from each pod
 
 import argparse
 import datetime as dt
-import os
 import re
 import subprocess
 import sys
@@ -20,6 +19,24 @@ PRODUCER_RATE_RE = re.compile(
 )
 
 CHART_DIR = Path(__file__).resolve().parent
+LOGS_DIR = CHART_DIR / "logs"
+
+# Log files written by performance-primitives*.js into the producer's working
+# directory.  scale.py tries to `kubectl cp` each of these from the sidecar
+# container after the producer Job completes.  Missing files are silently
+# skipped (e.g. only confluent-producer.log is written for a producer-only run).
+REMOTE_WORKDIR = "/workspace/repo/examples/performance"
+LOG_FILES_TO_COPY = [
+    "confluent-producer.log",
+    "confluent-consumer-producer.log",
+    "confluent-consumer-batch.log",
+    "confluent-consumer-message.log",
+    "kafkajs-producer.log",
+    "kafkajs-consumer-producer.log",
+    "kafkajs-consumer-batch.log",
+    "kafkajs-consumer-message.log",
+]
+SIDECAR_CONTAINER = "log-keeper"
 
 
 def run(cmd, check=True, capture=False):
@@ -105,6 +122,64 @@ def parse_rate(pod_log):
     return float(matches[-1])
 
 
+def release_sidecar(pod, namespace):
+    """Signal the pod's `log-keeper` sidecar to exit voluntarily by touching
+    /workspace/.shutdown.  Without this, the sidecar would only die after
+    `terminationGracePeriodSeconds` elapses, which would stall
+    `helm uninstall`."""
+    subprocess.run(
+        [
+            "kubectl", "-n", namespace, "exec", pod,
+            "-c", SIDECAR_CONTAINER, "--",
+            "touch", "/workspace/.shutdown",
+        ],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+    )
+
+
+def copy_pod_logs(pod, namespace, out_dir):
+    """`kubectl cp` known producer/consumer log files from the pod's sidecar
+    container into `out_dir`.  Returns the list of paths that landed locally.
+
+    The sidecar (a native sidecar initContainer with restartPolicy: Always)
+    is still up because the pod's terminationGracePeriodSeconds keeps it
+    alive after the producer container exits.  Files that do not exist in
+    the pod are silently skipped — `kubectl cp` returns non-zero on missing
+    sources, so we probe with `kubectl exec test -f` first.
+    """
+    out_dir.mkdir(exist_ok=True)
+    written = []
+    for name in LOG_FILES_TO_COPY:
+        remote = f"{REMOTE_WORKDIR}/{name}"
+        probe = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "exec", pod,
+                "-c", SIDECAR_CONTAINER, "--",
+                "test", "-f", remote,
+            ],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        )
+        if probe.returncode != 0:
+            continue
+        dest = out_dir / f"{pod}-{name}"
+        cp = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "cp",
+                "-c", SIDECAR_CONTAINER,
+                f"{pod}:{remote}", str(dest),
+            ],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
+        )
+        if cp.returncode == 0 and dest.is_file():
+            written.append(dest)
+        else:
+            print(
+                f"kubectl cp failed for {pod}:{remote}: {cp.stderr.strip()}",
+                file=sys.stderr,
+            )
+    return written
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("values", help="Path to a values YAML for the Helm chart.")
@@ -174,14 +249,22 @@ def main():
             file=sys.stderr,
         )
 
-    pod_results = []  # list of (pod_name, rate_or_None, log_text)
+    pod_results = []  # list of (pod_name, rate_or_None, log_text, copied_files)
     for pod in pods:
         try:
             log_text = fetch_pod_log(pod, args.namespace)
         except subprocess.CalledProcessError as e:
             log_text = f"<failed to fetch logs: {e}>"
         rate = parse_rate(log_text)
-        pod_results.append((pod, rate, log_text))
+        try:
+            copied = copy_pod_logs(pod, args.namespace, LOGS_DIR)
+        except Exception as e:  # never let one pod's cp failure abort the run
+            print(f"copy_pod_logs failed for {pod}: {e}", file=sys.stderr)
+            copied = []
+        # Tell the sidecar it can exit now, so helm uninstall doesn't
+        # block waiting for terminationGracePeriodSeconds.
+        release_sidecar(pod, args.namespace)
+        pod_results.append((pod, rate, log_text, copied))
 
     with log_path.open("w") as f:
         f.write(
@@ -192,25 +275,29 @@ def main():
             f"# timestamp: {dt.datetime.now(dt.timezone.utc).isoformat()}\n"
             f"# pods:      {len(pods)}\n\n"
         )
-        for pod, rate, log_text in pod_results:
+        for pod, rate, log_text, extracted in pod_results:
             f.write(f"===== POD {pod} =====\n")
             f.write(log_text)
             if not log_text.endswith("\n"):
                 f.write("\n")
             f.write(
                 f"--- parsed rate: "
-                f"{'%.4f MB/s' % rate if rate is not None else 'MISSING'}\n\n"
+                f"{'%.4f MB/s' % rate if rate is not None else 'MISSING'}\n"
             )
+            if extracted:
+                rel = [str(p.relative_to(CHART_DIR)) for p in extracted]
+                f.write(f"--- copied files: {', '.join(rel)}\n")
+            f.write("\n")
 
-        rates = [r for (_, r, _) in pod_results if r is not None]
-        missing = [p for (p, r, _) in pod_results if r is None]
+        rates = [r for (_, r, _, _) in pod_results if r is not None]
+        missing = [p for (p, r, _, _) in pod_results if r is None]
 
         f.write("===== SUMMARY =====\n")
         f.write(f"pods: {len(pod_results)}\n")
         if pod_results:
             per_pod = ", ".join(
                 f"{r:.4f}" if r is not None else "MISSING"
-                for (_, r, _) in pod_results
+                for (_, r, _, _) in pod_results
             )
             f.write(f"per-pod MB/s: {per_pod}\n")
         if rates:
