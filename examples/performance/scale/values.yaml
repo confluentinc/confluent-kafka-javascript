@@ -53,3 +53,4 @@ producer:
   isHigherLatencyCluster: true
   useKeys: true
   skipCTPTest: true
+  statisticsIntervalMs: 5000
