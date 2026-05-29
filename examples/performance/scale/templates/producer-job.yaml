@@ -16,10 +16,18 @@ spec:
         app.kubernetes.io/component: producer
     spec:
       restartPolicy: Never
+      {{- if .Values.nodeArch }}
+      {{- include "ckjs-perf-scale.nodeArchAffinity" . | nindent 6 }}
+      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.logKeeper.terminationGracePeriodSeconds }}
       volumes:
         - name: workspace
           emptyDir: {}
+        # Extra librdkafka producer properties (values.yaml: producerConfig),
+        # rendered into configuration.yaml and read by newCompatibleProducer.
+        - name: producer-config
+          configMap:
+            name: {{ include "ckjs-perf-scale.producerConfigMapName" . }}
       initContainers:
         # Native sidecar (restartPolicy: Always on an initContainer).
         # Stays alive after the main `producer` container exits so that
@@ -57,6 +65,10 @@ spec:
                 name: {{ include "ckjs-perf-scale.configMapName" . }}
             - secretRef:
                 name: {{ include "ckjs-perf-scale.secretName" . }}
+          env:
+            # Where newCompatibleProducer reads the extra producer properties.
+            - name: PRODUCER_CONFIG_FILE
+              value: /etc/ckjs/configuration.yaml
           # The app is baked into the image at /opt/ckjs/examples/performance,
           # but its log files are written relative to the working directory
           # (e.g. ./confluent-producer.log). Run from the shared workspace
@@ -73,5 +85,8 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /workspace
+            - name: producer-config
+              mountPath: /etc/ckjs
+              readOnly: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

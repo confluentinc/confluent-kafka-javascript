@@ -460,6 +460,37 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     startTime = hrtime();
     let messagesDispatched = 0;
 
+    // Per-request send latency (time from issuing producer.send() to the
+    // resolution of its promise), tracked since the start of measurement.
+    // Percentiles use the same count-sketch the consumer uses so we don't
+    // keep every sample in memory. avg/max are tracked incrementally.
+    const latencySketch = new LatencyCountSketch({});
+    let latencyCount = 0;
+    let latencySum = 0;
+    let latencyMax = 0;
+    const recordLatency = (latencyMs) => {
+        latencySketch.add(latencyMs);
+        latencyCount++;
+        latencySum += latencyMs;
+        if (latencyMs > latencyMax)
+            latencyMax = latencyMs;
+    };
+    const latencySnapshot = () => {
+        const [p50, p99, p999] = latencySketch
+            .percentiles([50, 99, 99.9])
+            .map((v) => v[0]);
+        return {
+            avg: latencyCount > 0 ? latencySum / latencyCount : 0,
+            p50, p99, p999,
+            max: latencyMax,
+            count: latencyCount,
+        };
+    };
+    const latencyLine = (s) =>
+        `=== Producer Send Latency (ms): avg=${s.avg.toFixed(3)} ` +
+        `p50=${s.p50.toFixed(3)} p99=${s.p99.toFixed(3)} ` +
+        `p99.9=${s.p999.toFixed(3)} max=${s.max.toFixed(3)} count=${s.count}`;
+
     // The double while-loop allows us to send a bunch of messages and then
     // await them all at once. We need the second while loop to keep sending
     // in case of queue full errors, which surface only on awaiting.
@@ -483,10 +514,12 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
                         break;
             }
             const toProduce = modifiedMessages.length;
+            const sendStart = hrtime.bigint();
             promises.push(producer.send({
                 topic,
                 messages: modifiedMessages,
             }, compression).then(() => {
+                recordLatency(Number(hrtime.bigint() - sendStart) / 1e6);
                 totalMessagesSent += toProduce;
                 totalBytesSent += toProduce * msgSize;
             }).catch((err) => {
@@ -517,7 +550,10 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     let elapsed = hrtime(startTime);
     let durationNanos = elapsed[0] * 1e9 + elapsed[1];
     let rate = (totalBytesSent / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
+    let recordsPerSecond = (totalMessagesSent / durationNanos) * 1e9; /* records/s */
     console.log(`Sent ${totalMessagesSent} messages, ${totalBytesSent} bytes; rate is ${rate} MB/s`);
+    console.log(`=== Producer Records/s: ${recordsPerSecond}`);
+    console.log(latencyLine(latencySnapshot()));
 
     await producer.disconnect();
     removeHandlers(handlers);

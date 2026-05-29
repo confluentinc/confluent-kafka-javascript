@@ -34,6 +34,21 @@ const ctpConcurrency = process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY ? +proc
 const consumerProcessingTime = process.env.CONSUMER_PROCESSING_TIME ? +process.env.CONSUMER_PROCESSING_TIME : 100;
 const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.env.PRODUCER_PROCESSING_TIME : 100;
 const limitRPS = process.env.LIMIT_RPS ? +process.env.LIMIT_RPS : null;
+const terminateTimeoutMs = process.env.TERMINATE_TIMEOUT_MS ? +process.env.TERMINATE_TIMEOUT_MS : 600000;
+// Message count for the producer test:
+// - LIMIT_RPS unset: -1 (no record cap; runProducer terminates after
+//   TERMINATE_TIMEOUT_MS).
+// - LIMIT_RPS set and TERMINATE_TIMEOUT_MS set: enough records to fill the
+//   timeout window at the target rate, ceil(LIMIT_RPS * TERMINATE_TIMEOUT_MS / 1000).
+// - LIMIT_RPS set and TERMINATE_TIMEOUT_MS unset: use MESSAGE_COUNT as-is.
+let producerMessageCount;
+if (limitRPS === null) {
+    producerMessageCount = -1;
+} else if (process.env.TERMINATE_TIMEOUT_MS) {
+    producerMessageCount = Math.ceil(limitRPS * terminateTimeoutMs / 1000);
+} else {
+    producerMessageCount = messageCount;
+}
 const useCKJSProducerEverywhere = process.env.USE_CKJS_PRODUCER_EVERYWHERE === 'true';
 const parameters = {
     brokers,
@@ -142,7 +157,7 @@ function printPercentiles(percentiles, type) {
         console.log("=== Running Basic Producer Performance Test:")
         logParameters(parameters);
         console.log(`  Topic: ${topic}`);
-        console.log(`  Message Count: ${messageCount}`);
+        console.log(`  Message Count: ${producerMessageCount}`);
         console.log(`  Message Size: ${messageSize}`);
         console.log(`  Batch Size: ${batchSize}`);
         console.log(`  Compression: ${compression}`);
@@ -155,7 +170,7 @@ function printPercentiles(percentiles, type) {
             runProducerFunction = runProducerCKJS;
         }
         const producerRate = await runProducerFunction(parameters, topic, batchSize,
-            warmupMessages, messageCount, messageSize, compression,
+            warmupMessages, producerMessageCount, messageSize, compression,
             randomness, limitRPS);
         endTrackingMemory('producer', `producer-memory-${mode}.json`);
         console.log("=== Producer Rate: ", producerRate);

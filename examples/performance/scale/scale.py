@@ -9,12 +9,30 @@ into a single log file, parses `=== Producer Rate:  <number>` from each pod
 
 import argparse
 import datetime as dt
+import platform
 import re
 import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+# Map platform.machine() values to Kubernetes `kubernetes.io/arch` node-label
+# values, so job pods can be pinned to nodes matching this host's architecture
+# (the prebuilt image is single-arch).
+_ARCH_MAP = {
+    "x86_64": "amd64",
+    "amd64": "amd64",
+    "aarch64": "arm64",
+    "arm64": "arm64",
+}
+
+
+def detect_node_arch():
+    """Return the kubernetes.io/arch value matching the host running this
+    script (e.g. amd64, arm64)."""
+    machine = platform.machine().lower()
+    return _ARCH_MAP.get(machine, machine)
 
 PRODUCER_RATE_RE = re.compile(
     r"^=== Producer Rate:\s+([0-9]+(?:\.[0-9]+)?)", re.MULTILINE
@@ -279,13 +297,14 @@ def process_pod(pod, namespace, timeout_s):
     return (pod, rate, log_text)
 
 
-def copy_and_release_pod(pod, namespace):
-    """Copy the pod's log files out of its sidecar, then release the sidecar
-    so the Job can complete (and `helm uninstall` doesn't block on the
-    terminationGracePeriodSeconds).  Returns the list of copied paths.  Run
-    after the global log file is written — one pod per worker thread."""
+def copy_and_release_pod(pod, namespace, out_dir):
+    """Copy the pod's log files out of its sidecar into `out_dir`, then
+    release the sidecar so the Job can complete (and `helm uninstall` doesn't
+    block on the terminationGracePeriodSeconds).  Returns the list of copied
+    paths.  Run after the global log file is written — one pod per worker
+    thread."""
     try:
-        copied = copy_pod_logs(pod, namespace, LOGS_DIR)
+        copied = copy_pod_logs(pod, namespace, out_dir)
     except Exception as e:  # never let one pod's cp failure abort the run
         print(f"copy_pod_logs failed for {pod}: {e}", file=sys.stderr)
         copied = []
@@ -298,13 +317,8 @@ def copy_and_release_pod(pod, namespace):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("values", help="Path to a values YAML for the Helm chart.")
-    ap.add_argument("--release", default="perf-scale", help="Helm release name.")
+    ap.add_argument("--release", default="ckjs-perf-scale", help="Helm release name.")
     ap.add_argument("--namespace", default="default", help="Kubernetes namespace.")
-    ap.add_argument(
-        "--log",
-        default=None,
-        help="Output log file (default: scale-<release>-<UTC timestamp>.log).",
-    )
     ap.add_argument(
         "--timeout",
         type=int,
@@ -327,18 +341,28 @@ def main():
         default=None,
         help="Git URL to clone (overrides source.repo in the values file).",
     )
+    ap.add_argument(
+        "--node-arch",
+        default=None,
+        help="kubernetes.io/arch value to pin the job pods to "
+        "(default: auto-detected from this host; pass an empty string to "
+        "disable the affinity).",
+    )
     args = ap.parse_args()
 
     values_file = Path(args.values).resolve()
     if not values_file.is_file():
         sys.exit(f"values file not found: {values_file}")
 
-    if args.log:
-        log_path = Path(args.log).resolve()
-    else:
-        ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        log_path = Path.cwd() / f"scale-{args.release}-{ts}.log"
+    # Each run gets its own UTC-timestamped folder under logs/.  Both the
+    # global log file and every per-pod log file copied from the pods land
+    # there, so runs never overwrite each other.
+    ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = LOGS_DIR / ts
+    run_dir.mkdir(parents=True, exist_ok=True)
+    log_path = run_dir / f"scale-{args.release}.log"
 
+    print(f"log folder: {run_dir}", flush=True)
     print(f"log file: {log_path}", flush=True)
 
     set_overrides = []
@@ -346,6 +370,12 @@ def main():
         set_overrides.append(f"source.ref={args.ref}")
     if args.source_repo:
         set_overrides.append(f"source.repo={args.source_repo}")
+    # Pin the job pods to nodes matching this host's architecture unless the
+    # user explicitly disabled it with --node-arch ''.
+    node_arch = detect_node_arch() if args.node_arch is None else args.node_arch
+    if node_arch:
+        print(f"node arch affinity: {node_arch}", flush=True)
+        set_overrides.append(f"nodeArch={node_arch}")
 
     failed = False
     try:
@@ -425,7 +455,9 @@ def main():
     # files out of its sidecar and release the sidecar, all pods concurrently.
     if pods:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            list(pool.map(lambda p: copy_and_release_pod(p, args.namespace), pods))
+            list(pool.map(
+                lambda p: copy_and_release_pod(p, args.namespace, run_dir), pods
+            ))
 
     if not args.keep:
         helm_uninstall(args.release, args.namespace)

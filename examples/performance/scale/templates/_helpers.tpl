@@ -26,6 +26,10 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{ include "ckjs-perf-scale.fullname" . }}-env
 {{- end -}}
 
+{{- define "ckjs-perf-scale.producerConfigMapName" -}}
+{{ include "ckjs-perf-scale.fullname" . }}-producer-config
+{{- end -}}
+
 {{- define "ckjs-perf-scale.secretName" -}}
 {{ include "ckjs-perf-scale.fullname" . }}-sasl
 {{- end -}}
@@ -36,4 +40,21 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 
 {{- define "ckjs-perf-scale.createTopicsJobName" -}}
 {{ include "ckjs-perf-scale.fullname" . }}-create-topics
+{{- end -}}
+
+{{/*
+Node affinity pinning pods to nodes whose kubernetes.io/arch matches
+.Values.nodeArch. Emits nothing when nodeArch is empty. Include at the pod
+spec level, e.g. `{{- include "ckjs-perf-scale.nodeArchAffinity" . | nindent 6 }}`.
+*/}}
+{{- define "ckjs-perf-scale.nodeArchAffinity" -}}
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/arch
+              operator: In
+              values:
+                - {{ .Values.nodeArch | quote }}
 {{- end -}}

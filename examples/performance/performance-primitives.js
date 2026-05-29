@@ -1,6 +1,9 @@
 const { Kafka, ErrorCodes, CompressionTypes } = require('../../').KafkaJS;
 const { randomBytes } = require('crypto');
 const { hrtime } = require('process');
+const fs = require('fs');
+const path = require('path');
+const yaml = require('js-yaml');
 const {
     runConsumer: runConsumerCommon,
     runProducer: runProducerCommon,
@@ -26,6 +29,38 @@ const IS_HIGHER_LATENCY_CLUSTER = process.env.IS_HIGHER_LATENCY_CLUSTER === 'tru
 const DEBUG = process.env.DEBUG;
 const STATISTICS_INTERVAL_MS = process.env.STATISTICS_INTERVAL_MS ? +process.env.STATISTICS_INTERVAL_MS : null;
 const ENABLE_LOGGING = DEBUG !== undefined || STATISTICS_INTERVAL_MS !== null;
+
+// Optional file with extra librdkafka producer properties, applied after the
+// higher-latency cluster tuning in newCompatibleProducer (so they take
+// precedence).  Defaults to a configuration.yaml next to this script; in the
+// scale chart it is mounted from a ConfigMap and pointed at via this env var.
+const PRODUCER_CONFIG_FILE = process.env.PRODUCER_CONFIG_FILE ||
+    path.join(__dirname, 'configuration.yaml');
+
+// Reads PRODUCER_CONFIG_FILE and returns a librdkafka {name: value} map.
+// The file holds a YAML list of { name, value } entries (a plain YAML mapping
+// is also accepted).  A missing file yields no extra properties.
+function loadProducerConfig() {
+    let raw;
+    try {
+        raw = fs.readFileSync(PRODUCER_CONFIG_FILE, 'utf8');
+    } catch (err) {
+        if (err.code === 'ENOENT')
+            return {};
+        throw err;
+    }
+    const parsed = yaml.load(raw);
+    const ret = {};
+    if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+            if (item && item.name !== undefined)
+                ret[item.name] = item.value;
+        }
+    } else if (parsed && typeof parsed === 'object') {
+        Object.assign(ret, parsed);
+    }
+    return ret;
+}
 
 function baseConfiguration(parameters) {
     let ret = {
@@ -134,10 +169,16 @@ function newCompatibleProducer(parameters, compression) {
         'batch.size': '2097152',
         'max.in.flight': '10',
     } : {};
+    const extraProducerConfig = loadProducerConfig();
+    if (Object.keys(extraProducerConfig).length > 0) {
+        console.log('Applying extra producer config from ' +
+            `${PRODUCER_CONFIG_FILE}:`, extraProducerConfig);
+    }
     return new CompatibleProducer(
         new Kafka({
         ...baseConfiguration(parameters),
         ...higherLatencyClusterOpts,
+        ...extraProducerConfig,
         'compression.codec': CompressionTypes[compression],
     }).producer());
 }

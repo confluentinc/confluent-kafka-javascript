@@ -21,6 +21,9 @@ spec:
         app.kubernetes.io/component: create-topics
     spec:
       restartPolicy: Never
+      {{- if .Values.nodeArch }}
+      {{- include "ckjs-perf-scale.nodeArchAffinity" . | nindent 6 }}
+      {{- end }}
       containers:
         - name: create-topics
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
