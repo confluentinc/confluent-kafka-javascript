@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 PRODUCER_RATE_RE = re.compile(
@@ -254,6 +255,46 @@ def copy_pod_logs(pod, namespace, out_dir):
     return written
 
 
+def process_pod(pod, namespace, timeout_s):
+    """Wait for one pod's producer to finish and fetch its console log.
+    Returns (pod, rate_or_None, log_text).  Does NOT copy log files or
+    release the sidecar — that happens later, after the global log file has
+    been written.  Designed to be run concurrently — one pod per worker
+    thread — since each call only touches its own pod and is `kubectl` I/O.
+    """
+    # Wait for the producer container to finish (the log-keeper sidecar
+    # keeps the pod up) so its log files are complete before we read them.
+    reason = wait_producer_container_done(pod, namespace, timeout_s)
+    if not reason:
+        print(
+            f"producer container in {pod} did not terminate within "
+            f"{timeout_s}s; reading logs anyway",
+            file=sys.stderr,
+        )
+    try:
+        log_text = fetch_pod_log(pod, namespace)
+    except subprocess.CalledProcessError as e:
+        log_text = f"<failed to fetch logs: {e}>"
+    rate = parse_rate(log_text)
+    return (pod, rate, log_text)
+
+
+def copy_and_release_pod(pod, namespace):
+    """Copy the pod's log files out of its sidecar, then release the sidecar
+    so the Job can complete (and `helm uninstall` doesn't block on the
+    terminationGracePeriodSeconds).  Returns the list of copied paths.  Run
+    after the global log file is written — one pod per worker thread."""
+    try:
+        copied = copy_pod_logs(pod, namespace, LOGS_DIR)
+    except Exception as e:  # never let one pod's cp failure abort the run
+        print(f"copy_pod_logs failed for {pod}: {e}", file=sys.stderr)
+        copied = []
+    # Tell the sidecar it can exit now, so helm uninstall doesn't
+    # block waiting for terminationGracePeriodSeconds.
+    release_sidecar(pod, namespace)
+    return copied
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("values", help="Path to a values YAML for the Helm chart.")
@@ -323,31 +364,18 @@ def main():
             file=sys.stderr,
         )
 
-    pod_results = []  # list of (pod_name, rate_or_None, log_text, copied_files)
-    for pod in pods:
-        # Wait for the producer container to finish (the log-keeper sidecar
-        # keeps the pod up) so its log files are complete before we copy them.
-        reason = wait_producer_container_done(pod, args.namespace, args.timeout)
-        if not reason:
-            print(
-                f"producer container in {pod} did not terminate within "
-                f"{args.timeout}s; copying logs anyway",
-                file=sys.stderr,
+    max_workers=20
+    # Phase 1: wait for every pod's producer to finish and fetch its console
+    # log, all pods concurrently so a slow pod doesn't hold up the others.
+    # pool.map preserves input order, so pod_results stays in pod order.
+    pod_results = []  # list of (pod_name, rate_or_None, log_text)
+    if pods:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            pod_results = list(
+                pool.map(
+                    lambda p: process_pod(p, args.namespace, args.timeout), pods
+                )
             )
-        try:
-            log_text = fetch_pod_log(pod, args.namespace)
-        except subprocess.CalledProcessError as e:
-            log_text = f"<failed to fetch logs: {e}>"
-        rate = parse_rate(log_text)
-        try:
-            copied = copy_pod_logs(pod, args.namespace, LOGS_DIR)
-        except Exception as e:  # never let one pod's cp failure abort the run
-            print(f"copy_pod_logs failed for {pod}: {e}", file=sys.stderr)
-            copied = []
-        # Tell the sidecar it can exit now, so helm uninstall doesn't
-        # block waiting for terminationGracePeriodSeconds.
-        release_sidecar(pod, args.namespace)
-        pod_results.append((pod, rate, log_text, copied))
 
     with log_path.open("w") as f:
         f.write(
@@ -358,7 +386,7 @@ def main():
             f"# timestamp: {dt.datetime.now(dt.timezone.utc).isoformat()}\n"
             f"# pods:      {len(pods)}\n\n"
         )
-        for pod, rate, log_text, extracted in pod_results:
+        for pod, rate, log_text in pod_results:
             f.write(f"===== POD {pod} =====\n")
             f.write(log_text)
             if not log_text.endswith("\n"):
@@ -367,20 +395,17 @@ def main():
                 f"--- parsed rate: "
                 f"{'%.4f MB/s' % rate if rate is not None else 'MISSING'}\n"
             )
-            if extracted:
-                rel = [str(p.relative_to(CHART_DIR)) for p in extracted]
-                f.write(f"--- copied files: {', '.join(rel)}\n")
             f.write("\n")
 
-        rates = [r for (_, r, _, _) in pod_results if r is not None]
-        missing = [p for (p, r, _, _) in pod_results if r is None]
+        rates = [r for (_, r, _) in pod_results if r is not None]
+        missing = [p for (p, r, _) in pod_results if r is None]
 
         f.write("===== SUMMARY =====\n")
         f.write(f"pods: {len(pod_results)}\n")
         if pod_results:
             per_pod = ", ".join(
                 f"{r:.4f}" if r is not None else "MISSING"
-                for (_, r, _, _) in pod_results
+                for (_, r, _) in pod_results
             )
             f.write(f"per-pod MB/s: {per_pod}\n")
         if rates:
@@ -396,10 +421,16 @@ def main():
 
     print(f"wrote {log_path}", flush=True)
 
+    # Phase 2: now that the global log file is written, copy each pod's log
+    # files out of its sidecar and release the sidecar, all pods concurrently.
+    if pods:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            list(pool.map(lambda p: copy_and_release_pod(p, args.namespace), pods))
+
     if not args.keep:
         helm_uninstall(args.release, args.namespace)
 
-    if failed or not pod_results or any(r is None for (_, r, _, _) in pod_results):
+    if failed or not pod_results or any(r is None for (_, r, _) in pod_results):
         sys.exit(1)
 
 
