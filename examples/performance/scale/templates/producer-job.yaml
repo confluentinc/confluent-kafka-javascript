@@ -1,0 +1,77 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ckjs-perf-scale.producerJobName" . }}
+  labels:
+    {{- include "ckjs-perf-scale.labels" . | nindent 4 }}
+    app.kubernetes.io/component: producer
+spec:
+  parallelism: {{ .Values.replicaCount }}
+  completions: {{ .Values.replicaCount }}
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "ckjs-perf-scale.labels" . | nindent 8 }}
+        app.kubernetes.io/component: producer
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: {{ .Values.logKeeper.terminationGracePeriodSeconds }}
+      volumes:
+        - name: workspace
+          emptyDir: {}
+      initContainers:
+        # Native sidecar (restartPolicy: Always on an initContainer).
+        # Stays alive after the main `producer` container exits so that
+        # scale.py can `kubectl cp` the producer's log files out of the
+        # shared workspace volume. The grace period above (`terminationGrace
+        # PeriodSeconds`) bounds how long it lingers.
+        - name: log-keeper
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          restartPolicy: Always
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # Stay alive after the producer (main) container exits so that
+              # scale.py can kubectl-cp log files out of /workspace.  The
+              # kubelet sends SIGTERM to native sidecars as soon as the main
+              # container exits; we trap it to ignore (the trap fires but
+              # runs the `:` no-op) and instead exit when scale.py touches
+              # /workspace/.shutdown.  terminationGracePeriodSeconds bounds
+              # how long we'll linger if scale.py never signals us.
+              trap : TERM
+              while [ ! -f /workspace/.shutdown ]; do
+                sleep 5
+              done
+              exit 0
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      containers:
+        - name: producer
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ckjs-perf-scale.configMapName" . }}
+            - secretRef:
+                name: {{ include "ckjs-perf-scale.secretName" . }}
+          # The app is baked into the image at /opt/ckjs/examples/performance,
+          # but its log files are written relative to the working directory
+          # (e.g. ./confluent-producer.log). Run from the shared workspace
+          # volume at the path scale.py copies from
+          # (REMOTE_WORKDIR=/workspace/repo/examples/performance) so the
+          # log-keeper sidecar can expose them for `kubectl cp`.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /workspace/repo/examples/performance
+              cd /workspace/repo/examples/performance
+              exec node /opt/ckjs/examples/performance/performance-consolidated.js --producer
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
