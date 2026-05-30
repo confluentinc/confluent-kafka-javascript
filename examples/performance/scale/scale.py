@@ -41,7 +41,7 @@ PRODUCER_RATE_RE = re.compile(
 CHART_DIR = Path(__file__).resolve().parent
 LOGS_DIR = CHART_DIR / "logs"
 
-# Log files written by performance-primitives*.js into the producer's working
+# Files written by performance-primitives*.js into the producer's working
 # directory.  scale.py tries to `kubectl cp` each of these from the sidecar
 # container after the producer Job completes.  Missing files are silently
 # skipped (e.g. only confluent-producer.log is written for a producer-only run).
@@ -55,6 +55,8 @@ LOG_FILES_TO_COPY = [
     "kafkajs-consumer-producer.log",
     "kafkajs-consumer-batch.log",
     "kafkajs-consumer-message.log",
+    # Periodic producer latency samples (JSON lines).
+    "jsmetrics.jsonl",
 ]
 SIDECAR_CONTAINER = "log-keeper"
 

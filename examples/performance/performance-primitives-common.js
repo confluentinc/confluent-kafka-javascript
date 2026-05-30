@@ -491,6 +491,24 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
         `p50=${s.p50.toFixed(3)} p99=${s.p99.toFixed(3)} ` +
         `p99.9=${s.p999.toFixed(3)} max=${s.max.toFixed(3)} count=${s.count}`;
 
+    // Append the running latency stats to jsmetrics.jsonl every 5s as JSON
+    // lines. Writes go to the stream's internal buffer (no explicit flush);
+    // the buffer is flushed when the stream is closed at the end of the test.
+    const metricsStream = fs.createWriteStream('jsmetrics.jsonl');
+    const writeMetricsLine = () => {
+        const s = latencySnapshot();
+        metricsStream.write(JSON.stringify({
+            ts: Date.now(),
+            avg: s.avg,
+            p50: s.p50,
+            p99: s.p99,
+            p999: s.p999,
+            max: s.max,
+            count: s.count,
+        }) + '\n');
+    };
+    const metricsInterval = setInterval(writeMetricsLine, 5000);
+
     // The double while-loop allows us to send a bunch of messages and then
     // await them all at once. We need the second while loop to keep sending
     // in case of queue full errors, which surface only on awaiting.
@@ -547,6 +565,12 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             await new Promise(resolve => setTimeout(resolve, Number(1000000000n - elapsedBatch) / 1e6));
         }
     }
+    // Stop the periodic sampler, write a final line, and flush+close the
+    // stream (this is the only flush — the test is complete).
+    clearInterval(metricsInterval);
+    writeMetricsLine();
+    await new Promise((resolve) => metricsStream.end(resolve));
+
     let elapsed = hrtime(startTime);
     let durationNanos = elapsed[0] * 1e9 + elapsed[1];
     let rate = (totalBytesSent / durationNanos) * 1e9 / (1024 * 1024); /* MB/s */
