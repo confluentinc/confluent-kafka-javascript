@@ -476,12 +476,12 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             latencyMax = latencyMs;
     };
     const latencySnapshot = () => {
-        const [p50, p99, p999] = latencySketch
-            .percentiles([50, 99, 99.9])
+        const [p50, p90, p99, p999] = latencySketch
+            .percentiles([50, 90, 99, 99.9])
             .map((v) => v[0]);
         return {
             avg: latencyCount > 0 ? latencySum / latencyCount : 0,
-            p50, p99, p999,
+            p50, p90, p99, p999,
             max: latencyMax,
             count: latencyCount,
         };
@@ -501,6 +501,7 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             ts: Date.now(),
             avg: s.avg,
             p50: s.p50,
+            p90: s.p90,
             p99: s.p99,
             p999: s.p999,
             max: s.max,
