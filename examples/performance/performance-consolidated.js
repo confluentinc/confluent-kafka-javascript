@@ -34,18 +34,14 @@ const ctpConcurrency = process.env.CONSUME_TRANSFORM_PRODUCE_CONCURRENCY ? +proc
 const consumerProcessingTime = process.env.CONSUMER_PROCESSING_TIME ? +process.env.CONSUMER_PROCESSING_TIME : 100;
 const producerProcessingTime = process.env.PRODUCER_PROCESSING_TIME ? +process.env.PRODUCER_PROCESSING_TIME : 100;
 const limitRPS = process.env.LIMIT_RPS ? +process.env.LIMIT_RPS : null;
-const terminateTimeoutMs = process.env.TERMINATE_TIMEOUT_MS ? +process.env.TERMINATE_TIMEOUT_MS : 600000;
 // Message count for the producer test:
-// - LIMIT_RPS unset: -1 (no record cap; runProducer terminates after
-//   TERMINATE_TIMEOUT_MS).
-// - LIMIT_RPS set and TERMINATE_TIMEOUT_MS set: enough records to fill the
-//   timeout window at the target rate, ceil(LIMIT_RPS * TERMINATE_TIMEOUT_MS / 1000).
-// - LIMIT_RPS set and TERMINATE_TIMEOUT_MS unset: use MESSAGE_COUNT as-is.
+// - LIMIT_RPS set and TERMINATE_TIMEOUT_MS set: -1 (no record cap; runProducer
+//   runs until TERMINATE_TIMEOUT_MS, paced by LIMIT_RPS). MESSAGE_COUNT ignored.
+// - Otherwise (LIMIT_RPS unset, or TERMINATE_TIMEOUT_MS unset): send exactly
+//   MESSAGE_COUNT.
 let producerMessageCount;
-if (limitRPS === null) {
+if (limitRPS !== null && process.env.TERMINATE_TIMEOUT_MS) {
     producerMessageCount = -1;
-} else if (process.env.TERMINATE_TIMEOUT_MS) {
-    producerMessageCount = Math.ceil(limitRPS * terminateTimeoutMs / 1000);
 } else {
     producerMessageCount = messageCount;
 }
