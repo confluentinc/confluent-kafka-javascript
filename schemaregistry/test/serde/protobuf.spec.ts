@@ -498,6 +498,27 @@ describe('ProtobufSerializer', () => {
     expect(obj2).toEqual(obj)
   })
 
+  it('cel decimal sqrt', async () => {
+    const client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    ser.registry.add(AuthorSchema)
+    const encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'decimals.eq(decimals.sqrt(decimal("144")), decimal("12"))'
+    }
+    const info: SchemaInfo = {
+      schemaType: 'PROTOBUF',
+      schema: Buffer.from(toBinary(FileDescriptorProtoSchema, file_test_schemaregistry_serde_example.proto)).toString('base64'),
+      ruleSet: { domainRules: [encRule] },
+    }
+    await client.register(subject, info, false)
+    const obj = create(AuthorSchema, { name: 'Kafka', id: 123, picture: Buffer.from([1, 2]) })
+    const bytes = await ser.serialize(topic, obj)
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+
   it('cel timestamp passes', async () => {
     const client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
     const ser = new ProtobufSerializer(client, SerdeType.VALUE, { useLatestVersion: true })

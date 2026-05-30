@@ -199,6 +199,16 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     return decimalToCel(new DivDecimal(toDecimal(a).toString()).div(bd.toString()));
   }),
 
+  // ---- square root ----
+  // 38-digit HALF_UP precision (same context as div). decimal.js's sqrt()
+  // returns NaN on a negative value, so guard explicitly and throw the
+  // canonical message instead. Zero (and -0) pass through to sqrt(0) = 0.
+  celFunc("decimals.sqrt", [DYN], DECIMAL_TYPE, (a) => {
+    const d = toDecimal(a);
+    if (d.lt(0)) throw new Error("decimals.sqrt: square root of negative number");
+    return decimalToCel(new DivDecimal(d.toString()).sqrt());
+  }),
+
   // ---- unary ----
   celFunc("decimals.neg", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).negated())),
   celFunc("decimals.abs", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).abs())),
