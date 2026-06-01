@@ -511,7 +511,7 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     const metricsInterval = setInterval(writeMetricsLine, 5000);
 
     // The double while-loop allows us to send a bunch of messages and then
-    // await them all at once. We need the second while loop to keep sending
+    // remove the completed ones. We need the second while loop to keep sending
     // in case of queue full errors, which surface only on awaiting.
     while (totalMessageCnt == -1 || messagesDispatched < totalMessageCnt) {
         const startTimeBatch = hrtime.bigint();
@@ -534,29 +534,30 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             }
             const toProduce = modifiedMessages.length;
             const sendStart = hrtime.bigint();
-            promises.push(producer.send({
+            let promise = producer.send({
                 topic,
                 messages: modifiedMessages,
             }, compression).then(() => {
+                promise._completed = true;
                 recordLatency(Number(hrtime.bigint() - sendStart) / 1e6);
                 totalMessagesSent += toProduce;
                 totalBytesSent += toProduce * msgSize;
             }).catch((err) => {
+                promise._completed = true;
                 if (producer.isQueueFullError(err)) {
                     /* do nothing, just send them again */
                     messagesDispatched -= toProduce;
                 } else {
+                    promise._error = err;
                     console.error(err);
-                    throw err;
                 }
-            }));
+            });
+            promises.push(promise);
             messagesDispatched += toProduce;
             messagesNotAwaited += toProduce;
             if (handlers.terminationRequested || messagesNotAwaited >= maxToAwait)
                 break;
         }
-        await Promise.all(promises);
-        promises = [];
         if (handlers.terminationRequested)
             break;
 
@@ -564,8 +565,34 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
         const elapsedBatch = now - startTimeBatch;
         if (limitRPS && elapsedBatch < 1000000000n) {
             await new Promise(resolve => setTimeout(resolve, Number(1000000000n - elapsedBatch) / 1e6));
+        } else {
+            // Make sure the callbacks can run
+            await new Promise(resolve => setImmediate(resolve));
         }
+        let newPromisesLength = 0;
+        for (let i = 0; i < promises.length; i++) {
+            if (!promises[i]._completed) {
+                newPromisesLength++;
+            }
+            if (promises[i]._error)
+                throw promises[i]._error;
+        }
+        const newPromises = new Array(newPromisesLength);
+        let n = 0;
+        for (let i = 0; i < promises.length; i++) {
+            if (!promises[i]._completed) {
+                newPromises[n] = promises[i];
+                n++;
+            }
+        }
+        promises = newPromises;
     }
+    await Promise.all(promises);
+    for (let i = 0; i < promises.length; i++) {
+        if (promises[i]._error)
+            throw promises[i]._error;
+    }
+    promises = [];
     // Stop the periodic sampler, write a final line, and flush+close the
     // stream (this is the only flush — the test is complete).
     clearInterval(metricsInterval);
