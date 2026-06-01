@@ -1,8 +1,18 @@
-# confluent-kafka-javascript 1.x.x
+# confluent-kafka-javascript 1.9.1-rc1
+
+## Enhancements
+1. References librdkafka v2.14.2-RC3. Refer to the [librdkafka v2.14.2-RC3 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.14.2-RC3) for more information.
 
 ## Fixes
 1. Handle anyOf/allOf in JSON transforms (#479)
 2. Preserve custom subjectNameStrategy in serde constructors (#482)
+3. Correct the TypeScript return type of `admin.fetchTopicMetadata` to `Promise<Array<ITopicMetadata>>` (#367)
+4. Correct the TypeScript `MemberDescription` shape returned by `admin.describeGroups` so `assignment`/`targetAssignment` wrap a `topicPartitions` array and `memberAssignment`/`memberMetadata` are nullable (#487)
+5. Correct the TypeScript `FetchOffsetsPartition.error` type returned by `admin.fetchOffsets` to `LibrdKafkaError | null`, matching the runtime which always populates the field. It never returnes undefined. (#489)
+6. Correct broken "types" path so TS consumers get types (#484)
+7. Resolve IHeaders import for installed clients (#492)
+8. Fix error callback passing and object to the logger instead of a string (#483)
+9. Fix security vulnerabilities in dependencies (#478)
 
 
 # confluent-kafka-javascript 1.9.0

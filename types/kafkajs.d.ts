@@ -368,7 +368,7 @@ export interface OffsetsByTopicPartition {
   topics: TopicOffsets[]
 }
 
-export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error?: LibrdKafkaError };
+export type FetchOffsetsPartition = PartitionOffset & { metadata: string | null, leaderEpoch: number | null, error: LibrdKafkaError | null };
 
 export type TopicInput = string[] | { topic: string; partitions: number[] }[]
 
@@ -455,7 +455,7 @@ export type Admin = {
     topics?: string[],
     includeAuthorizedOperations?: boolean,
     timeout?: number
-  }): Promise<{ topics: Array<ITopicMetadata> }>
+  }): Promise<Array<ITopicMetadata>>
   fetchTopicOffsets(topic: string,
     options?: {
       timeout?: number,

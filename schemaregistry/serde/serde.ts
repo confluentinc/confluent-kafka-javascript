@@ -11,7 +11,7 @@ import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
 import {RestError} from "../rest-error";
 import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
-import {IHeaders} from "../../types/kafkajs";
+import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 import {LRUCache} from "lru-cache";
 import stringify from "json-stringify-deterministic";
 
