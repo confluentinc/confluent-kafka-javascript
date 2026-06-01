@@ -1,8 +1,44 @@
 # confluent-kafka-javascript 1.x.x
 
+## Enhancements
+1. Support generating a JSON Schema title from a JSON payload (#505)
+2. Add support for saving Azure key version with DEK (#507)
+3. Pass context when clients make KEK calls to DEK Registry (#508)
+
+## Fixes
+1. Preserve HTTP status on Schema Registry error responses (#519)
+
+
+# confluent-kafka-javascript 1.10.0
+
+v1.10.0 is a feature release. It is supported for all usage.
+
+## Enhancements
+1. References librdkafka v2.15.0. Refer to the [librdkafka v2.15.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.15.0) for more information.
+2. Support for union-of-pools/auto-pool mapping for schema registry (#500)
+
+## Fixes
+1. Handle non-HTTP errors during retries (#499)
+
+
+# confluent-kafka-javascript 1.9.1
+
+v1.9.1 is a maintenance release. It is supported for all usage.
+
+## Enhancements
+1. References librdkafka v2.14.2. Refer to the [librdkafka v2.14.2 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.14.2) for more information.
+
 ## Fixes
 1. Handle anyOf/allOf in JSON transforms (#479)
 2. Preserve custom subjectNameStrategy in serde constructors (#482)
+3. Correct the TypeScript return type of `admin.fetchTopicMetadata` to `Promise<Array<ITopicMetadata>>` (#367)
+4. Correct the TypeScript `MemberDescription` shape returned by `admin.describeGroups` so `assignment`/`targetAssignment` wrap a `topicPartitions` array and `memberAssignment`/`memberMetadata` are nullable (#487)
+5. Correct the TypeScript `FetchOffsetsPartition.error` type returned by `admin.fetchOffsets` to `LibrdKafkaError | null`, matching the runtime which always populates the field. It never returnes undefined. (#489)
+6. Correct broken "types" path so TS consumers get types (#484)
+7. Resolve IHeaders import for installed clients (#492)
+8. Fix error callback passing and object to the logger instead of a string (#483)
+9. Fix security vulnerabilities in dependencies (#478)
+10. Handle missing Protobuf message index bytes in ProtobufDeserializer (#481)
 
 
 # confluent-kafka-javascript 1.9.0

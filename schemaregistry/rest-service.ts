@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults } from 'axios';
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults } from 'axios';
 import { RestError } from './rest-error';
 import axiosRetry from "axios-retry";
 import { fullJitter, isRetriable, isSuccess } from './retry-helper';
@@ -46,7 +46,7 @@ export interface BearerAuthCredentials {
   clientSecret?: string,
   scope?: string,
   logicalCluster?: string,
-  identityPoolId?: string,
+  identityPoolId?: string | string[],
 }
 
 export interface ClientConfig {
@@ -64,10 +64,43 @@ export interface ClientConfig {
 
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
 
+// Axios error codes that represent client-side cancellation or request
+// setup/configuration problems. These produce no HTTP response but retrying
+// them is pointless, so they are excluded from the network-error retry path.
+const NON_RETRIABLE_AXIOS_CODES = new Set<string>([
+  'ERR_CANCELED',
+  'ERR_INVALID_URL',
+  'ERR_BAD_OPTION',
+  'ERR_BAD_OPTION_VALUE',
+  'ERR_DEPRECATED',
+]);
+
+// Error code reported when the response body does not carry one.
+const UNKNOWN_ERROR_CODE = -1;
+
+/**
+ * Convert an error response into a RestError, so that the HTTP status is always
+ * available to callers - code that treats a 404 as "not registered yet", for
+ * example. A body that is not in the Schema Registry format (an empty body, or a
+ * response produced by a proxy rather than by Schema Registry) is still reported
+ * with its status, rather than losing the status along with the body.
+ */
+function toRestError(error: AxiosError): RestError {
+  const { status, data } = error.response!;
+  if (data !== null && typeof data === 'object') {
+    const { error_code: errorCode, message } = data as { error_code?: number, message?: string };
+    if (errorCode !== undefined && message !== undefined) {
+      return new RestError(message, status, errorCode);
+    }
+  }
+  return new RestError(`Unknown error: ${error.message}`, status, UNKNOWN_ERROR_CODE);
+}
+
 export class RestService {
   private client: AxiosInstance;
   private baseURLs: string[];
   private bearerTokenProvider?: BearerTokenProvider;
+  private bearerTokenInitialized: boolean = false;
   private static oauthBearerTokenProviderBuilders : Record<string, (bearerAuthCredentials: BearerAuthCredentials) => BearerTokenProviderBuilder> = {
     'STATIC_TOKEN': (credentials) => new StaticTokenProviderBuilder(credentials),
     'OAUTHBEARER': (credentials) => new OAuthClientBuilder(credentials),
@@ -84,7 +117,28 @@ export class RestService {
         return fullJitter(retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, retryCount - 1)
       },
       retryCondition: (error) => {
-        return isRetriable(error.response?.status ?? 0);
+        // Only retry Axios errors; anything else (e.g. thrown from an
+        // interceptor) is a programming error that should surface immediately.
+        if (!axios.isAxiosError(error)) {
+          return false;
+        }
+        // Don't retry client-side errors that can never succeed on a retry: an
+        // intentionally cancelled request (AbortController / CancelToken) or a
+        // request setup/configuration error (invalid URL/options, etc.). These
+        // produce no HTTP response but are not network-level failures.
+        if (error.code !== undefined && NON_RETRIABLE_AXIOS_CODES.has(error.code)) {
+          return false;
+        }
+        // No HTTP response means the request failed at the network level before
+        // a response was received (DNS failure, connection refused/reset,
+        // timeout, TLS error, etc.). Retry these the same way the Java client
+        // retries on IOException. This still retries request timeouts
+        // (ECONNABORTED), which is intentional. Otherwise, retry only on
+        // retriable HTTP status codes.
+        if (!error.response) {
+          return true;
+        }
+        return isRetriable(error.response.status);
       }
     });
     this.baseURLs = baseURLs;
@@ -135,12 +189,11 @@ export class RestService {
     retriesWaitMs: number, retriesMaxWaitMs: number, bearerAuthCredentials?: BearerAuthCredentials): void {
     if (bearerAuthCredentials) {
       delete this.client.defaults.auth;
+      delete this.client.defaults.headers.common['Authorization'];
+      this.bearerTokenInitialized = false;
 
-      const headers = ['logicalCluster', 'identityPoolId'];
-      const missingHeader = headers.find(header => !(header in bearerAuthCredentials));
-
-      if (missingHeader) {
-        throw new Error(`Bearer auth header '${missingHeader}' not provided`);
+      if (!bearerAuthCredentials.logicalCluster) {
+        throw new Error("Bearer auth header 'logicalCluster' not provided");
       }
 
       if (!(bearerAuthCredentials.credentialsSource in
@@ -164,8 +217,10 @@ export class RestService {
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
 
-    if (this.bearerTokenProvider && this.bearerTokenProvider.tokenExpired()) {
+    if (this.bearerTokenProvider &&
+        (!this.bearerTokenInitialized || this.bearerTokenProvider.tokenExpired())) {
       await this.setOAuthBearerToken();
+      this.bearerTokenInitialized = true;
     }
 
     for (let i = 0; i < this.baseURLs.length; i++) {
@@ -180,12 +235,7 @@ export class RestService {
         return response;
       } catch (error) {
         if (axios.isAxiosError(error) && error.response && !isSuccess(error.response.status)) {
-          const data = error.response.data;
-          if (data.error_code && data.message) {
-            error = new RestError(data.message, error.response.status, data.error_code);
-          } else {
-            error = new Error(`Unknown error: ${error.message}`)
-          }
+          error = toRestError(error);
         }
         if (i === this.baseURLs.length - 1) {
           throw error;

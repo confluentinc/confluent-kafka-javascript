@@ -1,6 +1,7 @@
 import { LRUCache } from 'lru-cache';
 import { Mutex } from 'async-mutex';
 import { ClientConfig, RestService } from '../../../rest-service';
+import { RestError } from '../../../rest-error';
 import stringify from 'json-stringify-deterministic';
 import {MockDekRegistryClient} from "./mock-dekregistry-client";
 
@@ -49,8 +50,8 @@ interface Dek {
 interface DekClient {
   config(): ClientConfig;
   registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
-              kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek>;
-  getKek(name: string, deleted: boolean): Promise<Kek>;
+              kmsProps?: { [key: string]: string }, doc?: string, context?: string): Promise<Kek>;
+  getKek(name: string, deleted: boolean, context?: string): Promise<Kek>;
   registerDek(kekName: string, subject: string, algorithm: string, version: number,
               encryptedKeyMaterial?: string): Promise<Dek>;
   getDek(kekName: string, subject: string, algorithm: string, version: number, deleted: boolean): Promise<Dek>;
@@ -98,8 +99,8 @@ class DekRegistryClient implements DekClient {
   }
 
   async registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
-    kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek> {
-    const cacheKey = stringify({ name, deleted: false });
+    kmsProps?: { [key: string]: string }, doc?: string, context?: string): Promise<Kek> {
+    const cacheKey = stringify({ name, deleted: false, context });
 
     return await this.kekMutex.runExclusive(async () => {
       const kek = this.kekCache.get(cacheKey);
@@ -116,8 +117,11 @@ class DekRegistryClient implements DekClient {
         shared,
       };
 
+      const path = context != null
+        ? `/dek-registry/v1/keks?context=${encodeURIComponent(context)}`
+        : '/dek-registry/v1/keks';
       const response = await this.restService.handleRequest<Kek>(
-        '/dek-registry/v1/keks',
+        path,
         'POST',
         request);
       this.kekCache.set(cacheKey, response.data);
@@ -125,8 +129,8 @@ class DekRegistryClient implements DekClient {
     });
   }
 
-  async getKek(name: string, deleted: boolean = false): Promise<Kek> {
-    const cacheKey = stringify({ name, deleted });
+  async getKek(name: string, deleted: boolean = false, context?: string): Promise<Kek> {
+    const cacheKey = stringify({ name, deleted, context });
 
     return await this.kekMutex.runExclusive(async () => {
       const kek = this.kekCache.get(cacheKey);
@@ -135,9 +139,10 @@ class DekRegistryClient implements DekClient {
       }
       name = encodeURIComponent(name);
 
-      const response = await this.restService.handleRequest<Kek>(
-        `/dek-registry/v1/keks/${name}?deleted=${deleted}`,
-        'GET');
+      const path = context != null
+        ? `/dek-registry/v1/keks/${name}?deleted=${deleted}&context=${encodeURIComponent(context)}`
+        : `/dek-registry/v1/keks/${name}?deleted=${deleted}`;
+      const response = await this.restService.handleRequest<Kek>(path, 'GET');
       this.kekCache.set(cacheKey, response.data);
       return response.data;
     });
@@ -180,7 +185,9 @@ class DekRegistryClient implements DekClient {
       const response = await this.restService.handleRequest<Dek>(path, 'POST', request);
       return response.data;
     } catch (error: any) {
-      if (error.response && error.response.status === 405) {
+      // handleRequest reports an error response as a RestError, which carries
+      // the status directly rather than an underlying axios response.
+      if (error instanceof RestError && error.status === 405) {
         // Try fallback to older API that does not have subject in the path
         const encodedKekName = encodeURIComponent(kekName);
         const path = `/dek-registry/v1/keks/${encodedKekName}/deks`;

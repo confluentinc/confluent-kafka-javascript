@@ -58,7 +58,7 @@ import {file_google_type_postal_address} from "../google/type/postal_address_pb"
 import {file_google_type_quaternion} from "../google/type/quaternion_pb";
 import {file_google_type_timeofday} from "../google/type/timeofday_pb";
 import {file_google_type_month} from "../google/type/month_pb";
-import {IHeaders} from "../../types/kafkajs";
+import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const PROTOBUF_TYPE = "PROTOBUF"
 

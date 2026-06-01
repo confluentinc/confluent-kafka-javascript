@@ -5,7 +5,7 @@ const azureIMDSIssuerEndpointQuery = 'api-version=&resource=&client_id='; // e.g
 const oauthClientId = '<your-client-id>';
 const oauthClientSecret = '<your-client-secret>';
 const scope = '<your-scope>'; // e.g. 'schemaregistry';
-const identityPoolId = '<your-pool>'; // e.g. pool-Gx30
+const identityPoolId = '<your-pool>'; // single pool e.g. 'pool-Gx30', or comma-separated for union-of-pools e.g. 'pool-Gx30,pool-Ab12'
 const kafkaLogicalCluster = '<your-logical-cluster>'; // e.g. lkc-12345
 const schemaRegistryLogicalCluster = '<your-logical-cluster>'; //e.g. lsrc-a6m5op
 const baseUrl = '<your-schema-registry-url>'; // e.g. 'https://psrc-3amt5nj.us-east-1.aws.confluent.cloud'

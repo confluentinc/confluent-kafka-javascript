@@ -24,7 +24,8 @@ import {EncryptionExecutor, FieldEncryptionExecutor} from "../../rules/encryptio
 import {
   JsonDeserializer, JsonDeserializerConfig,
   JsonSerializer,
-  JsonSerializerConfig
+  JsonSerializerConfig,
+  tagRecord
 } from "../../serde/json";
 import {RuleRegistry} from "@confluentinc/schemaregistry/serde/rule-registry";
 import stringify from "json-stringify-deterministic";
@@ -1522,6 +1523,35 @@ describe('JsonSerializer', () => {
     newobj = await deser3.deserialize(topic, bytes)
     expect(stringify(newobj)).toEqual(stringify(newerWidget));
   }
+})
+
+describe('RecordNameStrategy', () => {
+  it('serialization with RecordNameStrategy', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD,
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = tagRecord({
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }, 'my-custom-subject')
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: JsonDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD
+    }
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
 })
 
 describe('JsonSerdeWithAssociatedNameStrategy', () => {
