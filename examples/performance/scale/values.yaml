@@ -1,0 +1,90 @@
+# Number of producer pods to run in parallel.
+# The Job's parallelism and completions are both set to this value.
+replicaCount: 4
+
+# Prebuilt image produced by examples/performance/scale/Dockerfile. Build it
+# (with the desired SOURCE_REF baked in), push it to a registry the cluster
+# can pull from, then point these at that registry/tag.
+image:
+  repository: confluentinc/ckjs-perf-scale
+  tag: ckjs-perf-scale
+  pullPolicy: Always
+
+# Git source baked into the prebuilt image at BUILD time via the Dockerfile's
+# SOURCE_REPO / SOURCE_REF build args. These keys are no longer consumed at
+# pod runtime (the code is already in the image); kept here for reference so
+# values.yaml documents which ref the image is expected to contain.
+source:
+  repo: https://github.com/confluentinc/confluent-kafka-javascript.git
+  ref: dev_performance_test_improvements_2
+
+# When true, a pre-install/pre-upgrade hook Job runs `--create-topics` once
+# before the multi-pod producer Job starts (avoids N pods racing to
+# delete+recreate the same topic). Disable to skip topic setup.
+createTopics: true
+
+# Per-pod resource requests/limits. Empty by default.
+resources: {}
+
+# kubernetes.io/arch value the job pods are pinned to via node affinity, so
+# every pod lands on a node matching the (single-arch) prebuilt image. Empty
+# means no affinity. scale.py auto-detects this from the host and passes it
+# with --set nodeArch=<arch>.
+nodeArch: ""
+
+# Native sidecar that keeps the pod's filesystem reachable after the producer
+# container exits, so scale.py can `kubectl cp` log files out of /workspace.
+logKeeper:
+  # Maximum time (s) the sidecar lingers after the producer exits before
+  # the kubelet escalates SIGTERM to SIGKILL. Bounds the cp window.
+  terminationGracePeriodSeconds: 900
+
+# Connectivity / auth — emitted as env vars to the producer pods.
+kafka:
+  brokers: ""
+  securityProtocol: "sasl_ssl"
+  saslUsername: ""
+  # Required. Provide via a values override file or --set
+  # (e.g. -f secret-values.yaml or --set kafka.saslPassword=...).
+  saslPassword: ""
+  topic: ""
+  # KAFKA_TOPIC2 — only used if produceToSecondTopic is true.
+  topic2: ""
+
+# All environment variables consumed by performance-consolidated.js.
+# Defaults match the user's reference command line.
+producer:
+  mode: "confluent"
+  messageCount: 50000
+  messageSize: 1536
+  batchSize: 2048
+  compression: "GZIP"
+  partitions: 1024
+  partitionsConsumedConcurrently: 1024
+  terminateTimeoutMs: 30000
+  produceToSecondTopic: false
+  autoCommit: 3000
+  concurrentRun: true
+  consumerMode: "eachBatch"
+  consumerMaxBatchSize: -1
+  useCKJSProducerEverywhere: false
+  autoCommitOnBatchEnd: true
+  isHigherLatencyCluster: true
+  useKeys: true
+  skipCTPTest: true
+  statisticsIntervalMs: 5000
+  # Target produce rate (records/s). Empty/unset means no limit: the producer
+  # test then runs unbounded until terminateTimeoutMs. When set, MESSAGE_COUNT
+  # is derived as ceil(limitRPS * terminateTimeoutMs / 1000).
+  limitRPS: ""
+  # Extra librdkafka producer properties, applied after the higher-latency
+  # cluster tuning (isHigherLatencyCluster) so they take precedence. Rendered
+  # into configuration.yaml and mounted into the producer pods, where
+  # newCompatibleProducer reads them. Each entry is a name/value pair.
+  config: []
+  #   - name: linger.ms
+  #     value: "100"
+  #   - name: batch.size
+  #     value: "2097152"
+  #   - name: queue.buffering.max.messages
+  #     value: "2000000"
