@@ -217,6 +217,14 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     if (bd.isZero()) throw new Error("decimals.div: division by zero");
     return decimalToCel(new DivDecimal(toDecimal(a).toString()).div(bd.toString()));
   }),
+  // Modulo: remainder with the sign of the dividend (default modulo mode
+  // ROUND_DOWN), matching Java BigDecimal.remainder and SQL MOD. Throws on a
+  // zero divisor.
+  celFunc("decimals.mod", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
+    const bd = toDecimal(b);
+    if (bd.isZero()) throw new Error("decimals.mod: division by zero");
+    return decimalToCel(new DivDecimal(toDecimal(a).toString()).mod(bd.toString()));
+  }),
 
   // ---- square root ----
   // 38-digit HALF_UP precision (same context as div). decimal.js's sqrt()
