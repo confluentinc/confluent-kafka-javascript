@@ -498,13 +498,13 @@ describe('ProtobufSerializer', () => {
     expect(obj2).toEqual(obj)
   })
 
-  it('cel decimal min max', async () => {
+  it('cel decimal greatest least', async () => {
     const client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
     const ser = new ProtobufSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
     ser.registry.add(AuthorSchema)
     const encRule: Rule = {
       name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
-      expr: 'decimals.eq(decimals.max(decimal("2.5"), decimal("9.99")), decimal("9.99")) && decimals.eq(decimals.min(decimal("2.5"), decimal("9.99")), decimal("2.5"))'
+      expr: 'decimals.eq(decimals.greatest(decimal("2.5"), decimal("9.99")), decimal("9.99")) && decimals.eq(decimals.least(decimal("2.5"), decimal("9.99")), decimal("2.5"))'
     }
     const info: SchemaInfo = {
       schemaType: 'PROTOBUF',
