@@ -226,6 +226,13 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     return decimalToCel(new DivDecimal(toDecimal(a).toString()).mod(bd.toString()));
   }),
 
+  // ---- selection ----
+  // min/max return the smaller/larger operand (no rounding).
+  celFunc("decimals.min", [DYN, DYN], DECIMAL_TYPE,
+    (a, b) => decimalToCel(Decimal.min(toDecimal(a), toDecimal(b)))),
+  celFunc("decimals.max", [DYN, DYN], DECIMAL_TYPE,
+    (a, b) => decimalToCel(Decimal.max(toDecimal(a), toDecimal(b)))),
+
   // ---- square root ----
   // 38-digit HALF_UP precision (same context as div). decimal.js's sqrt()
   // returns NaN on a negative value, so guard explicitly and throw the
