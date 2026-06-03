@@ -35,7 +35,7 @@ import {
   type Decimal as ProtoDecimal,
 } from "../../confluent/types/decimal_pb";
 
-const { DYN, INT, BOOL, STRING, BYTES } = CelScalar;
+const { DYN, INT, BOOL, STRING, BYTES, DOUBLE } = CelScalar;
 const DECIMAL_TYPE = objectType(ProtoDecimalSchema);
 
 // 38-digit HALF_UP context for division, matching Flink / Java BigDecimal.
@@ -175,6 +175,25 @@ function stringExt(v: unknown): string {
   return String(v);
 }
 
+/**
+ * Extension of CEL stdlib `double(...)` with a Decimal arm.
+ *
+ * For ReflectMessages of confluent.type.Decimal (and decimal.js values),
+ * returns the narrowed 64-bit double (may lose precision; out-of-range
+ * magnitudes become ±Infinity). Otherwise delegates to stdlib semantics.
+ */
+function doubleExt(v: unknown): number {
+  if (isReflectMessage(v, ProtoDecimalSchema)) {
+    return protoToDecimal(v.message as ProtoDecimal).toNumber();
+  }
+  if (v instanceof Decimal) return v.toNumber();
+  // Fall through to stdlib semantics for the non-Decimal case.
+  if (typeof v === "number") return v;
+  if (typeof v === "bigint") return Number(v);
+  if (typeof v === "string") return Number(v);
+  return Number(v as Decimal.Value);
+}
+
 export const DECIMAL_FUNCS: CelFunc[] = [
   // ---- constructor ----
   celFunc("decimal", [DYN], DECIMAL_TYPE, (v) => fromConstructorArg(v)),
@@ -241,4 +260,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
 
   // ---- string(Decimal) — extends stdlib string() with a Decimal arm ----
   celFunc("string", [DYN], STRING, (v) => stringExt(v)),
+
+  // ---- double(Decimal) — extends stdlib double() with a Decimal arm ----
+  celFunc("double", [DYN], DOUBLE, (v) => doubleExt(v)),
 ];
