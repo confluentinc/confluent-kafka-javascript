@@ -20,8 +20,14 @@ self-contained. The latency graph is labeled from the file name. Graphs:
   3. Broker RTT (max across brokers of avg/p50/p90/p99/p99.99/max), read from
      the sibling <pod>-confluent-*.log librdkafka statistics for the same run.
 
+Given a run/log folder instead of a single file, it writes a per-pod report for
+every pod's jsmetrics file and then one combined report that groups a per-pod
+latency chart under Producers / Consumers sections, each followed by a broker-RTT
+chart aggregated (max) across that role's pods.
+
 Usage:
     ./plot_metrics.py <jsmetrics-*.jsonl> [-o report.md] [--title "..."] [--stats <log>]
+    ./plot_metrics.py <run-folder> [-o combined-report.md]
 """
 
 import argparse
@@ -124,21 +130,51 @@ def rtt_max_across_brokers(snapshots):
     return x, series
 
 
-def broker_rtt_over_time_figure(snapshots):
-    """Line chart: max-across-brokers rtt percentiles over the run."""
-    x, series = rtt_max_across_brokers(snapshots)
+def rtt_figure(x, series, title):
+    """Line chart of rtt percentile series (ms) over elapsed time."""
     fig, ax = plt.subplots(figsize=(11, 6))
     for key, label, color in RTT_SERIES:
-        y = series[key]
+        y = series.get(key, [])
         if not any(v is not None for v in y):
             continue
         ax.plot(x, y, label=label, color=color, linewidth=1.5)
     ax.set_xlabel("elapsed time (s)")
     ax.set_ylabel("broker rtt (ms)")
-    ax.set_title("Broker RTT over time (max across brokers)")
+    ax.set_title(title)
     ax.grid(True, alpha=0.3)
     ax.legend(title="rtt")
     return fig
+
+
+def broker_rtt_over_time_figure(snapshots):
+    """Line chart: max-across-brokers rtt percentiles over the run."""
+    x, series = rtt_max_across_brokers(snapshots)
+    return rtt_figure(x, series, "Broker RTT over time (max across brokers)")
+
+
+def aggregate_rtt_across_pods(stats_paths, bucket_s=5):
+    """Combine several pods' librdkafka stats logs into one rtt series, taking
+    the max across brokers (per pod) and then the max across pods within each
+    elapsed-time bucket (default 5s, the stats interval). Each pod's elapsed
+    time is measured from its own first snapshot. Returns (x_seconds, series)."""
+    from collections import defaultdict
+    buckets = defaultdict(lambda: {key: None for key, _, _ in RTT_SERIES})
+    for path in stats_paths:
+        snapshots = load_stats(path)
+        if not snapshots:
+            continue
+        x, series = rtt_max_across_brokers(snapshots)
+        for i, t in enumerate(x):
+            bucket = round(t / bucket_s) * bucket_s
+            for key, _, _ in RTT_SERIES:
+                v = series[key][i]
+                if v is None:
+                    continue
+                cur = buckets[bucket][key]
+                buckets[bucket][key] = v if cur is None else max(cur, v)
+    xs = sorted(buckets.keys())
+    out = {key: [buckets[b][key] for b in xs] for key, _, _ in RTT_SERIES}
+    return xs, out
 
 
 def fig_to_base64_png(fig):
@@ -198,58 +234,69 @@ def jsmetrics_prefix(name):
     return name[:i] if i >= 0 else ""
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("jsonl", help="Path to a jsmetrics.jsonl file.")
-    ap.add_argument("-o", "--output", default=None,
-                    help="Output Markdown file (default: <jsonl>.md).")
-    ap.add_argument("--title", default=None,
-                    help="Report title (default: the jsonl file name).")
-    ap.add_argument("--stats", default=None,
-                    help="confluent-producer.log with librdkafka statistics for "
-                    "the broker-rtt graph (default: the sibling "
-                    "<pod>-confluent-producer.log next to the jsonl).")
-    args = ap.parse_args()
+# Maps a jsmetrics file suffix to the sibling confluent stats log suffix for the
+# same run type (the log carries librdkafka statistics for the broker-rtt graph).
+JSMETRICS_TO_STATS = (
+    ("-jsmetrics-producer.jsonl", "-confluent-producer.log"),
+    ("-jsmetrics-consumer-batch.jsonl", "-confluent-consumer-batch.log"),
+    ("-jsmetrics-consumer-message.jsonl", "-confluent-consumer-message.log"),
+    # Fall back to the old single-file name for older runs.
+    ("-jsmetrics.jsonl", "-confluent-producer.log"),
+)
 
-    jsonl_path = Path(args.jsonl)
-    if not jsonl_path.is_file():
-        sys.exit(f"file not found: {jsonl_path}")
 
+def stats_path_for(jsonl_path):
+    """Sibling <pod>-confluent-*.log for a jsmetrics file (same run type), or
+    None when the name doesn't match a known pattern. Existence is not checked."""
+    name = jsonl_path.name
+    for suffix, log_suffix in JSMETRICS_TO_STATS:
+        if name.endswith(suffix):
+            return jsonl_path.with_name(name[: -len(suffix)] + log_suffix)
+    return None
+
+
+def pod_id_from_jsonl(name):
+    """Pod identifier inferred from a jsmetrics file name: the per-pod prefix
+    with its trailing '-' stripped, e.g.
+    'ckjs-perf-scale-producer-6wdr7-jsmetrics-producer.jsonl' ->
+    'ckjs-perf-scale-producer-6wdr7'. Empty (local, prefix-less) files yield the
+    run-type stem instead."""
+    prefix = jsmetrics_prefix(name).rstrip("-")
+    return prefix or name.rsplit(".jsonl", 1)[0]
+
+
+def write_md(out_path, title, intro_lines, sections):
+    """Write a Markdown report. `sections` is a list of (level, heading, fig):
+    level 2/3 set the '##'/'###' depth; fig is a matplotlib figure embedded as a
+    base64 PNG, or None for a heading-only section."""
+    with out_path.open("w") as f:
+        f.write(f"# {title}\n\n")
+        for line in intro_lines:
+            f.write(f"{line}  \n")
+        if intro_lines:
+            f.write("\n")
+        for level, heading, fig in sections:
+            f.write(f"{'#' * level} {heading}\n\n")
+            if fig is not None:
+                b64 = fig_to_base64_png(fig)
+                f.write(f"![{heading}](data:image/png;base64,{b64})\n\n")
+
+
+def build_single_report(jsonl_path, out_path=None, title=None, stats_path=None):
+    """Write a per-file report: the file's latency graph, any consumer E2E
+    siblings sharing its per-pod prefix, and the sibling broker-RTT graph.
+    Returns the output path, or None when the file has no samples."""
     samples = load_samples(jsonl_path)
     if not samples:
-        sys.exit(f"no samples parsed from {jsonl_path}")
+        print(f"no samples parsed from {jsonl_path}", file=sys.stderr)
+        return None
 
-    # Resolve the librdkafka stats log: explicit --stats, else the sibling
-    # confluent log for the same run type, mapping the jsmetrics file name to
-    # the matching <prefix>-confluent-*.log written next to it, e.g.
-    #   <prefix>-jsmetrics-producer.jsonl        -> <prefix>-confluent-producer.log
-    #   <prefix>-jsmetrics-consumer-batch.jsonl  -> <prefix>-confluent-consumer-batch.log
-    #   <prefix>-jsmetrics-consumer-message.jsonl-> <prefix>-confluent-consumer-message.log
-    if args.stats:
-        stats_path = Path(args.stats)
-    else:
-        name = jsonl_path.name
-        for suffix, log_suffix in (
-            ("-jsmetrics-producer.jsonl", "-confluent-producer.log"),
-            ("-jsmetrics-consumer-batch.jsonl", "-confluent-consumer-batch.log"),
-            ("-jsmetrics-consumer-message.jsonl", "-confluent-consumer-message.log"),
-            # Fall back to the old single-file name for older runs.
-            ("-jsmetrics.jsonl", "-confluent-producer.log"),
-        ):
-            if name.endswith(suffix):
-                name = name[: -len(suffix)] + log_suffix
-                break
-        stats_path = jsonl_path.with_name(name)
-
-    out_path = Path(args.output) if args.output else jsonl_path.with_suffix(".md")
-    title = args.title or jsonl_path.name
+    out_path = Path(out_path) if out_path else jsonl_path.with_suffix(".md")
+    title = title or jsonl_path.name
 
     latency_label = latency_label_for(jsonl_path.name)
-    figures = [
-        (f"{sentence_case(latency_label)} over time",
-         latency_over_time_figure(samples, latency_label)),
-    ]
+    sections = [(2, f"{sentence_case(latency_label)} over time",
+                 latency_over_time_figure(samples, latency_label))]
     plotted = {jsonl_path.resolve()}
 
     # Also plot the consumer E2E latency for both modes when sibling files are
@@ -267,30 +314,112 @@ def main():
             continue
         plotted.add(sibling.resolve())
         label = latency_label_for(sibling.name)
-        figures.append((f"{sentence_case(label)} over time",
-                        latency_over_time_figure(sibling_samples, label)))
+        sections.append((2, f"{sentence_case(label)} over time",
+                         latency_over_time_figure(sibling_samples, label)))
 
-    if stats_path.is_file():
-        snapshots = load_stats(stats_path)
+    # Resolve the librdkafka stats log for the broker-rtt graph: explicit
+    # override, else the sibling <pod>-confluent-*.log for the same run type.
+    stats = Path(stats_path) if stats_path else stats_path_for(jsonl_path)
+    if stats and stats.is_file():
+        snapshots = load_stats(stats)
         if snapshots:
-            figures.append(("Broker RTT over time (max across brokers)",
-                            broker_rtt_over_time_figure(snapshots)))
+            sections.append((2, "Broker RTT over time (max across brokers)",
+                             broker_rtt_over_time_figure(snapshots)))
         else:
-            print(f"no stats snapshots in {stats_path}", file=sys.stderr)
-    else:
-        print(f"stats log not found ({stats_path}); skipping rtt graph",
+            print(f"no stats snapshots in {stats}", file=sys.stderr)
+    elif stats:
+        print(f"stats log not found ({stats}); skipping rtt graph",
               file=sys.stderr)
 
-    with out_path.open("w") as f:
-        f.write(f"# {title}\n\n")
-        f.write(f"Samples: {len(samples)}  \n")
-        f.write(f"Source: `{jsonl_path}`\n\n")
-        for heading, fig in figures:
-            b64 = fig_to_base64_png(fig)
-            f.write(f"## {heading}\n\n")
-            f.write(f"![{heading}](data:image/png;base64,{b64})\n\n")
-
+    write_md(out_path, title, [f"Samples: {len(samples)}",
+                               f"Source: `{jsonl_path}`"], sections)
     print(f"wrote {out_path}")
+    return out_path
+
+
+def build_combined_report(folder, out_path):
+    """Write one report for a whole run folder: per-pod latency charts grouped
+    into Producers / Consumers sections, each followed by a broker-RTT chart
+    aggregated (max) across that role's pods. Returns the output path."""
+    folder = Path(folder)
+    # (section title, glob) for each role; consumer covers both modes.
+    roles = [
+        ("Producers", sorted(folder.glob("*-jsmetrics-producer.jsonl"))),
+        ("Consumers", sorted(folder.glob("*-jsmetrics-consumer-batch.jsonl"))
+                      + sorted(folder.glob("*-jsmetrics-consumer-message.jsonl"))),
+    ]
+
+    sections = []
+    for role, jsonls in roles:
+        if not jsonls:
+            continue
+        sections.append((2, f"{role} ({len(jsonls)} pods)", None))
+        for jp in jsonls:
+            samples = load_samples(jp)
+            if not samples:
+                print(f"no samples parsed from {jp}", file=sys.stderr)
+                continue
+            label = latency_label_for(jp.name)
+            heading = f"{pod_id_from_jsonl(jp.name)} — {label}"
+            sections.append((3, heading, latency_over_time_figure(samples, label)))
+
+        # Aggregated broker RTT across this role's pods.
+        stats_paths = [p for p in (stats_path_for(jp) for jp in jsonls)
+                       if p and p.is_file()]
+        if stats_paths:
+            x, series = aggregate_rtt_across_pods(stats_paths)
+            if x:
+                sections.append((3,
+                    "Broker RTT over time (max across brokers and pods)",
+                    rtt_figure(x, series,
+                               f"{role}: broker RTT (max across brokers and pods)")))
+
+    if not sections:
+        sys.exit(f"no per-pod jsmetrics files found in {folder}")
+
+    write_md(out_path, f"Combined metrics — {folder.name}",
+             [f"Source folder: `{folder}`"], sections)
+    print(f"wrote {out_path}")
+    return out_path
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("target", help="A jsmetrics-*.jsonl file, or a run/log "
+                    "folder (plots a per-pod report for every pod plus one "
+                    "combined report grouped by producers/consumers).")
+    ap.add_argument("-o", "--output", default=None,
+                    help="Output Markdown file. For a single file defaults to "
+                    "<jsonl>.md; for a folder defaults to "
+                    "<folder>/combined-report.md.")
+    ap.add_argument("--title", default=None,
+                    help="Report title (single-file mode; default: file name).")
+    ap.add_argument("--stats", default=None,
+                    help="confluent-*.log with librdkafka statistics for the "
+                    "broker-rtt graph (single-file mode; default: the sibling "
+                    "<pod>-confluent-*.log next to the jsonl).")
+    args = ap.parse_args()
+
+    target = Path(args.target)
+
+    if target.is_dir():
+        # Folder mode: one md per pod, then a combined grouped report.
+        pod_jsonls = sorted(target.glob("*-jsmetrics-producer.jsonl")) \
+            + sorted(target.glob("*-jsmetrics-consumer-batch.jsonl")) \
+            + sorted(target.glob("*-jsmetrics-consumer-message.jsonl"))
+        if not pod_jsonls:
+            sys.exit(f"no per-pod jsmetrics-*.jsonl files in {target}")
+        for jp in pod_jsonls:
+            build_single_report(jp)
+        out_path = Path(args.output) if args.output else target / "combined-report.md"
+        build_combined_report(target, out_path)
+        return
+
+    if not target.is_file():
+        sys.exit(f"file not found: {target}")
+    if build_single_report(target, args.output, args.title, args.stats) is None:
+        sys.exit(f"no samples parsed from {target}")
 
 
 if __name__ == "__main__":

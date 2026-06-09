@@ -35,6 +35,7 @@ producer:
   isHigherLatencyCluster: true
   useKeys: true
   statisticsIntervalMs: 5000
+  jsmetricsIntervalMs: 5000
   # limitRPS: 5000
   config: []
 
@@ -53,4 +54,5 @@ producer:
 #   autoCommitOnBatchEnd: true
 #   isHigherLatencyCluster: true
 #   statisticsIntervalMs: 5000
+#   jsmetricsIntervalMs: 5000
 #   config: []

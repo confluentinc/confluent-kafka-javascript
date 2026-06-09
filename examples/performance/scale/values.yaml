@@ -67,6 +67,9 @@ producer:
   isHigherLatencyCluster: true
   useKeys: true
   statisticsIntervalMs: 5000
+  # How often (ms) the periodic latency sampler appends a line to
+  # jsmetrics-producer.jsonl.
+  jsmetricsIntervalMs: 5000
   # Target produce rate (records/s). Empty/unset means no limit: the producer
   # test then runs unbounded until terminateTimeoutMs. When set, MESSAGE_COUNT
   # is derived as ceil(limitRPS * terminateTimeoutMs / 1000).
@@ -105,6 +108,9 @@ consumer: {}
 #   autoCommitOnBatchEnd: true
 #   isHigherLatencyCluster: true
 #   statisticsIntervalMs: 5000
+#   # How often (ms) the periodic E2E-latency sampler appends a line to
+#   # jsmetrics-consumer-*.jsonl.
+#   jsmetricsIntervalMs: 5000
 #   # Extra librdkafka consumer properties, applied after the higher-latency
 #   # cluster tuning in newCompatibleConsumer so they take precedence. Rendered
 #   # into configuration.yaml and mounted into the consumer pods, where

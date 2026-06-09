@@ -24,6 +24,7 @@ data:
   IS_HIGHER_LATENCY_CLUSTER: {{ .Values.producer.isHigherLatencyCluster | quote }}
   USE_KEYS: {{ .Values.producer.useKeys | quote }}
   STATISTICS_INTERVAL_MS: {{ .Values.producer.statisticsIntervalMs | quote }}
+  JSMETRICS_INTERVAL_MS: {{ .Values.producer.jsmetricsIntervalMs | default 5000 | quote }}
   LIMIT_RPS: {{ .Values.producer.limitRPS | quote }}
 {{- if .Values.consumer }}
 ---
@@ -51,6 +52,7 @@ data:
   USE_CKJS_PRODUCER_EVERYWHERE: {{ .Values.consumer.useCKJSProducerEverywhere | quote }}
   IS_HIGHER_LATENCY_CLUSTER: {{ .Values.consumer.isHigherLatencyCluster | quote }}
   STATISTICS_INTERVAL_MS: {{ .Values.consumer.statisticsIntervalMs | quote }}
+  JSMETRICS_INTERVAL_MS: {{ .Values.consumer.jsmetricsIntervalMs | default 5000 | quote }}
   # Workload-shape values shared with the producer so the consumer matches the
   # produced load.
   MESSAGE_COUNT: {{ .Values.producer.messageCount | quote }}

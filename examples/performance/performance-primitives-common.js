@@ -8,6 +8,8 @@ const TERMINATE_TIMEOUT_MS = process.env.TERMINATE_TIMEOUT_MS ? +process.env.TER
 const AUTO_COMMIT = process.env.AUTO_COMMIT || 'false';
 const AUTO_COMMIT_ON_BATCH_END = process.env.AUTO_COMMIT_ON_BATCH_END === 'true';
 const USE_KEYS = process.env.USE_KEYS === 'true';
+// How often (ms) the periodic latency sampler appends a line to jsmetrics-*.jsonl.
+const JSMETRICS_INTERVAL_MS = process.env.JSMETRICS_INTERVAL_MS ? +process.env.JSMETRICS_INTERVAL_MS : 5000;
 
 let autoCommit;
 if (AUTO_COMMIT && AUTO_COMMIT === 'false')
@@ -404,7 +406,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                 max: stats.maxLatencyT0T1 || 0,
                 count: messagesMeasured,
             };
-        }, { file: metricsFile });
+        }, { file: metricsFile, intervalMs: JSMETRICS_INTERVAL_MS });
     }
 
     consumer.run({
@@ -537,7 +539,8 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
         `p50=${s.p50.toFixed(3)} p99=${s.p99.toFixed(3)} ` +
         `p99.9=${s.p999.toFixed(3)} max=${s.max.toFixed(3)} count=${s.count}`;
 
-    // Append the running send-latency stats to jsmetrics-producer.jsonl every 5s.
+    // Append the running send-latency stats to jsmetrics-producer.jsonl
+    // every JSMETRICS_INTERVAL_MS.
     const stopMetricsLogger = startMetricsLogger(() => {
         const s = latencySnapshot();
         return {
@@ -549,7 +552,7 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             max: s.max,
             count: s.count,
         };
-    }, { file: 'jsmetrics-producer.jsonl' });
+    }, { file: 'jsmetrics-producer.jsonl', intervalMs: JSMETRICS_INTERVAL_MS });
 
     // The double while-loop allows us to send a bunch of messages and then
     // remove the completed ones. We need the second while loop to keep sending
