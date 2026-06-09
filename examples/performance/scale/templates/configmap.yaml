@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ckjs-perf-scale.configMapName" . }}
+  labels:
+    {{- include "ckjs-perf-scale.labels" . | nindent 4 }}
+data:
+  KAFKA_BROKERS: {{ .Values.kafka.brokers | quote }}
+  SECURITY_PROTOCOL: {{ .Values.kafka.securityProtocol | quote }}
+  SASL_USERNAME: {{ .Values.kafka.saslUsername | quote }}
+  KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
+  {{- if .Values.kafka.topic2 }}
+  KAFKA_TOPIC2: {{ .Values.kafka.topic2 | quote }}
+  {{- end }}
+  MODE: {{ .Values.producer.mode | quote }}
+  MESSAGE_COUNT: {{ .Values.producer.messageCount | quote }}
+  MESSAGE_SIZE: {{ .Values.producer.messageSize | quote }}
+  PRODUCER_BATCH_SIZE: {{ .Values.producer.batchSize | quote }}
+  COMPRESSION: {{ .Values.producer.compression | quote }}
+  PARTITIONS: {{ .Values.producer.partitions | quote }}
+  TERMINATE_TIMEOUT_MS: {{ .Values.producer.terminateTimeoutMs | quote }}
+  INITIAL_DELAY_MS: {{ .Values.producer.initialDelayMs | quote }}
+  USE_CKJS_PRODUCER_EVERYWHERE: {{ .Values.producer.useCKJSProducerEverywhere | quote }}
+  IS_HIGHER_LATENCY_CLUSTER: {{ .Values.producer.isHigherLatencyCluster | quote }}
+  USE_KEYS: {{ .Values.producer.useKeys | quote }}
+  STATISTICS_INTERVAL_MS: {{ .Values.producer.statisticsIntervalMs | quote }}
+  LIMIT_RPS: {{ .Values.producer.limitRPS | quote }}
+{{- if .Values.consumer }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ckjs-perf-scale.consumerConfigMapName" . }}
+  labels:
+    {{- include "ckjs-perf-scale.labels" . | nindent 4 }}
+data:
+  KAFKA_BROKERS: {{ .Values.kafka.brokers | quote }}
+  SECURITY_PROTOCOL: {{ .Values.kafka.securityProtocol | quote }}
+  SASL_USERNAME: {{ .Values.kafka.saslUsername | quote }}
+  KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
+  {{- if .Values.kafka.topic2 }}
+  KAFKA_TOPIC2: {{ .Values.kafka.topic2 | quote }}
+  {{- end }}
+  MODE: {{ .Values.consumer.mode | quote }}
+  TERMINATE_TIMEOUT_MS: {{ .Values.consumer.terminateTimeoutMs | quote }}
+  PARTITIONS_CONSUMED_CONCURRENTLY: {{ .Values.consumer.partitionsConsumedConcurrently | quote }}
+  AUTO_COMMIT: {{ .Values.consumer.autoCommit | quote }}
+  CONSUMER_MODE: {{ .Values.consumer.consumerMode | quote }}
+  CONSUMER_MAX_BATCH_SIZE: {{ .Values.consumer.consumerMaxBatchSize | quote }}
+  AUTO_COMMIT_ON_BATCH_END: {{ .Values.consumer.autoCommitOnBatchEnd | quote }}
+  USE_CKJS_PRODUCER_EVERYWHERE: {{ .Values.consumer.useCKJSProducerEverywhere | quote }}
+  IS_HIGHER_LATENCY_CLUSTER: {{ .Values.consumer.isHigherLatencyCluster | quote }}
+  STATISTICS_INTERVAL_MS: {{ .Values.consumer.statisticsIntervalMs | quote }}
+  # Workload-shape values shared with the producer so the consumer matches the
+  # produced load.
+  MESSAGE_COUNT: {{ .Values.producer.messageCount | quote }}
+  MESSAGE_SIZE: {{ .Values.producer.messageSize | quote }}
+  COMPRESSION: {{ .Values.producer.compression | quote }}
+  LIMIT_RPS: {{ .Values.producer.limitRPS | quote }}
+{{- end }}
