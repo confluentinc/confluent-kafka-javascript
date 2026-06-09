@@ -2,13 +2,19 @@
 """Driver for the ckjs-perf-scale Helm chart.
 
 Runs `helm upgrade --install` against the chart with a user-supplied values
-file, waits for the multi-pod producer Job to finish, collects per-pod logs
-into a single log file, parses `=== Producer Rate:  <number>` from each pod
-(MB/s), and appends average + aggregate throughput to the same log file.
+file, then while the producer/consumer Jobs run it periodically (every
+--copy-interval minutes) copies each pod's log + jsmetrics files into a single
+run folder and refreshes per-component console-log summaries (parsing
+`=== Producer Rate:  <number>` from each producer pod for an average + aggregate
+throughput figure). Each copy is atomic (tmp file then replace) so a good
+snapshot is never clobbered by a failed copy, and every round is preceded by a
+`kubectl get jobs` to prime external re-authentication. When all main containers
+finish it does one final copy, releases the log-keeper sidecars, and uninstalls.
 """
 
 import argparse
 import datetime as dt
+import os
 import platform
 import re
 import subprocess
@@ -41,10 +47,14 @@ PRODUCER_RATE_RE = re.compile(
 CHART_DIR = Path(__file__).resolve().parent
 LOGS_DIR = CHART_DIR / "logs"
 
-# Files written by performance-primitives*.js into the producer's working
-# directory.  scale.py tries to `kubectl cp` each of these from the sidecar
-# container after the producer Job completes.  Missing files are silently
-# skipped (e.g. only confluent-producer.log is written for a producer-only run).
+# Files written by performance-primitives*.js into the pod's working directory.
+# scale.py tries to `kubectl cp` each of these from the sidecar container every
+# copy round.  Missing files are silently skipped (e.g. only
+# confluent-producer.log is written for a producer-only run).
+#
+# jsmetrics-*.jsonl is written to an append-mode stream per sample (see
+# startMetricsLogger in performance-primitives-common.js), dispatched to disk
+# promptly, so a mid-run copy already reflects every sample written so far.
 REMOTE_WORKDIR = "/workspace/repo/examples/performance"
 LOG_FILES_TO_COPY = [
     "confluent-producer.log",
@@ -84,8 +94,8 @@ def helm_install(release, namespace, values_file, timeout_s, set_overrides):
     #
     # helm still runs and waits for the pre-install create-topics hook Job
     # regardless of these flags, so topic setup still completes first.  We
-    # wait for the producer *container* ourselves (wait_for_pods /
-    # wait_container_done) before copying logs.
+    # discover the pods (wait_for_pods) and watch their main containers
+    # (containers_terminated) ourselves while copying logs periodically.
     cmd = [
         "helm",
         "upgrade",
@@ -110,6 +120,29 @@ def helm_uninstall(release, namespace):
         ["helm", "uninstall", release, "-n", namespace],
         check=False,
     )
+
+
+def kubectl_get_jobs(namespace):
+    """Run `kubectl get jobs` to prime external re-authentication before a copy
+    round. Some clusters use an auth plugin / proxy whose token expires during a
+    long run; any kubectl call refreshes it, so we make a cheap one first so the
+    subsequent `kubectl cp`/`logs` don't fail on an expired token. Best-effort —
+    log and continue regardless of the result."""
+    result = run(
+        ["kubectl", "-n", namespace, "get", "jobs"],
+        capture=True, check=False,
+    )
+    if result.returncode != 0:
+        print(f"`kubectl get jobs` failed (continuing): {result.stderr.strip()}",
+              file=sys.stderr)
+
+
+def write_text_atomic(path, text):
+    """Write `text` to `path` atomically: write a sibling .tmp then os.replace,
+    so a reader (or an interrupted run) never sees a half-written file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
 
 
 def job_exists(release, namespace, component):
@@ -189,34 +222,29 @@ def wait_for_pods(release, namespace, component, timeout_s, poll_s=5):
     return list_pods(release, namespace, component)
 
 
-def container_state(pod, namespace, container):
-    """Return the named container's terminated reason, or '' if it is still
-    running / not yet started."""
+def containers_terminated(pods, namespace, container):
+    """Return True if every pod in `pods` has its main `container`
+    (producer/consumer) terminated. The log-keeper sidecar keeps the pod alive
+    after the main container exits, so this can be true while the pod is still
+    reachable for `kubectl cp`. One batched `kubectl get pods` query: the range
+    emits one line per pod (the terminated reason, empty if still running)."""
+    if not pods:
+        return True
     result = run(
         [
-            "kubectl", "-n", namespace, "get", "pod", pod, "-o",
-            "jsonpath={.status.containerStatuses[?(@.name=='" + container + "')]"
-            ".state.terminated.reason}",
+            "kubectl", "-n", namespace, "get", "pods", *pods, "-o",
+            'jsonpath={range .items[*]}'
+            "{.status.containerStatuses[?(@.name=='" + container + "')]"
+            ".state.terminated.reason}"
+            '{"\\n"}{end}',
         ],
         capture=True,
         check=False,
     )
-    return result.stdout.strip()
-
-
-def wait_container_done(pod, namespace, container, timeout_s, poll_s=5):
-    """Block until the pod's main container (`producer`/`consumer`) has
-    terminated (Completed or Error), so its log files are fully written.  The
-    log-keeper sidecar keeps the pod alive, so this returns while the pod's
-    filesystem is still reachable for `kubectl cp`.  Returns the terminated
-    reason, or '' on timeout."""
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        reason = container_state(pod, namespace, container)
-        if reason:
-            return reason
-        time.sleep(poll_s)
-    return ""
+    if result.returncode != 0:
+        return False
+    reasons = [line for line in result.stdout.split("\n") if line.strip()]
+    return len(reasons) >= len(pods)
 
 
 def fetch_pod_log(pod, namespace):
@@ -250,15 +278,18 @@ def release_sidecar(pod, namespace):
     )
 
 
-def copy_pod_logs(pod, namespace, out_dir):
+def atomic_copy_pod_logs(pod, namespace, out_dir):
     """`kubectl cp` known producer/consumer log files from the pod's sidecar
-    container into `out_dir`.  Returns the list of paths that landed locally.
+    container into `out_dir`, one atomic copy each: copy to a sibling .tmp and
+    only os.replace the destination when the copy fully succeeds, so a good
+    prior snapshot is never clobbered by a failed/partial copy. Called every
+    copy round. Returns the list of destination paths refreshed this round.
 
-    The sidecar (a native sidecar initContainer with restartPolicy: Always)
-    is still up because the pod's terminationGracePeriodSeconds keeps it
-    alive after the producer container exits.  Files that do not exist in
-    the pod are silently skipped — `kubectl cp` returns non-zero on missing
-    sources, so we probe with `kubectl exec test -f` first.
+    The sidecar (a native sidecar initContainer with restartPolicy: Always) is
+    kept alive for the whole run (released only at the end), so its filesystem
+    stays reachable. Files that don't exist in the pod are silently skipped —
+    `kubectl cp` returns non-zero on missing sources, so we probe with
+    `kubectl exec test -f` first.
     """
     out_dir.mkdir(exist_ok=True)
     written = []
@@ -275,17 +306,21 @@ def copy_pod_logs(pod, namespace, out_dir):
         if probe.returncode != 0:
             continue
         dest = out_dir / f"{pod}-{name}"
+        tmp = out_dir / f".{pod}-{name}.tmp"
         cp = subprocess.run(
             [
                 "kubectl", "-n", namespace, "cp",
                 "-c", SIDECAR_CONTAINER,
-                f"{pod}:{remote}", str(dest),
+                f"{pod}:{remote}", str(tmp),
             ],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
         )
-        if cp.returncode == 0 and dest.is_file():
+        if cp.returncode == 0 and tmp.is_file():
+            os.replace(tmp, dest)  # atomic; keeps the old file until now
             written.append(dest)
         else:
+            # Leave the previous good copy in place; drop the partial tmp.
+            tmp.unlink(missing_ok=True)
             print(
                 f"kubectl cp failed for {pod}:{remote}: {cp.stderr.strip()}",
                 file=sys.stderr,
@@ -293,130 +328,106 @@ def copy_pod_logs(pod, namespace, out_dir):
     return written
 
 
-def process_pod(pod, namespace, container, timeout_s):
-    """Wait for one pod's main container to finish and fetch its console log.
-    Returns (pod, rate_or_None, log_text).  Does NOT copy log files or
-    release the sidecar — that happens later, after the global log file has
-    been written.  Designed to be run concurrently — one pod per worker
-    thread — since each call only touches its own pod and is `kubectl` I/O.
-    """
-    # Wait for the main container to finish (the log-keeper sidecar
-    # keeps the pod up) so its log files are complete before we read them.
-    reason = wait_container_done(pod, namespace, container, timeout_s)
-    if not reason:
-        print(
-            f"{container} container in {pod} did not terminate within "
-            f"{timeout_s}s; reading logs anyway",
-            file=sys.stderr,
-        )
+def fetch_pod_result(pod, namespace):
+    """Fetch one pod's console log and parse its (last) producer rate, without
+    waiting for the container — the periodic loop reads logs while pods may
+    still be running. Returns (pod, rate_or_None, log_text). Safe to run
+    concurrently (one pod per worker thread)."""
     try:
         log_text = fetch_pod_log(pod, namespace)
     except subprocess.CalledProcessError as e:
         log_text = f"<failed to fetch logs: {e}>"
-    rate = parse_rate(log_text)
-    return (pod, rate, log_text)
+    return (pod, parse_rate(log_text), log_text)
 
 
-def copy_and_release_pod(pod, namespace, out_dir):
-    """Copy the pod's log files out of its sidecar into `out_dir`, then
-    release the sidecar so the Job can complete (and `helm uninstall` doesn't
-    block on the terminationGracePeriodSeconds).  Returns the list of copied
-    paths.  Run after the global log file is written — one pod per worker
-    thread."""
-    try:
-        copied = copy_pod_logs(pod, namespace, out_dir)
-    except Exception as e:  # never let one pod's cp failure abort the run
-        print(f"copy_pod_logs failed for {pod}: {e}", file=sys.stderr)
-        copied = []
-    # Tell the sidecar it can exit now, so helm uninstall doesn't
-    # block waiting for terminationGracePeriodSeconds.
-    release_sidecar(pod, namespace)
-    return copied
-
-
-def collect_component(component, container, release, namespace, timeout_s,
-                      run_dir, log_path, values_file, with_rate_summary):
-    """Wait for one Job's pods to finish, write their console logs to
-    `log_path`, then copy each pod's log files out of its sidecar and release
-    the sidecar.  Returns the list of (pod, rate_or_None, log_text) tuples.
-
-    `with_rate_summary` controls whether `=== Producer Rate:` is parsed per pod
-    and an average/aggregate throughput summary is appended (producer only)."""
-    pods = wait_for_pods(release, namespace, component, timeout_s)
-    if not pods:
-        print(
-            f"no {component} pods found for release={release} ns={namespace}",
-            file=sys.stderr,
-        )
-
-    max_workers = 20
-    # Phase 1: wait for every pod's main container to finish and fetch its
-    # console log, all pods concurrently so a slow pod doesn't hold up the
-    # others.  pool.map preserves input order, so pod_results stays in pod order.
-    pod_results = []  # list of (pod_name, rate_or_None, log_text)
-    if pods:
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            pod_results = list(
-                pool.map(
-                    lambda p: process_pod(p, namespace, container, timeout_s),
-                    pods,
-                )
-            )
-
-    with log_path.open("w") as f:
-        f.write(
-            f"# ckjs-perf-scale run ({component})\n"
-            f"# release:   {release}\n"
-            f"# namespace: {namespace}\n"
-            f"# values:    {values_file}\n"
-            f"# timestamp: {dt.datetime.now(dt.timezone.utc).isoformat()}\n"
-            f"# pods:      {len(pods)}\n\n"
-        )
-        for pod, rate, log_text in pod_results:
-            f.write(f"===== POD {pod} =====\n")
-            f.write(log_text)
-            if not log_text.endswith("\n"):
-                f.write("\n")
-            if with_rate_summary:
-                f.write(
-                    f"--- parsed rate: "
-                    f"{'%.4f MB/s' % rate if rate is not None else 'MISSING'}\n"
-                )
-            f.write("\n")
-
-        f.write("===== SUMMARY =====\n")
-        f.write(f"pods: {len(pod_results)}\n")
+def build_summary_text(component, pod_results, release, namespace, values_file,
+                       with_rate_summary):
+    """Render the per-component console-log summary (header + each pod's console
+    log + an optional producer-rate summary) as a string. `with_rate_summary`
+    parses `=== Producer Rate:` per pod and appends average/aggregate MB/s."""
+    lines = [
+        f"# ckjs-perf-scale run ({component})",
+        f"# release:   {release}",
+        f"# namespace: {namespace}",
+        f"# values:    {values_file}",
+        f"# timestamp: {dt.datetime.now(dt.timezone.utc).isoformat()}",
+        f"# pods:      {len(pod_results)}",
+        "",
+    ]
+    for pod, rate, log_text in pod_results:
+        lines.append(f"===== POD {pod} =====")
+        lines.append(log_text if log_text.endswith("\n") else log_text + "\n")
         if with_rate_summary:
-            rates = [r for (_, r, _) in pod_results if r is not None]
-            missing = [p for (p, r, _) in pod_results if r is None]
-            if pod_results:
-                per_pod = ", ".join(
-                    f"{r:.4f}" if r is not None else "MISSING"
-                    for (_, r, _) in pod_results
-                )
-                f.write(f"per-pod MB/s: {per_pod}\n")
-            if rates:
-                avg = sum(rates) / len(rates)
-                agg = sum(rates)
-                f.write(f"average MB/s: {avg:.4f}\n")
-                f.write(f"aggregate MB/s: {agg:.4f}\n")
-            else:
-                f.write("average MB/s: N/A (no rates parsed)\n")
-                f.write("aggregate MB/s: N/A (no rates parsed)\n")
-            if missing:
-                f.write(f"missing pods: {', '.join(missing)}\n")
+            lines.append(
+                "--- parsed rate: "
+                f"{'%.4f MB/s' % rate if rate is not None else 'MISSING'}"
+            )
+        lines.append("")
 
-    print(f"wrote {log_path}", flush=True)
+    lines.append("===== SUMMARY =====")
+    lines.append(f"pods: {len(pod_results)}")
+    if with_rate_summary:
+        rates = [r for (_, r, _) in pod_results if r is not None]
+        missing = [p for (p, r, _) in pod_results if r is None]
+        if pod_results:
+            per_pod = ", ".join(
+                f"{r:.4f}" if r is not None else "MISSING"
+                for (_, r, _) in pod_results
+            )
+            lines.append(f"per-pod MB/s: {per_pod}")
+        if rates:
+            lines.append(f"average MB/s: {sum(rates) / len(rates):.4f}")
+            lines.append(f"aggregate MB/s: {sum(rates):.4f}")
+        else:
+            lines.append("average MB/s: N/A (no rates parsed)")
+            lines.append("aggregate MB/s: N/A (no rates parsed)")
+        if missing:
+            lines.append(f"missing pods: {', '.join(missing)}")
+    return "\n".join(lines) + "\n"
 
-    # Phase 2: now that the log file is written, copy each pod's log files out
-    # of its sidecar and release the sidecar, all pods concurrently.
-    if pods:
+
+def all_done(components, namespace):
+    """True when every component's pods have their main container terminated."""
+    return all(containers_terminated(c["pods"], namespace, c["container"])
+               for c in components)
+
+
+def _safe_copy(pod, namespace, out_dir):
+    """atomic_copy_pod_logs wrapper that never lets one pod's failure abort the
+    round (run concurrently across pods)."""
+    try:
+        atomic_copy_pod_logs(pod, namespace, out_dir)
+    except Exception as e:
+        print(f"copy failed for {pod}: {e}", file=sys.stderr)
+
+
+def collect_round(components, namespace, run_dir, release, values_file,
+                  max_workers=20):
+    """One collection round: prime external auth with `kubectl get jobs`, then
+    atomically copy every pod's files and refresh each component's console-log
+    summary (also written atomically). Returns the producer pod_results (for the
+    exit-code check), or [] when there is no producer component."""
+    kubectl_get_jobs(namespace)  # prime re-auth before the copies
+
+    all_pods = [p for c in components for p in c["pods"]]
+    if all_pods:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            list(pool.map(
-                lambda p: copy_and_release_pod(p, namespace, run_dir), pods
-            ))
+            list(pool.map(lambda p: _safe_copy(p, namespace, run_dir), all_pods))
 
-    return pod_results
+    producer_results = []
+    for c in components:
+        if not c["pods"]:
+            continue
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            results = list(pool.map(
+                lambda p: fetch_pod_result(p, namespace), c["pods"]))
+        write_text_atomic(c["log_path"], build_summary_text(
+            c["component"], results, release, namespace, values_file,
+            c["with_rate_summary"]))
+        print(f"wrote {c['log_path']}", flush=True)
+        if c["component"] == "producer":
+            producer_results = results
+    return producer_results
 
 
 def main():
@@ -428,7 +439,15 @@ def main():
         "--timeout",
         type=int,
         default=3600,
-        help="Helm --timeout in seconds (also the producer Job deadline).",
+        help="Helm --timeout in seconds (also the overall collection deadline).",
+    )
+    ap.add_argument(
+        "--copy-interval",
+        type=float,
+        default=10,
+        help="Minutes between copy rounds while the jobs run (default 10). "
+        "Each round copies every pod's files atomically and refreshes the "
+        "console-log summaries.",
     )
     ap.add_argument(
         "--keep",
@@ -492,28 +511,68 @@ def main():
         failed = True
         # Continue anyway — we still want to capture whatever logs exist.
 
-    # Producer logs -> scale-<release>.log, with the throughput summary.
-    producer_results = collect_component(
-        "producer", "producer", args.release, args.namespace, args.timeout,
-        run_dir, log_path, values_file, with_rate_summary=True,
-    )
-
-    # Consumer logs -> scale-<release>-consumer.log, only when the optional
-    # consumer Job was rendered (values.yaml has a consumer section).  Checked
-    # up front so a producer-only run doesn't block waiting for pods that will
-    # never appear.
+    # Discover the pods up front. Producer always exists; consumer only when the
+    # values file rendered a consumer Job (checked here so a producer-only run
+    # doesn't block waiting for pods that will never appear). Each component maps
+    # to its main container name and a summary log file.
+    components = [{
+        "component": "producer", "container": "producer",
+        "pods": wait_for_pods(args.release, args.namespace, "producer", args.timeout),
+        "log_path": log_path, "with_rate_summary": True,
+    }]
+    if not components[0]["pods"]:
+        print(f"no producer pods found for release={args.release} "
+              f"ns={args.namespace}", file=sys.stderr)
     if job_exists(args.release, args.namespace, "consumer"):
         consumer_log_path = run_dir / f"scale-{args.release}-consumer.log"
         print(f"consumer log file: {consumer_log_path}", flush=True)
-        collect_component(
-            "consumer", "consumer", args.release, args.namespace, args.timeout,
-            run_dir, consumer_log_path, values_file, with_rate_summary=False,
-        )
+        components.append({
+            "component": "consumer", "container": "consumer",
+            "pods": wait_for_pods(args.release, args.namespace, "consumer", args.timeout),
+            "log_path": consumer_log_path, "with_rate_summary": False,
+        })
+
+    # Periodically copy each pod's files and refresh the summaries every
+    # --copy-interval minutes, until every main container has terminated (then
+    # one final post-completion copy captures the fully-flushed files), or the
+    # timeout elapses. The log-keeper sidecars are kept alive the whole time and
+    # only released afterwards.
+    copy_interval_s = args.copy_interval * 60
+    poll_s = 30
+    deadline = time.monotonic() + args.timeout
+    producer_results = []
+    while True:
+        producer_results = collect_round(
+            components, args.namespace, run_dir, args.release, values_file)
+        if all_done(components, args.namespace):
+            break
+        if time.monotonic() >= deadline:
+            print("timeout reached before all jobs finished", file=sys.stderr)
+            break
+        # Wait up to copy_interval_s for the next round, but wake early (and do a
+        # final copy) as soon as the containers finish or the deadline passes.
+        wait_until = min(time.monotonic() + copy_interval_s, deadline)
+        while True:
+            remaining = wait_until - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(poll_s, remaining))
+            if all_done(components, args.namespace):
+                break
+
+    # Release every sidecar so the Jobs can complete and `helm uninstall` doesn't
+    # block on terminationGracePeriodSeconds.
+    all_pods = [p for c in components for p in c["pods"]]
+    if all_pods:
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            list(pool.map(
+                lambda p: release_sidecar(p, args.namespace), all_pods))
 
     if not args.keep:
         helm_uninstall(args.release, args.namespace)
 
-    if failed or not producer_results or any(r is None for (_, r, _) in producer_results):
+    if failed or not components[0]["pods"] or \
+            any(r is None for (_, r, _) in producer_results):
         sys.exit(1)
 
 

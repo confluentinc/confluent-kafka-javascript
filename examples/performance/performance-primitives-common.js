@@ -176,12 +176,15 @@ class LatencyCountSketch {
 
 // Periodically appends a metrics snapshot to a JSON-lines file (default
 // jsmetrics.jsonl) every intervalMs. snapshotFn() returns a plain object that
-// is merged with a `ts` (epoch ms) timestamp into a single JSON line. Writes
-// go to the stream's internal buffer (no explicit flush); the buffer is flushed
-// only when the stream is closed. Returns an async stop() that clears the
-// timer, writes one final line, and flushes+closes the stream.
+// is merged with a `ts` (epoch ms) timestamp into a single JSON line. Uses one
+// append-mode write stream: stream.write() is async (never blocks the
+// producer/consumer loop) and each small, infrequent line is dispatched to the
+// fd promptly — so it is on disk well before scale.py's periodic collection
+// (minutes apart) copies the file. The 'w' flag truncates any stale file from a
+// previous run. Returns an async stop() that clears the timer, writes a final
+// line, and ends the stream (the guaranteed final flush).
 function startMetricsLogger(snapshotFn, { file = 'jsmetrics.jsonl', intervalMs = 5000 } = {}) {
-    const stream = fs.createWriteStream(file);
+    const stream = fs.createWriteStream(file, { flags: 'w' });
     const writeLine = () => {
         stream.write(JSON.stringify({ ts: Date.now(), ...snapshotFn() }) + '\n');
     };
