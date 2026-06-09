@@ -48,5 +48,9 @@ spec:
             - name: PARTITIONS
               value: {{ .Values.producer.partitions | quote }}
           workingDir: /opt/ckjs/examples/performance
+          {{- if and .Values.consumer .Values.consumer.produceToSecondTopic }}
+          command: ["node", "performance-consolidated.js", "--create-topics", "--produce-to-second-topic"]
+          {{- else }}
           command: ["node", "performance-consolidated.js", "--create-topics"]
+          {{- end }}
 {{- end }}

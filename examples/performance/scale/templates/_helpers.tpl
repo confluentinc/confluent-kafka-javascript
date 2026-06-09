@@ -26,8 +26,16 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{ include "ckjs-perf-scale.fullname" . }}-env
 {{- end -}}
 
+{{- define "ckjs-perf-scale.consumerConfigMapName" -}}
+{{ include "ckjs-perf-scale.fullname" . }}-consumer-env
+{{- end -}}
+
 {{- define "ckjs-perf-scale.producerConfigMapName" -}}
 {{ include "ckjs-perf-scale.fullname" . }}-producer-config
+{{- end -}}
+
+{{- define "ckjs-perf-scale.consumerExtraConfigMapName" -}}
+{{ include "ckjs-perf-scale.fullname" . }}-consumer-config
 {{- end -}}
 
 {{- define "ckjs-perf-scale.secretName" -}}
@@ -36,6 +44,10 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 
 {{- define "ckjs-perf-scale.producerJobName" -}}
 {{ include "ckjs-perf-scale.fullname" . }}-producer
+{{- end -}}
+
+{{- define "ckjs-perf-scale.consumerJobName" -}}
+{{ include "ckjs-perf-scale.fullname" . }}-consumer
 {{- end -}}
 
 {{- define "ckjs-perf-scale.createTopicsJobName" -}}

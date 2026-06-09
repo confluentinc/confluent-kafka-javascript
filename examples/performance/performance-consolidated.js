@@ -126,12 +126,15 @@ function printPercentiles(percentiles, type) {
     }
 
     if (createTopics || all) {
+        // Only create the second topic when something will produce to it
+        // (produceToSecondTopic). Otherwise pass null so runCreateTopics skips it.
+        const topic2ToCreate = produceToSecondTopic ? topic2 : null;
         console.log("=== Creating Topics (deleting if they exist already):");
         logParameters(parameters);
         console.log(`  Topic: ${topic}`);
-        console.log(`  Topic2: ${topic2}`);
+        console.log(`  Topic2: ${topic2ToCreate ? topic2ToCreate : '(skipped)'}`);
         console.log(`  Partitions: ${numPartitions}`);
-        await runCreateTopics(parameters, topic, topic2, numPartitions);
+        await runCreateTopics(parameters, topic, topic2ToCreate, numPartitions);
     }
 
     if (monitorLag) {

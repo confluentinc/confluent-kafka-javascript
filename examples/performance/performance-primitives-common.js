@@ -172,6 +172,25 @@ class LatencyCountSketch {
     }
 }
 
+// Periodically appends a metrics snapshot to a JSON-lines file (default
+// jsmetrics.jsonl) every intervalMs. snapshotFn() returns a plain object that
+// is merged with a `ts` (epoch ms) timestamp into a single JSON line. Writes
+// go to the stream's internal buffer (no explicit flush); the buffer is flushed
+// only when the stream is closed. Returns an async stop() that clears the
+// timer, writes one final line, and flushes+closes the stream.
+function startMetricsLogger(snapshotFn, { file = 'jsmetrics.jsonl', intervalMs = 5000 } = {}) {
+    const stream = fs.createWriteStream(file);
+    const writeLine = () => {
+        stream.write(JSON.stringify({ ts: Date.now(), ...snapshotFn() }) + '\n');
+    };
+    const interval = setInterval(writeLine, intervalMs);
+    return async () => {
+        clearInterval(interval);
+        writeLine();
+        await new Promise((resolve) => stream.end(resolve));
+    };
+}
+
 async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages) {
     const handlers = installHandlers(totalMessageCnt === -1);
     if (stats) {
@@ -364,6 +383,30 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         };
     }
 
+    // Append the running T0->T1 produce-to-consume (E2E) latency stats to a
+    // per-run jsmetrics file every 5s, mirroring the producer's send-latency
+    // samples and using the same schema so plot_metrics.py can read either
+    // file. The file name disambiguates the run type (eachBatch vs eachMessage)
+    // so the two consumer modes don't overwrite each other. The percentile
+    // sketch is sampled non-destructively here and only converted to its final
+    // array form after the logger is stopped (below).
+    let stopMetricsLogger = null;
+    if (stats) {
+        const metricsFile = eachBatch ?
+            'jsmetrics-consumer-batch.jsonl' : 'jsmetrics-consumer-message.jsonl';
+        stopMetricsLogger = startMetricsLogger(() => {
+            const [p50, p90, p99, p999] = stats.percentilesTOT1
+                .percentiles([50, 90, 99, 99.9])
+                .map((v) => v[0]);
+            return {
+                avg: stats.avgLatencyT0T1 || 0,
+                p50, p90, p99, p999,
+                max: stats.maxLatencyT0T1 || 0,
+                count: messagesMeasured,
+            };
+        }, { file: metricsFile });
+    }
+
     consumer.run({
         ...consumeMethod
     });
@@ -377,6 +420,9 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
             }
         }, 1000);
     });
+
+    if (stopMetricsLogger)
+        await stopMetricsLogger();
 
     await consumer.disconnect();
 
@@ -491,14 +537,10 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
         `p50=${s.p50.toFixed(3)} p99=${s.p99.toFixed(3)} ` +
         `p99.9=${s.p999.toFixed(3)} max=${s.max.toFixed(3)} count=${s.count}`;
 
-    // Append the running latency stats to jsmetrics.jsonl every 5s as JSON
-    // lines. Writes go to the stream's internal buffer (no explicit flush);
-    // the buffer is flushed when the stream is closed at the end of the test.
-    const metricsStream = fs.createWriteStream('jsmetrics.jsonl');
-    const writeMetricsLine = () => {
+    // Append the running send-latency stats to jsmetrics-producer.jsonl every 5s.
+    const stopMetricsLogger = startMetricsLogger(() => {
         const s = latencySnapshot();
-        metricsStream.write(JSON.stringify({
-            ts: Date.now(),
+        return {
             avg: s.avg,
             p50: s.p50,
             p90: s.p90,
@@ -506,9 +548,8 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             p999: s.p999,
             max: s.max,
             count: s.count,
-        }) + '\n');
-    };
-    const metricsInterval = setInterval(writeMetricsLine, 5000);
+        };
+    }, { file: 'jsmetrics-producer.jsonl' });
 
     // The double while-loop allows us to send a bunch of messages and then
     // remove the completed ones. We need the second while loop to keep sending
@@ -593,11 +634,8 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
             throw promises[i]._error;
     }
     promises = [];
-    // Stop the periodic sampler, write a final line, and flush+close the
-    // stream (this is the only flush — the test is complete).
-    clearInterval(metricsInterval);
-    writeMetricsLine();
-    await new Promise((resolve) => metricsStream.end(resolve));
+    // Stop the periodic sampler: writes a final line and flushes+closes.
+    await stopMetricsLogger();
 
     let elapsed = hrtime(startTime);
     let durationNanos = elapsed[0] * 1e9 + elapsed[1];

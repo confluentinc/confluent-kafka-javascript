@@ -5,8 +5,6 @@
 # Override any of the chart's defaults here. Everything not set falls back
 # to examples/performance/scale/values.yaml.
 
-replicaCount: 4
-
 # The confluent-kafka-javascript branch/tag/SHA cloned by the init container.
 # Override via `--ref <ref>` on scale.py, or by editing here.
 source:
@@ -24,23 +22,35 @@ kafka:
   topic: "test-topic"
 
 producer:
+  replicas: 4
   mode: "confluent"
   messageCount: 50000
   messageSize: 1536
   batchSize: 2048
   compression: "GZIP"
   partitions: 1024
-  partitionsConsumedConcurrently: 1024
   terminateTimeoutMs: 30000
-  produceToSecondTopic: false
-  autoCommit: 3000
-  concurrentRun: true
-  consumerMode: "eachBatch"
-  consumerMaxBatchSize: -1
+  initialDelayMs: 0
   useCKJSProducerEverywhere: false
-  autoCommitOnBatchEnd: true
   isHigherLatencyCluster: true
   useKeys: true
-  skipCTPTest: true
   statisticsIntervalMs: 5000
   # limitRPS: 5000
+  config: []
+
+# Optional: include this section to also run a consumer Job in parallel.
+# Omit it for a producer-only run.
+# consumer:
+#   replicas: 4
+#   mode: "confluent"
+#   terminateTimeoutMs: 30000
+#   produceToSecondTopic: false
+#   partitionsConsumedConcurrently: 1024
+#   autoCommit: 3000
+#   consumerMode: "eachBatch"
+#   consumerMaxBatchSize: -1
+#   useCKJSProducerEverywhere: false
+#   autoCommitOnBatchEnd: true
+#   isHigherLatencyCluster: true
+#   statisticsIntervalMs: 5000
+#   config: []

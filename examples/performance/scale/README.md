@@ -1,9 +1,15 @@
-# ckjs-perf-scale — multi-pod producer scale tests
+# ckjs-perf-scale — multi-pod producer/consumer scale tests
 
 A Helm chart + Python driver that runs
 `examples/performance/performance-consolidated.js --producer` on N pods
 in parallel and aggregates the per-pod MB/s throughput into a single
 average and aggregate figure.
+
+When the values file includes a `consumer:` section, a second Job runs
+`performance-consolidated.js --consumer` on its own set of pods in parallel
+with the producer Job. The consumer pods' logs are collected separately into
+`scale-<release>-consumer.log` (see Running below). Omit the `consumer:`
+section for a producer-only run.
 
 The pods are not built into a prebuilt image: each pod runs an
 `initContainer` on `ubuntu:24.04` that follows the same prereq commands
@@ -16,14 +22,16 @@ against that workspace.
 ```
 examples/performance/scale/
 ├── Chart.yaml
-├── values.yaml                  # defaults + every env var of the producer
+├── values.yaml                  # defaults: producer + optional consumer sections
 ├── example-values.yaml          # sample override file for scale.py
 ├── templates/
 │   ├── _helpers.tpl
-│   ├── configmap.yaml           # non-secret env vars
+│   ├── configmap.yaml           # non-secret env vars (producer + consumer)
+│   ├── producer-config.yaml     # extra librdkafka producer + consumer config
 │   ├── secret.yaml              # SASL_PASSWORD
 │   ├── create-topics-job.yaml   # pre-install hook Job, runs --create-topics once
-│   └── producer-job.yaml        # main Job, parallelism = replicaCount
+│   ├── producer-job.yaml        # producer Job, parallelism = producer.replicas
+│   └── consumer-job.yaml        # consumer Job (only when consumer: is set)
 └── scale.py                     # driver: install, wait, collect logs, average
 ```
 
@@ -40,13 +48,15 @@ All knobs live in `values.yaml`. The most important ones:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `replicaCount` | `4` | Number of producer pods (Job parallelism & completions). |
+| `producer.replicas` | `4` | Number of producer pods (producer Job parallelism & completions). |
+| `consumer.replicas` | — | Number of consumer pods. Only used when a `consumer:` section is present. |
 | `createTopics` | `true` | Runs a single pre-install hook Job with `--create-topics` before the producer Job. Set false to skip topic setup. |
-| `source.repo` | confluent-kafka-javascript on GitHub | Repo cloned by the init container. |
-| `source.ref` | `dev_performance_test_improvements_2` | Branch/tag/SHA to check out. |
-| `image.repository` / `image.tag` | `ubuntu` / `24.04` | Base image used for both containers. |
-| `kafka.brokers`, `kafka.securityProtocol`, `kafka.saslUsername`, `kafka.saslPassword`, `kafka.topic` | — | Connectivity / auth. `saslPassword` is required. |
-| `producer.*` | match the reference command line | One key per env var the script reads (`MESSAGE_COUNT`, `MESSAGE_SIZE`, `PRODUCER_BATCH_SIZE`, `COMPRESSION`, `PARTITIONS`, `PARTITIONS_CONSUMED_CONCURRENTLY`, `TERMINATE_TIMEOUT_MS`, `PRODUCE_TO_SECOND_TOPIC`, `AUTO_COMMIT`, `CONCURRENT_RUN`, `CONSUMER_MODE`, `CONSUMER_MAX_BATCH_SIZE`, `USE_CKJS_PRODUCER_EVERYWHERE`, `AUTO_COMMIT_ON_BATCH_END`, `IS_HIGHER_LATENCY_CLUSTER`, `USE_KEYS`, `SKIP_CTP_TEST`, `MODE`). |
+| `source.repo` | confluent-kafka-javascript on GitHub | Repo baked into the prebuilt image. |
+| `source.ref` | `dev_performance_test_improvements_2` | Branch/tag/SHA the image was built from. |
+| `image.repository` / `image.tag` | prebuilt ckjs-perf-scale image | Image used for both containers. |
+| `kafka.brokers`, `kafka.securityProtocol`, `kafka.saslUsername`, `kafka.saslPassword`, `kafka.topic`, `kafka.topic2` | — | Connectivity / auth. `saslPassword` is required. `topic2` is only needed when `consumer.produceToSecondTopic` is true. |
+| `producer.*` | match the reference command line | Producer Job env vars: `MODE`, `MESSAGE_COUNT`, `MESSAGE_SIZE`, `PRODUCER_BATCH_SIZE` (`batchSize`), `COMPRESSION`, `PARTITIONS`, `TERMINATE_TIMEOUT_MS`, `INITIAL_DELAY_MS` (`initialDelayMs`), `LIMIT_RPS` (`limitRPS`), `USE_CKJS_PRODUCER_EVERYWHERE`, `IS_HIGHER_LATENCY_CLUSTER`, `USE_KEYS`, `STATISTICS_INTERVAL_MS`. `producer.config` is a list of extra librdkafka producer properties. |
+| `consumer.*` | optional section | Consumer Job env vars: `MODE`, `TERMINATE_TIMEOUT_MS`, `PARTITIONS_CONSUMED_CONCURRENTLY`, `AUTO_COMMIT`, `CONSUMER_MODE`, `CONSUMER_MAX_BATCH_SIZE`, `AUTO_COMMIT_ON_BATCH_END`, `USE_CKJS_PRODUCER_EVERYWHERE`, `IS_HIGHER_LATENCY_CLUSTER`, `STATISTICS_INTERVAL_MS`, plus `produceToSecondTopic` (passed as the `--produce-to-second-topic` flag). The workload-shape values (`MESSAGE_COUNT`, `MESSAGE_SIZE`, `COMPRESSION`, `LIMIT_RPS`) are taken from the `producer` section so the consumer matches the produced load. `consumer.config` is a list of extra librdkafka consumer properties (read via `CONSUMER_CONFIG_FILE`). |
 
 Override anything by passing a file to `scale.py`; see
 `example-values.yaml`.
@@ -83,9 +93,13 @@ What `scale.py` does:
    aggregate MB/s: 48.75
    ```
 
-5. `helm uninstall` the release (skip with `--keep`).
+5. If a consumer Job exists, repeats the wait/collect/copy steps for the
+   consumer pods, writing their console logs and copied log files into a
+   separate `scale-<release>-consumer.log` in the same run folder (no
+   throughput summary — consumer rates are in the per-pod logs).
+6. `helm uninstall` the release (skip with `--keep`).
 
-Exit code 0 iff every pod reported a Producer Rate.
+Exit code 0 iff every producer pod reported a Producer Rate.
 
 ## Notes / caveats
 

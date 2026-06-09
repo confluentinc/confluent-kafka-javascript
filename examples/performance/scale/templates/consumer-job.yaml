@@ -1,19 +1,29 @@
+{{- if .Values.consumer }}
+{{- /* Pick the consumer test flag from consumerMode: eachBatch ->
+       --consumer-each-batch, eachMessage -> --consumer-each-message,
+       anything else (e.g. "all"/unset) -> --consumer (runs both). */ -}}
+{{- $consumerFlag := "--consumer" -}}
+{{- if eq .Values.consumer.consumerMode "eachBatch" -}}
+{{- $consumerFlag = "--consumer-each-batch" -}}
+{{- else if eq .Values.consumer.consumerMode "eachMessage" -}}
+{{- $consumerFlag = "--consumer-each-message" -}}
+{{- end -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "ckjs-perf-scale.producerJobName" . }}
+  name: {{ include "ckjs-perf-scale.consumerJobName" . }}
   labels:
     {{- include "ckjs-perf-scale.labels" . | nindent 4 }}
-    app.kubernetes.io/component: producer
+    app.kubernetes.io/component: consumer
 spec:
-  parallelism: {{ .Values.producer.replicas }}
-  completions: {{ .Values.producer.replicas }}
+  parallelism: {{ .Values.consumer.replicas }}
+  completions: {{ .Values.consumer.replicas }}
   backoffLimit: 0
   template:
     metadata:
       labels:
         {{- include "ckjs-perf-scale.labels" . | nindent 8 }}
-        app.kubernetes.io/component: producer
+        app.kubernetes.io/component: consumer
     spec:
       restartPolicy: Never
       {{- if .Values.nodeArch }}
@@ -23,15 +33,15 @@ spec:
       volumes:
         - name: workspace
           emptyDir: {}
-        # Extra librdkafka producer properties (values.yaml: producerConfig),
-        # rendered into configuration.yaml and read by newCompatibleProducer.
-        - name: producer-config
+        # Extra librdkafka consumer properties (values.yaml: consumer.config),
+        # rendered into configuration.yaml and read by newCompatibleConsumer.
+        - name: consumer-config
           configMap:
-            name: {{ include "ckjs-perf-scale.producerConfigMapName" . }}
+            name: {{ include "ckjs-perf-scale.consumerExtraConfigMapName" . }}
       initContainers:
         # Native sidecar (restartPolicy: Always on an initContainer).
-        # Stays alive after the main `producer` container exits so that
-        # scale.py can `kubectl cp` the producer's log files out of the
+        # Stays alive after the main `consumer` container exits so that
+        # scale.py can `kubectl cp` the consumer's log files out of the
         # shared workspace volume. The grace period above (`terminationGrace
         # PeriodSeconds`) bounds how long it lingers.
         - name: log-keeper
@@ -41,7 +51,7 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              # Stay alive after the producer (main) container exits so that
+              # Stay alive after the consumer (main) container exits so that
               # scale.py can kubectl-cp log files out of /workspace.  The
               # kubelet sends SIGTERM to native sidecars as soon as the main
               # container exits; we trap it to ignore (the trap fires but
@@ -57,21 +67,21 @@ spec:
             - name: workspace
               mountPath: /workspace
       containers:
-        - name: producer
+        - name: consumer
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           envFrom:
             - configMapRef:
-                name: {{ include "ckjs-perf-scale.configMapName" . }}
+                name: {{ include "ckjs-perf-scale.consumerConfigMapName" . }}
             - secretRef:
                 name: {{ include "ckjs-perf-scale.secretName" . }}
           env:
-            # Where newCompatibleProducer reads the extra producer properties.
-            - name: PRODUCER_CONFIG_FILE
+            # Where newCompatibleConsumer reads the extra consumer properties.
+            - name: CONSUMER_CONFIG_FILE
               value: /etc/ckjs/configuration.yaml
           # The app is baked into the image at /opt/ckjs/examples/performance,
           # but its log files are written relative to the working directory
-          # (e.g. ./confluent-producer.log). Run from the shared workspace
+          # (e.g. ./confluent-consumer-batch.log). Run from the shared workspace
           # volume at the path scale.py copies from
           # (REMOTE_WORKDIR=/workspace/repo/examples/performance) so the
           # log-keeper sidecar can expose them for `kubectl cp`.
@@ -81,12 +91,13 @@ spec:
               set -e
               mkdir -p /workspace/repo/examples/performance
               cd /workspace/repo/examples/performance
-              exec node /opt/ckjs/examples/performance/performance-consolidated.js --producer
+              exec node /opt/ckjs/examples/performance/performance-consolidated.js {{ $consumerFlag }}{{ if .Values.consumer.produceToSecondTopic }} --produce-to-second-topic{{ end }}
           volumeMounts:
             - name: workspace
               mountPath: /workspace
-            - name: producer-config
+            - name: consumer-config
               mountPath: /etc/ckjs
               readOnly: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

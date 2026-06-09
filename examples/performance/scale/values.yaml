@@ -1,7 +1,3 @@
-# Number of producer pods to run in parallel.
-# The Job's parallelism and completions are both set to this value.
-replicaCount: 4
-
 # Prebuilt image produced by examples/performance/scale/Dockerfile. Build it
 # (with the desired SOURCE_REF baked in), push it to a registry the cluster
 # can pull from, then point these at that registry/tag.
@@ -51,27 +47,25 @@ kafka:
   # KAFKA_TOPIC2 — only used if produceToSecondTopic is true.
   topic2: ""
 
-# All environment variables consumed by performance-consolidated.js.
-# Defaults match the user's reference command line.
+# Producer Job. Environment consumed by performance-consolidated.js --producer.
 producer:
+  # Number of producer pods to run in parallel. The producer Job's parallelism
+  # and completions are both set to this value.
+  replicas: 1
   mode: "confluent"
   messageCount: 50000
   messageSize: 1536
   batchSize: 2048
   compression: "GZIP"
   partitions: 1024
-  partitionsConsumedConcurrently: 1024
   terminateTimeoutMs: 30000
-  produceToSecondTopic: false
-  autoCommit: 3000
-  concurrentRun: true
-  consumerMode: "eachBatch"
-  consumerMaxBatchSize: -1
+  # Delay (ms) before the producer starts producing. Useful in a concurrent
+  # producer+consumer run to let the consumer pods come up and start consuming
+  # first. 0/unset means start immediately.
+  initialDelayMs: 0
   useCKJSProducerEverywhere: false
-  autoCommitOnBatchEnd: true
   isHigherLatencyCluster: true
   useKeys: true
-  skipCTPTest: true
   statisticsIntervalMs: 5000
   # Target produce rate (records/s). Empty/unset means no limit: the producer
   # test then runs unbounded until terminateTimeoutMs. When set, MESSAGE_COUNT
@@ -88,3 +82,31 @@ producer:
   #     value: "2097152"
   #   - name: queue.buffering.max.messages
   #     value: "2000000"
+
+# Consumer Job. Optional — when this whole section is present, a second Job is
+# created that runs performance-consolidated.js --consumer (both eachMessage and
+# eachBatch consumer tests). Omit the section entirely to run producer-only.
+# The workload-shape values (messageCount, messageSize, compression, limitRPS)
+# are taken from the producer section so the consumer matches the produced load.
+consumer: {}
+#   # Number of consumer pods to run in parallel.
+#   replicas: 4
+#   mode: "confluent"
+#   terminateTimeoutMs: 30000
+#   # When true, the consumer also produces to KAFKA_TOPIC2 (and that second
+#   # topic is created); the create-topics Job picks this up too. When false,
+#   # the second topic is not created.
+#   produceToSecondTopic: false
+#   partitionsConsumedConcurrently: 1024
+#   autoCommit: 3000
+#   consumerMode: "eachBatch"
+#   consumerMaxBatchSize: -1
+#   useCKJSProducerEverywhere: false
+#   autoCommitOnBatchEnd: true
+#   isHigherLatencyCluster: true
+#   statisticsIntervalMs: 5000
+#   # Extra librdkafka consumer properties, applied after the higher-latency
+#   # cluster tuning in newCompatibleConsumer so they take precedence. Rendered
+#   # into configuration.yaml and mounted into the consumer pods, where
+#   # newCompatibleConsumer reads them (CONSUMER_CONFIG_FILE).
+#   config: []

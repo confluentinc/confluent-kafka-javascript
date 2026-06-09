@@ -10,3 +10,18 @@ data:
   # newCompatibleProducer reads this file (PRODUCER_CONFIG_FILE).
   configuration.yaml: |
 {{ .Values.producer.config | default list | toYaml | indent 4 }}
+{{- if .Values.consumer }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ckjs-perf-scale.consumerExtraConfigMapName" . }}
+  labels:
+    {{- include "ckjs-perf-scale.labels" . | nindent 4 }}
+data:
+  # Extra librdkafka consumer properties, applied after the higher-latency
+  # cluster tuning in newCompatibleConsumer (so they take precedence).
+  # newCompatibleConsumer reads this file (CONSUMER_CONFIG_FILE).
+  configuration.yaml: |
+{{ .Values.consumer.config | default list | toYaml | indent 4 }}
+{{- end }}

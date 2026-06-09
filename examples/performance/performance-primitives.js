@@ -37,13 +37,21 @@ const ENABLE_LOGGING = DEBUG !== undefined || STATISTICS_INTERVAL_MS !== null;
 const PRODUCER_CONFIG_FILE = process.env.PRODUCER_CONFIG_FILE ||
     path.join(__dirname, 'configuration.yaml');
 
-// Reads PRODUCER_CONFIG_FILE and returns a librdkafka {name: value} map.
+// Optional file with extra librdkafka consumer properties, applied after the
+// higher-latency cluster tuning in newCompatibleConsumer (so they take
+// precedence).  Defaults to a consumer-configuration.yaml next to this script;
+// in the scale chart it is mounted from a ConfigMap and pointed at via this
+// env var.
+const CONSUMER_CONFIG_FILE = process.env.CONSUMER_CONFIG_FILE ||
+    path.join(__dirname, 'consumer-configuration.yaml');
+
+// Reads a YAML config file and returns a librdkafka {name: value} map.
 // The file holds a YAML list of { name, value } entries (a plain YAML mapping
 // is also accepted).  A missing file yields no extra properties.
-function loadProducerConfig() {
+function loadConfigFile(file) {
     let raw;
     try {
-        raw = fs.readFileSync(PRODUCER_CONFIG_FILE, 'utf8');
+        raw = fs.readFileSync(file, 'utf8');
     } catch (err) {
         if (err.code === 'ENOENT')
             return {};
@@ -60,6 +68,16 @@ function loadProducerConfig() {
         Object.assign(ret, parsed);
     }
     return ret;
+}
+
+// Extra librdkafka producer properties from PRODUCER_CONFIG_FILE.
+function loadProducerConfig() {
+    return loadConfigFile(PRODUCER_CONFIG_FILE);
+}
+
+// Extra librdkafka consumer properties from CONSUMER_CONFIG_FILE.
+function loadConsumerConfig() {
+    return loadConfigFile(CONSUMER_CONFIG_FILE);
 }
 
 function baseConfiguration(parameters) {
@@ -106,6 +124,11 @@ async function runCreateTopics(parameters, topic, topic2, numPartitions) {
     await admin.connect();
 
     for (let t of [topic, topic2]) {
+        // topic2 is null when nothing produces to the second topic
+        // (produceToSecondTopic is false), so skip creating it.
+        if (!t) {
+            continue;
+        }
         let topicCreated = await admin.createTopics({
             topics: [{ topic: t, numPartitions }],
         }).catch(console.error);
@@ -234,6 +257,11 @@ function newCompatibleConsumer(parameters, eachBatch, messageSize, limitRPS) {
     const higherLatencyClusterOpts = IS_HIGHER_LATENCY_CLUSTER ? {
         'max.partition.fetch.bytes': '8388608'
     } : {};
+    const extraConsumerConfig = loadConsumerConfig();
+    if (Object.keys(extraConsumerConfig).length > 0) {
+        console.log('Applying extra consumer config from ' +
+            `${CONSUMER_CONFIG_FILE}:`, extraConsumerConfig);
+    }
 
     let groupId = eachBatch ? process.env.GROUPID_BATCH : process.env.GROUPID_MESSAGE;
     if (!groupId) {
@@ -248,6 +276,7 @@ function newCompatibleConsumer(parameters, eachBatch, messageSize, limitRPS) {
         ...autoCommitOpts,
         ...jsOpts,
         ...higherLatencyClusterOpts,
+        ...extraConsumerConfig,
     });
     return new CompatibleConsumer(consumer);
 }
