@@ -10,6 +10,10 @@ throughput figure). Each copy is atomic (tmp file then replace) so a good
 snapshot is never clobbered by a failed copy, and every round is preceded by a
 `kubectl get jobs` to prime external re-authentication. When all main containers
 finish it does one final copy, releases the log-keeper sidecars, and uninstalls.
+
+With --resume <folder> it skips the install entirely and keeps collecting logs
+from an already-deployed release in the current namespace, writing into that
+existing logs/<ts> folder instead of creating a new one.
 """
 
 import argparse
@@ -432,7 +436,13 @@ def collect_round(components, namespace, run_dir, release, values_file,
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("values", help="Path to a values YAML for the Helm chart.")
+    ap.add_argument(
+        "values",
+        nargs="?",
+        default=None,
+        help="Path to a values YAML for the Helm chart. Required unless "
+        "--resume is given (on resume it is only used for the summary header).",
+    )
     ap.add_argument("--release", default="ckjs-perf-scale", help="Helm release name.")
     ap.add_argument("--namespace", default="default", help="Kubernetes namespace.")
     ap.add_argument(
@@ -455,6 +465,14 @@ def main():
         help="Don't `helm uninstall` after collecting logs.",
     )
     ap.add_argument(
+        "--resume",
+        default=None,
+        metavar="FOLDER",
+        help="Skip the helm install; continue collecting logs from an "
+        "already-deployed release in the current namespace into this existing "
+        "logs/<ts> folder.",
+    )
+    ap.add_argument(
         "--ref",
         default=None,
         help="confluent-kafka-javascript branch/tag/SHA to check out "
@@ -474,42 +492,56 @@ def main():
     )
     args = ap.parse_args()
 
-    values_file = Path(args.values).resolve()
-    if not values_file.is_file():
-        sys.exit(f"values file not found: {values_file}")
+    # On --resume the values file is optional (no install happens); it is only
+    # used for the summary header, so fall back to a placeholder when omitted.
+    if args.values:
+        values_file = Path(args.values).resolve()
+        if not values_file.is_file():
+            sys.exit(f"values file not found: {values_file}")
+    elif args.resume:
+        values_file = "<resumed>"
+    else:
+        sys.exit("values file is required (or pass --resume <folder>)")
 
-    # Each run gets its own UTC-timestamped folder under logs/.  Both the
-    # global log file and every per-pod log file copied from the pods land
-    # there, so runs never overwrite each other.
-    ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = LOGS_DIR / ts
-    run_dir.mkdir(parents=True, exist_ok=True)
+    set_overrides = []
+    if args.resume:
+        # Resume into an existing run folder instead of creating a new one, and
+        # don't touch the install (so --ref/--source-repo/--node-arch are moot).
+        run_dir = Path(args.resume).resolve()
+        if not run_dir.is_dir():
+            sys.exit(f"--resume folder not found: {run_dir}")
+    else:
+        # Each run gets its own UTC-timestamped folder under logs/.  Both the
+        # global log file and every per-pod log file copied from the pods land
+        # there, so runs never overwrite each other.
+        ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_dir = LOGS_DIR / ts
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if args.ref:
+            set_overrides.append(f"source.ref={args.ref}")
+        if args.source_repo:
+            set_overrides.append(f"source.repo={args.source_repo}")
+        # Pin the job pods to nodes matching this host's architecture unless the
+        # user explicitly disabled it with --node-arch ''.
+        node_arch = detect_node_arch() if args.node_arch is None else args.node_arch
+        if node_arch:
+            print(f"node arch affinity: {node_arch}", flush=True)
+            set_overrides.append(f"nodeArch={node_arch}")
+
     log_path = run_dir / f"scale-{args.release}.log"
-
     print(f"log folder: {run_dir}", flush=True)
     print(f"log file: {log_path}", flush=True)
 
-    set_overrides = []
-    if args.ref:
-        set_overrides.append(f"source.ref={args.ref}")
-    if args.source_repo:
-        set_overrides.append(f"source.repo={args.source_repo}")
-    # Pin the job pods to nodes matching this host's architecture unless the
-    # user explicitly disabled it with --node-arch ''.
-    node_arch = detect_node_arch() if args.node_arch is None else args.node_arch
-    if node_arch:
-        print(f"node arch affinity: {node_arch}", flush=True)
-        set_overrides.append(f"nodeArch={node_arch}")
-
     failed = False
-    try:
-        helm_install(
-            args.release, args.namespace, values_file, args.timeout, set_overrides
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"helm upgrade --install failed: {e}", file=sys.stderr)
-        failed = True
-        # Continue anyway — we still want to capture whatever logs exist.
+    if not args.resume:
+        try:
+            helm_install(
+                args.release, args.namespace, values_file, args.timeout, set_overrides
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"helm upgrade --install failed: {e}", file=sys.stderr)
+            failed = True
+            # Continue anyway — we still want to capture whatever logs exist.
 
     # Discover the pods up front. Producer always exists; consumer only when the
     # values file rendered a consumer Job (checked here so a producer-only run
