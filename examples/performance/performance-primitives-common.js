@@ -198,9 +198,23 @@ function startMetricsLogger(snapshotFn, { file = 'jsmetrics.jsonl', intervalMs =
 
 async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eachBatch, partitionsConsumedConcurrently, stats, actionOnMessages) {
     const handlers = installHandlers(totalMessageCnt === -1);
+
+    // (Re)initialize a latency accumulator: the T0->T1 and T0->T2 measurements
+    // are each held in a sub-object with the same field names (a fresh
+    // percentile sketch and zeroed running count/avg/max).
+    const resetLatencyStats = (s) => {
+        s.T0T1 = { percentiles: new LatencyCountSketch({}), count: 0, avg: 0, max: 0 };
+        s.T0T2 = { percentiles: new LatencyCountSketch({}), count: 0, avg: 0, max: 0 };
+    };
+
+    // windowStats mirrors `stats` but is reset every metrics interval, so each
+    // jsmetrics line describes only the window since the previous line. `stats`
+    // stays cumulative for the end-of-run summary.
+    let windowStats = null;
     if (stats) {
-        stats.percentilesTOT1 = new LatencyCountSketch({});
-        stats.percentilesTOT2 = new LatencyCountSketch({});
+        resetLatencyStats(stats);
+        windowStats = {};
+        resetLatencyStats(windowStats);
     }
     while (true) {
         try {
@@ -232,7 +246,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
     let lastMessageReceivedAt;
     const skippedMessages = warmupMessages;
 
-    const updateLatency = (receivedAt, numMessages, message, isT0T2) => {
+    const updateLatency = (stats, receivedAt, numMessages, message, isT0T2) => {
         if (!stats || numMessages < 1)
             return;
 
@@ -253,25 +267,27 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
             console.log(`WARN: received large latency ${latency} sentAt ${sentAt} receivedAt ${receivedAt}`);
         }
 
-        if (!isT0T2) {
-            if (!stats.maxLatencyT0T1) {
-                stats.maxLatencyT0T1 = latency;
-                stats.avgLatencyT0T1 = latency;
-            } else {
-                stats.maxLatencyT0T1 = Math.max(stats.maxLatencyT0T1, latency);
-                stats.avgLatencyT0T1 = ((stats.avgLatencyT0T1 * (numMessages - 1)) + latency) / numMessages;
-            }
-            stats.percentilesTOT1.add(latency);
+        // Use a counter internal to this accumulator for the running average so
+        // it works for both the cumulative `stats` and the periodically-reset
+        // `windowStats` (whose count must not depend on cumulative messagesMeasured).
+        const s = isT0T2 ? stats.T0T2 : stats.T0T1;
+        const n = ++s.count;
+        if (n === 1) {
+            s.max = latency;
+            s.avg = latency;
         } else {
-            if (!stats.maxLatencyT0T2) {
-                stats.maxLatencyT0T2 = latency;
-                stats.avgLatencyT0T2 = latency;
-            } else {
-                stats.maxLatencyT0T2 = Math.max(stats.maxLatencyT0T2, latency);
-                stats.avgLatencyT0T2 = ((stats.avgLatencyT0T2 * (numMessages - 1)) + latency) / numMessages;
-            }
-            stats.percentilesTOT2.add(latency);
+            s.max = Math.max(s.max, latency);
+            s.avg = ((s.avg * (n - 1)) + latency) / n;
         }
+        s.percentiles.add(latency);
+    };
+
+    // Record into both the cumulative and the window accumulator. updateLatency
+    // returns early when its accumulator is falsy, so this is a no-op when no
+    // stats were requested.
+    const recordLatency = (receivedAt, numMessages, message, isT0T2) => {
+        updateLatency(stats, receivedAt, numMessages, message, isT0T2);
+        updateLatency(windowStats, receivedAt, numMessages, message, isT0T2);
     };
 
     const shouldTerminate = () => {
@@ -303,7 +319,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
             if (messagesReceived >= skippedMessages) {
                 messagesMeasured++;
                 totalMessageSize += message.value.length;
-                updateLatency(Date.now(), messagesMeasured, message, false);
+                recordLatency(Date.now(), messagesMeasured, message, false);
 
                 if (messagesReceived === skippedMessages) {
                     startTime = hrtime.bigint();
@@ -314,7 +330,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
 
             if (actionOnMessages) {
                 await actionOnMessages([message]);
-                updateLatency(Date.now(), messagesMeasured, message, true);
+                recordLatency(Date.now(), messagesMeasured, message, true);
             }
 
             if (autoCommit !== null && AUTO_COMMIT_ON_BATCH_END) {
@@ -354,7 +370,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                     let i = 1;
                     for (const message of messages) {
                         totalMessageSize += message.value.length;
-                        updateLatency(now, messagesBase + i, message, false);
+                        recordLatency(now, messagesBase + i, message, false);
                         i++;
                     }
 
@@ -371,7 +387,7 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
                         let i = 1;
                         const now = Date.now();
                         for (const message of messages) {
-                            updateLatency(now, messagesBase + i, message, true);
+                            recordLatency(now, messagesBase + i, message, true);
                             i++;
                         }
                     }
@@ -400,15 +416,18 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         const metricsFile = eachBatch ?
             'jsmetrics-consumer-batch.jsonl' : 'jsmetrics-consumer-message.jsonl';
         stopMetricsLogger = startMetricsLogger(() => {
-            const [p50, p90, p99, p999] = stats.percentilesTOT1
+            const [p50, p90, p99, p999] = windowStats.T0T1.percentiles
                 .percentiles([50, 90, 99, 99.9])
                 .map((v) => v[0]);
-            return {
-                avg: stats.avgLatencyT0T1 || 0,
+            const line = {
+                avg: windowStats.T0T1.avg || 0,
                 p50, p90, p99, p999,
-                max: stats.maxLatencyT0T1 || 0,
-                count: messagesMeasured,
+                max: windowStats.T0T1.max || 0,
+                count: windowStats.T0T1.count || 0,
             };
+            // Reset the window so the next line covers only the next interval.
+            resetLatencyStats(windowStats);
+            return line;
         }, { file: metricsFile, intervalMs: JSMETRICS_INTERVAL_MS });
     }
 
@@ -440,13 +459,13 @@ async function runConsumer(consumer, topic, warmupMessages, totalMessageCnt, eac
         stats.messageRate = durationSeconds > 0 ? 
                             (messagesMeasured / durationSeconds) : Infinity;
         stats.durationSeconds = durationSeconds;
-        stats.percentilesTOT1 = stats.percentilesTOT1.percentiles(PERCENTILES).map((value, index) => ({
+        stats.T0T1.percentiles = stats.T0T1.percentiles.percentiles(PERCENTILES).map((value, index) => ({
             percentile: PERCENTILES[index],
             value: value[0],
             count: value[1],
             total: value[2],
         }));
-        stats.percentilesTOT2 = stats.percentilesTOT2.percentiles(PERCENTILES).map((value, index) => ({
+        stats.T0T2.percentiles = stats.T0T2.percentiles.percentiles(PERCENTILES).map((value, index) => ({
             percentile: PERCENTILES[index],
             value: value[0],
             count: value[1],
@@ -512,30 +531,46 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     let messagesDispatched = 0;
 
     // Per-request send latency (time from issuing producer.send() to the
-    // resolution of its promise), tracked since the start of measurement.
-    // Percentiles use the same count-sketch the consumer uses so we don't
-    // keep every sample in memory. avg/max are tracked incrementally.
-    const latencySketch = new LatencyCountSketch({});
-    let latencyCount = 0;
-    let latencySum = 0;
-    let latencyMax = 0;
-    const recordLatency = (latencyMs) => {
-        latencySketch.add(latencyMs);
-        latencyCount++;
-        latencySum += latencyMs;
-        if (latencyMs > latencyMax)
-            latencyMax = latencyMs;
+    // resolution of its promise). Percentiles use the same count-sketch the
+    // consumer uses so we don't keep every sample in memory; avg/max are tracked
+    // incrementally. `total` accumulates since the start of measurement (for the
+    // end-of-run summary), while `windowStats` mirrors it but is reset every
+    // metrics interval, so each jsmetrics line covers only that window.
+    const makeLatencyAcc = () => ({
+        sketch: new LatencyCountSketch({}),
+        count: 0,
+        sum: 0,
+        max: 0,
+    });
+    const addLatency = (acc, latencyMs) => {
+        acc.sketch.add(latencyMs);
+        acc.count++;
+        acc.sum += latencyMs;
+        if (latencyMs > acc.max)
+            acc.max = latencyMs;
     };
-    const latencySnapshot = () => {
-        const [p50, p90, p99, p999] = latencySketch
+    const resetLatencyAcc = (acc) => {
+        acc.sketch = new LatencyCountSketch({});
+        acc.count = 0;
+        acc.sum = 0;
+        acc.max = 0;
+    };
+    const snapshotLatency = (acc) => {
+        const [p50, p90, p99, p999] = acc.sketch
             .percentiles([50, 90, 99, 99.9])
             .map((v) => v[0]);
         return {
-            avg: latencyCount > 0 ? latencySum / latencyCount : 0,
+            avg: acc.count > 0 ? acc.sum / acc.count : 0,
             p50, p90, p99, p999,
-            max: latencyMax,
-            count: latencyCount,
+            max: acc.max,
+            count: acc.count,
         };
+    };
+    const total = makeLatencyAcc();
+    const windowStats = makeLatencyAcc();
+    const recordLatency = (latencyMs) => {
+        addLatency(total, latencyMs);
+        addLatency(windowStats, latencyMs);
     };
     const latencyLine = (s) =>
         `=== Producer Send Latency (ms): avg=${s.avg.toFixed(3)} ` +
@@ -545,7 +580,9 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     // Append the running send-latency stats to jsmetrics-producer.jsonl
     // every JSMETRICS_INTERVAL_MS.
     const stopMetricsLogger = startMetricsLogger(() => {
-        const s = latencySnapshot();
+        const s = snapshotLatency(windowStats);
+        // Reset the window so the next line covers only the next interval.
+        resetLatencyAcc(windowStats);
         return {
             avg: s.avg,
             p50: s.p50,
@@ -649,7 +686,7 @@ async function runProducer(producer, topic, batchSize, warmupMessages, totalMess
     let recordsPerSecond = (totalMessagesSent / durationNanos) * 1e9; /* records/s */
     console.log(`Sent ${totalMessagesSent} messages, ${totalBytesSent} bytes; rate is ${rate} MB/s`);
     console.log(`=== Producer Records/s: ${recordsPerSecond}`);
-    console.log(latencyLine(latencySnapshot()));
+    console.log(latencyLine(snapshotLatency(total)));
 
     await producer.disconnect();
     removeHandlers(handlers);
