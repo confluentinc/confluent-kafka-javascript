@@ -4,9 +4,11 @@
 Runs `helm upgrade --install` against the chart with a user-supplied values
 file, then while the producer/consumer Jobs run it periodically (every
 --copy-interval minutes) copies each pod's log + jsmetrics files into a single
-run folder and refreshes per-component console-log summaries (parsing
-`=== Producer Rate:  <number>` from each producer pod for an average + aggregate
-throughput figure). Each copy is atomic (tmp file then replace) so a good
+run folder. Each pod's full console log is streamed straight to disk as
+`{pod}-console.log` (never held in memory), and the per-component summary embeds
+only the last --summary-tail-lines lines of each (via `tail`), parsing
+`=== Producer Rate:  <number>` from that tail for an average + aggregate
+throughput figure. Each copy is atomic (tmp file then replace) so a good
 snapshot is never clobbered by a failed copy, and every round is preceded by a
 `kubectl get jobs` to prime external re-authentication. When all main containers
 finish it does one final copy, releases the log-keeper sidecars, and uninstalls.
@@ -251,12 +253,29 @@ def containers_terminated(pods, namespace, container):
     return len(reasons) >= len(pods)
 
 
-def fetch_pod_log(pod, namespace):
-    result = run(
-        ["kubectl", "-n", namespace, "logs", pod, "--all-containers=true"],
-        capture=True,
-    )
-    return result.stdout
+def stream_pod_console_to_file(pod, namespace, dest_path):
+    """Stream a pod's full console log (`kubectl logs --all-containers`) straight
+    to `dest_path` on disk, never holding it in Python memory — kubectl's stdout
+    is redirected to a file handle. Written atomically (sibling .tmp then
+    os.replace) like atomic_copy_pod_logs, so a previous good console log is
+    never clobbered by a failed/partial fetch. Returns dest_path if it exists
+    afterwards (this round's fetch or a prior one), else None."""
+    tmp = dest_path.with_name(f".{dest_path.name}.tmp")
+    with open(tmp, "w") as fh:
+        result = subprocess.run(
+            ["kubectl", "-n", namespace, "logs", pod, "--all-containers=true"],
+            stdout=fh, stderr=subprocess.PIPE, text=True, check=False,
+        )
+    if result.returncode == 0:
+        os.replace(tmp, dest_path)  # atomic; keeps the old file until now
+    else:
+        # Leave the previous good console log in place; drop the partial tmp.
+        tmp.unlink(missing_ok=True)
+        print(
+            f"kubectl logs failed for {pod}: {result.stderr.strip()}",
+            file=sys.stderr,
+        )
+    return dest_path if dest_path.is_file() else None
 
 
 def parse_rate(pod_log):
@@ -265,6 +284,18 @@ def parse_rate(pod_log):
     if not matches:
         return None
     return float(matches[-1])
+
+
+def tail_metrics(console_path, n):
+    """Return (rate, tail_text) for the last `n` lines of `console_path`, read
+    cheaply via `tail` so only those lines enter memory (the console log itself
+    may be huge). rate is the last `=== Producer Rate:` value in the tail."""
+    result = subprocess.run(
+        ["tail", "-n", str(n), str(console_path)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
+    )
+    tail_text = result.stdout
+    return parse_rate(tail_text), tail_text
 
 
 def release_sidecar(pod, namespace):
@@ -332,23 +363,27 @@ def atomic_copy_pod_logs(pod, namespace, out_dir):
     return written
 
 
-def fetch_pod_result(pod, namespace):
-    """Fetch one pod's console log and parse its (last) producer rate, without
-    waiting for the container — the periodic loop reads logs while pods may
-    still be running. Returns (pod, rate_or_None, log_text). Safe to run
-    concurrently (one pod per worker thread)."""
-    try:
-        log_text = fetch_pod_log(pod, namespace)
-    except subprocess.CalledProcessError as e:
-        log_text = f"<failed to fetch logs: {e}>"
-    return (pod, parse_rate(log_text), log_text)
+def fetch_pod_result(pod, namespace, run_dir, tail_lines):
+    """Stream one pod's full console log to `{pod}-console.log` on disk, then
+    `tail` it for the recent metrics, without waiting for the container — the
+    periodic loop reads logs while pods may still be running. Returns
+    (pod, rate_or_None, tail_text), where tail_text is the last `tail_lines`
+    console lines (the full log stays on disk). Safe to run concurrently (one
+    pod per worker thread)."""
+    console_path = run_dir / f"{pod}-console.log"
+    if stream_pod_console_to_file(pod, namespace, console_path) is None:
+        return (pod, None, "<failed to fetch logs>")
+    rate, tail_text = tail_metrics(console_path, tail_lines)
+    return (pod, rate, tail_text)
 
 
 def build_summary_text(component, pod_results, release, namespace, values_file,
-                       with_rate_summary):
-    """Render the per-component console-log summary (header + each pod's console
-    log + an optional producer-rate summary) as a string. `with_rate_summary`
-    parses `=== Producer Rate:` per pod and appends average/aggregate MB/s."""
+                       with_rate_summary, tail_lines):
+    """Render the per-component console-log summary (header + each pod's recent
+    console tail + an optional producer-rate summary) as a string. The full
+    console log of each pod is saved separately as `{pod}-console.log`; here we
+    embed only its last `tail_lines` lines. `with_rate_summary` parses
+    `=== Producer Rate:` per pod and appends average/aggregate MB/s."""
     lines = [
         f"# ckjs-perf-scale run ({component})",
         f"# release:   {release}",
@@ -360,6 +395,8 @@ def build_summary_text(component, pod_results, release, namespace, values_file,
     ]
     for pod, rate, log_text in pod_results:
         lines.append(f"===== POD {pod} =====")
+        lines.append(f"--- last {tail_lines} console lines; "
+                     f"full log: {pod}-console.log ---")
         lines.append(log_text if log_text.endswith("\n") else log_text + "\n")
         if with_rate_summary:
             lines.append(
@@ -406,11 +443,12 @@ def _safe_copy(pod, namespace, out_dir):
 
 
 def collect_round(components, namespace, run_dir, release, values_file,
-                  max_workers=20):
+                  tail_lines, max_workers=20):
     """One collection round: prime external auth with `kubectl get jobs`, then
-    atomically copy every pod's files and refresh each component's console-log
-    summary (also written atomically). Returns the producer pod_results (for the
-    exit-code check), or [] when there is no producer component."""
+    atomically copy every pod's files, stream each pod's full console log to
+    `{pod}-console.log`, and refresh each component's summary from the recent
+    console tail (also written atomically). Returns the producer pod_results
+    (for the exit-code check), or [] when there is no producer component."""
     kubectl_get_jobs(namespace)  # prime re-auth before the copies
 
     all_pods = [p for c in components for p in c["pods"]]
@@ -424,10 +462,11 @@ def collect_round(components, namespace, run_dir, release, values_file,
             continue
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             results = list(pool.map(
-                lambda p: fetch_pod_result(p, namespace), c["pods"]))
+                lambda p: fetch_pod_result(p, namespace, run_dir, tail_lines),
+                c["pods"]))
         write_text_atomic(c["log_path"], build_summary_text(
             c["component"], results, release, namespace, values_file,
-            c["with_rate_summary"]))
+            c["with_rate_summary"], tail_lines))
         print(f"wrote {c['log_path']}", flush=True)
         if c["component"] == "producer":
             producer_results = results
@@ -463,6 +502,15 @@ def main():
         "--keep",
         action="store_true",
         help="Don't `helm uninstall` after collecting logs.",
+    )
+    ap.add_argument(
+        "--summary-tail-lines",
+        type=int,
+        default=50,
+        help="How many trailing lines of each pod's console log to embed in the "
+        "summary (default 50). The full console log is always saved to "
+        "{pod}-console.log; only this tail (enough to span a metrics block) goes "
+        "into the summary, so the summary stays small for big/long runs.",
     )
     ap.add_argument(
         "--resume",
@@ -575,7 +623,8 @@ def main():
     producer_results = []
     while True:
         producer_results = collect_round(
-            components, args.namespace, run_dir, args.release, values_file)
+            components, args.namespace, run_dir, args.release, values_file,
+            args.summary_tail_lines)
         if all_done(components, args.namespace):
             break
         if time.monotonic() >= deadline:
