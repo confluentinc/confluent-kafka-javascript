@@ -84,9 +84,21 @@ export class RestService {
         return fullJitter(retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, retryCount - 1)
       },
       retryCondition: (error) => {
+        // Only retry Axios errors; anything else (e.g. thrown from an
+        // interceptor) is a programming error that should surface immediately.
+        if (!axios.isAxiosError(error)) {
+          return false;
+        }
+        // Never retry an intentionally cancelled request (AbortController /
+        // CancelToken, i.e. ERR_CANCELED).
+        if (error.code === 'ERR_CANCELED') {
+          return false;
+        }
         // When there is no HTTP response, the request failed at the network
         // level before a response was received (DNS failure, connection
-        // refused/reset, timeout, TLS error, etc.).
+        // refused/reset, timeout, TLS error, etc.). Note this still retries 
+        // request timeouts (ECONNABORTED), which is intentional. Otherwise, 
+        // retry only on retriable HTTP status codes.
         if (!error.response) {
           return true;
         }
