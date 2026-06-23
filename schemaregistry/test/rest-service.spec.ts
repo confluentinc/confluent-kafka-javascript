@@ -41,6 +41,26 @@ describe('RestService Retry Policy', () => {
     expect(mock.history.get.length).toBe(maxRetries + 1);
   });
 
+  it('should retry on network errors with no HTTP response', async () => {
+    const url = '/test';
+
+    // networkError() rejects with an error that has no `response`, mimicking a
+    // DNS failure / connection refused / reset, etc.
+    mock.onGet(url).networkError();
+
+    await expect(restService.handleRequest(url, 'GET')).rejects.toThrowError();
+    expect(mock.history.get.length).toBe(maxRetries + 1);
+  });
+
+  it('should retry on request timeouts with no HTTP response', async () => {
+    const url = '/test';
+
+    mock.onGet(url).timeout();
+
+    await expect(restService.handleRequest(url, 'GET')).rejects.toThrowError();
+    expect(mock.history.get.length).toBe(maxRetries + 1);
+  });
+
   it('should not retry on non-retryable errors (e.g., 401)', async () => {
     const url = '/test';
 

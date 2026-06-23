@@ -84,7 +84,13 @@ export class RestService {
         return fullJitter(retriesWaitMs ?? 1000, retriesMaxWaitMs ?? 20000, retryCount - 1)
       },
       retryCondition: (error) => {
-        return isRetriable(error.response?.status ?? 0);
+        // When there is no HTTP response, the request failed at the network
+        // level before a response was received (DNS failure, connection
+        // refused/reset, timeout, TLS error, etc.).
+        if (!error.response) {
+          return true;
+        }
+        return isRetriable(error.response.status);
       }
     });
     this.baseURLs = baseURLs;
