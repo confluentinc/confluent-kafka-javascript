@@ -78,6 +78,8 @@ describe('RestService Retry Policy', () => {
 
     // A cancellation must not schedule any retry/backoff.
     expect(fullJitterSpy).not.toHaveBeenCalled();
+
+    fullJitterSpy.mockRestore();
   });
 
   it('should not retry on non-retryable errors (e.g., 401)', async () => {

@@ -3,7 +3,7 @@
 ## Enhancements
 
 ## Fixes
-1.  Handle non-http errors during retries (#499)
+1. Handle non-HTTP errors during retries (#499)
 
 
 # confluent-kafka-javascript 1.9.1

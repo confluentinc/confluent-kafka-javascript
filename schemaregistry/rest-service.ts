@@ -64,6 +64,17 @@ export interface ClientConfig {
 
 const toBase64 = (str: string): string => Buffer.from(str).toString('base64');
 
+// Axios error codes that represent client-side cancellation or request
+// setup/configuration problems. These produce no HTTP response but retrying
+// them is pointless, so they are excluded from the network-error retry path.
+const NON_RETRIABLE_AXIOS_CODES = new Set<string>([
+  'ERR_CANCELED',
+  'ERR_INVALID_URL',
+  'ERR_BAD_OPTION',
+  'ERR_BAD_OPTION_VALUE',
+  'ERR_DEPRECATED',
+]);
+
 export class RestService {
   private client: AxiosInstance;
   private baseURLs: string[];
@@ -89,16 +100,19 @@ export class RestService {
         if (!axios.isAxiosError(error)) {
           return false;
         }
-        // Never retry an intentionally cancelled request (AbortController /
-        // CancelToken, i.e. ERR_CANCELED).
-        if (error.code === 'ERR_CANCELED') {
+        // Don't retry client-side errors that can never succeed on a retry: an
+        // intentionally cancelled request (AbortController / CancelToken) or a
+        // request setup/configuration error (invalid URL/options, etc.). These
+        // produce no HTTP response but are not network-level failures.
+        if (error.code !== undefined && NON_RETRIABLE_AXIOS_CODES.has(error.code)) {
           return false;
         }
-        // When there is no HTTP response, the request failed at the network
-        // level before a response was received (DNS failure, connection
-        // refused/reset, timeout, TLS error, etc.). Note this still retries 
-        // request timeouts (ECONNABORTED), which is intentional. Otherwise, 
-        // retry only on retriable HTTP status codes.
+        // No HTTP response means the request failed at the network level before
+        // a response was received (DNS failure, connection refused/reset,
+        // timeout, TLS error, etc.). Retry these the same way the Java client
+        // retries on IOException. This still retries request timeouts
+        // (ECONNABORTED), which is intentional. Otherwise, retry only on
+        // retriable HTTP status codes.
         if (!error.response) {
           return true;
         }
