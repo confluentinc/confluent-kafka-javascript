@@ -41,6 +41,45 @@ describe('RestService Retry Policy', () => {
     expect(mock.history.get.length).toBe(maxRetries + 1);
   });
 
+  it('should retry on network errors with no HTTP response', async () => {
+    const url = '/test';
+
+    // networkError() rejects with an error that has no `response`, mimicking a
+    // DNS failure / connection refused / reset, etc.
+    mock.onGet(url).networkError();
+
+    await expect(restService.handleRequest(url, 'GET')).rejects.toThrowError();
+    expect(mock.history.get.length).toBe(maxRetries + 1);
+  });
+
+  it('should retry on request timeouts with no HTTP response', async () => {
+    const url = '/test';
+
+    mock.onGet(url).timeout();
+
+    await expect(restService.handleRequest(url, 'GET')).rejects.toThrowError();
+    expect(mock.history.get.length).toBe(maxRetries + 1);
+  });
+
+  it('should not retry intentionally cancelled requests', async () => {
+    const url = '/test';
+    const fullJitterSpy = jest.spyOn(retryHelper, 'fullJitter');
+
+    mock.onGet(url).reply(200, {});
+
+    // An already-aborted signal makes axios reject with a cancellation
+    // (ERR_CANCELED) error that has no response.
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      restService.handleRequest(url, 'GET', undefined, { signal: controller.signal })
+    ).rejects.toThrowError();
+
+    // A cancellation must not schedule any retry/backoff.
+    expect(fullJitterSpy).not.toHaveBeenCalled();
+  });
+
   it('should not retry on non-retryable errors (e.g., 401)', async () => {
     const url = '/test';
 
