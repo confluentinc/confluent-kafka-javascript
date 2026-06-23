@@ -1,3 +1,11 @@
+# confluent-kafka-javascript x.x.x
+
+## Enhancements
+
+## Fixes
+1. Handle non-HTTP errors during retries (#499)
+
+
 # confluent-kafka-javascript 1.9.1
 
 v1.9.1 is a maintenance release. It is supported for all usage.
