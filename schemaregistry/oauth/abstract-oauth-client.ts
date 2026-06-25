@@ -16,11 +16,8 @@ abstract class AbstractBearerTokenProviderBuilder implements BearerTokenProvider
   }
 
   protected validate() {
-    const headers = ['logicalCluster', 'identityPoolId'];
-    const missingHeader = headers.find(header => !(header in this.bearerAuthCredentials));
-
-    if (missingHeader) {
-      throw new Error(`Bearer auth header '${missingHeader}' not provided`);
+    if (!this.bearerAuthCredentials.logicalCluster) {
+      throw new Error("Bearer auth header 'logicalCluster' not provided");
     }
   }
 
@@ -34,8 +31,15 @@ abstract class AbstractOauthTokenProvider implements BearerTokenProvider {
   constructor(bearerAuthCredentials: BearerAuthCredentials) {
     this.additionalHeaders = {
       'target-sr-cluster': bearerAuthCredentials.logicalCluster!,
-      'Confluent-Identity-Pool-Id': bearerAuthCredentials.identityPoolId!,
     };
+
+    const poolId = Array.isArray(bearerAuthCredentials.identityPoolId)
+      ? bearerAuthCredentials.identityPoolId.join(',')
+      : bearerAuthCredentials.identityPoolId;
+
+    if (poolId) {
+      this.additionalHeaders['Confluent-Identity-Pool-Id'] = poolId;
+    }
   }
   
   abstract getAccessToken(): Promise<string>
