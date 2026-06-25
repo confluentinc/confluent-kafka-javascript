@@ -46,7 +46,7 @@ export interface BearerAuthCredentials {
   clientSecret?: string,
   scope?: string,
   logicalCluster?: string,
-  identityPoolId?: string,
+  identityPoolId?: string | string[],
 }
 
 export interface ClientConfig {
@@ -79,6 +79,7 @@ export class RestService {
   private client: AxiosInstance;
   private baseURLs: string[];
   private bearerTokenProvider?: BearerTokenProvider;
+  private bearerTokenInitialized: boolean = false;
   private static oauthBearerTokenProviderBuilders : Record<string, (bearerAuthCredentials: BearerAuthCredentials) => BearerTokenProviderBuilder> = {
     'STATIC_TOKEN': (credentials) => new StaticTokenProviderBuilder(credentials),
     'OAUTHBEARER': (credentials) => new OAuthClientBuilder(credentials),
@@ -167,12 +168,11 @@ export class RestService {
     retriesWaitMs: number, retriesMaxWaitMs: number, bearerAuthCredentials?: BearerAuthCredentials): void {
     if (bearerAuthCredentials) {
       delete this.client.defaults.auth;
+      delete this.client.defaults.headers.common['Authorization'];
+      this.bearerTokenInitialized = false;
 
-      const headers = ['logicalCluster', 'identityPoolId'];
-      const missingHeader = headers.find(header => !(header in bearerAuthCredentials));
-
-      if (missingHeader) {
-        throw new Error(`Bearer auth header '${missingHeader}' not provided`);
+      if (!bearerAuthCredentials.logicalCluster) {
+        throw new Error("Bearer auth header 'logicalCluster' not provided");
       }
 
       if (!(bearerAuthCredentials.credentialsSource in
@@ -196,8 +196,10 @@ export class RestService {
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
 
-    if (this.bearerTokenProvider && this.bearerTokenProvider.tokenExpired()) {
+    if (this.bearerTokenProvider &&
+        (!this.bearerTokenInitialized || this.bearerTokenProvider.tokenExpired())) {
       await this.setOAuthBearerToken();
+      this.bearerTokenInitialized = true;
     }
 
     for (let i = 0; i < this.baseURLs.length; i++) {
