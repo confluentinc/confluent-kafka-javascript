@@ -16,7 +16,7 @@ abstract class AbstractBearerTokenProviderBuilder implements BearerTokenProvider
   }
 
   protected validate() {
-    if (!('logicalCluster' in this.bearerAuthCredentials)) {
+    if (!this.bearerAuthCredentials.logicalCluster) {
       throw new Error("Bearer auth header 'logicalCluster' not provided");
     }
   }

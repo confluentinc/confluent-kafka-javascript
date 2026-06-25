@@ -168,8 +168,10 @@ export class RestService {
     retriesWaitMs: number, retriesMaxWaitMs: number, bearerAuthCredentials?: BearerAuthCredentials): void {
     if (bearerAuthCredentials) {
       delete this.client.defaults.auth;
+      delete this.client.defaults.headers.common['Authorization'];
+      this.bearerTokenInitialized = false;
 
-      if (!('logicalCluster' in bearerAuthCredentials)) {
+      if (!bearerAuthCredentials.logicalCluster) {
         throw new Error("Bearer auth header 'logicalCluster' not provided");
       }
 
