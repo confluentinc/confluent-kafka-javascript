@@ -1,4 +1,6 @@
-# confluent-kafka-javascript x.x.x
+# confluent-kafka-javascript 1.10.0
+
+v1.10.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
 1. Support for union-of-pools/auto-pool mapping for schema registry (#500)
