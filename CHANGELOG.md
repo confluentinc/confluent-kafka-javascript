@@ -1,6 +1,7 @@
 # confluent-kafka-javascript x.x.x
 
 ## Enhancements
+1. Support for union-of-pools/auto-pool mapping for schema registry (#500)
 
 ## Fixes
 1. Handle non-HTTP errors during retries (#499)
