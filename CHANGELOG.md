@@ -3,7 +3,8 @@
 v1.10.0 is a feature release. It is supported for all usage.
 
 ## Enhancements
-1. Support for union-of-pools/auto-pool mapping for schema registry (#500)
+1. References librdkafka v2.15.0. Refer to the [librdkafka v2.15.0 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.15.0) for more information.
+2. Support for union-of-pools/auto-pool mapping for schema registry (#500)
 
 ## Fixes
 1. Handle non-HTTP errors during retries (#499)
