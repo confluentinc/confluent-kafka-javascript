@@ -1,3 +1,9 @@
+# confluent-kafka-javascript 1.x.x
+
+## Enhancements
+1. Support generating a JSON Schema title from a JSON payload (#505)
+
+
 # confluent-kafka-javascript 1.10.0
 
 v1.10.0 is a feature release. It is supported for all usage.
