@@ -34,6 +34,19 @@ import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const JSON_TYPE = "JSON"
 
+export const SCHEMA_TITLE = Symbol.for("schema.title")
+
+/**
+ * tagRecord annotates a plain object with a schema title so that
+ * RECORD/TOPIC_RECORD subject name strategies can derive the correct subject.
+ * The annotation is non-enumerable so it is invisible to JSON.stringify and
+ * deep-equality checks.
+ */
+export function tagRecord<T extends object>(obj: T, title: string): T {
+  Object.defineProperty(obj, SCHEMA_TITLE, { value: title, enumerable: false, writable: true, configurable: true })
+  return obj
+}
+
 export interface ValidateFunction {
   (this: any, data: any): boolean
   errors?: null | ErrorObject[]
@@ -164,7 +177,12 @@ export class JsonSerializer extends Serializer implements JsonSerde {
   }
 
   static messageToSchema(msg: any): DereferencedJSONSchema {
-    return generateSchema(msg)
+    const schema = generateSchema(msg)
+    const title = msg != null && typeof msg === 'object' ? (msg as Record<symbol, unknown>)[SCHEMA_TITLE] : undefined
+    if (typeof title === 'string' && title.length > 0) {
+      (schema as { title?: string }).title = title
+    }
+    return schema
   }
 }
 
