@@ -43,7 +43,7 @@ export const SCHEMA_TITLE = Symbol.for("schema.title")
  * deep-equality checks.
  */
 export function tagRecord<T extends object>(obj: T, title: string): T {
-  Object.defineProperty(obj, SCHEMA_TITLE, { value: title, enumerable: false, writable: true, configurable: true })
+  Object.defineProperty(obj, SCHEMA_TITLE, { value: title, enumerable: false, writable: false, configurable: false })
   return obj
 }
 
