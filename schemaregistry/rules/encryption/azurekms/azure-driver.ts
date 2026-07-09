@@ -94,8 +94,9 @@ export class AzureKmsDriver implements KmsDriver {
     try {
       key = await client.getKey(parsed.name)
     } catch (e) {
+      const details = e instanceof Error ? e.message : String(e)
       throw new SecurityException(
-        `Failed to resolve Azure Key Vault key id for key name '${parsed.name}' in vault ${parsed.vaultUrl}: ${e}`)
+        `Failed to resolve Azure Key Vault key id for key name '${parsed.name}' in vault ${parsed.vaultUrl}: ${details}`)
     }
     if (key == null || key.id == null) {
       throw new SecurityException(
