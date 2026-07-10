@@ -74,9 +74,9 @@ export class AzureKmsDriver implements KmsDriver {
 
   /**
    * Resolves a possibly-versionless Azure Key Vault key identifier (e.g.
-   * "https://vault.vault.azure.net/keys/name") into the concrete, currently-enabled version (e.g.
-   * "https://vault.vault.azure.net/keys/name/<version>"). If kmsKeyId already includes a version
-   * segment, it is returned unchanged and no call is made.
+   * "https://vault.vault.azure.net/keys/name") into the concrete latest key version returned by
+   * Key Vault (e.g. "https://vault.vault.azure.net/keys/name/<version>"). If kmsKeyId already
+   * includes a version segment, it is returned unchanged and no call is made.
    *
    * This exists because, unlike AWS KMS and GCP KMS, Azure Key Vault's wrap/unwrap operations
    * address an explicit key version and do not embed that version in the returned ciphertext, so
