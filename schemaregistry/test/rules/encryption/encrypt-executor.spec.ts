@@ -1,9 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
-import {EncryptionExecutor, FieldEncryptionExecutor} from "../../../rules/encryption/encrypt-executor";
-import {ClientConfig} from "../../../rest-service";
-import {MockDekRegistryClient} from "../../../rules/encryption/dekregistry/mock-dekregistry-client";
-import {Rule, RuleMode, SchemaInfo} from "../../../schemaregistry-client";
-import {RuleContext} from "../../../serde/serde";
+import { EncryptionExecutor, FieldEncryptionExecutor } from '../../../rules/encryption/encrypt-executor';
+import { ClientConfig } from '../../../rest-service';
+import { MockDekRegistryClient } from '../../../rules/encryption/dekregistry/mock-dekregistry-client';
+import { Rule, RuleMode, SchemaInfo } from '../../../schemaregistry-client';
+import { RuleContext } from '../../../serde/serde';
 
 function newContext(subject: string): RuleContext {
   const rule: Rule = {
