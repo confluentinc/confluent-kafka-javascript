@@ -48,6 +48,26 @@ export enum DekFormat {
 interface KekId {
   name: string
   deleted: boolean
+  context?: string
+}
+
+const CONTEXT_DELIMITER = ':'
+const CONTEXT_PREFIX = CONTEXT_DELIMITER + '.'
+
+// contextFor returns the context parsed from the given qualified subject (of
+// the form ":.context:subject"), or undefined if the subject has no context
+// prefix or is explicitly qualified with the default (".") context.
+// Tenant is not handled here as it is a server-side-only concept.
+function contextFor(subject: string): string | undefined {
+  if (subject.startsWith(CONTEXT_PREFIX)) {
+    const rest = subject.slice(CONTEXT_PREFIX.length)
+    const ix = rest.indexOf(CONTEXT_DELIMITER)
+    const context = ix >= 0
+      ? subject.slice(1, ix + CONTEXT_PREFIX.length)
+      : subject.slice(1)
+    return context === '.' ? undefined : context
+  }
+  return undefined
 }
 
 interface DekId {
@@ -311,6 +331,7 @@ export class EncryptionExecutorTransform {
     const kekId: KekId = {
       name: this.kekName,
       deleted: false,
+      context: contextFor(ctx.subject),
     }
     let kek = await this.retrieveKekFromRegistry(kekId)
     if (kek == null) {
@@ -347,7 +368,7 @@ export class EncryptionExecutorTransform {
 
   async retrieveKekFromRegistry(key: KekId): Promise<Kek | null> {
     try {
-      return await this.executor.client!.getKek(key.name, key.deleted)
+      return await this.executor.client!.getKek(key.name, key.deleted, key.context)
     } catch (err) {
       if (err instanceof RestError && err.status === 404) {
         return null
@@ -358,7 +379,7 @@ export class EncryptionExecutorTransform {
 
   async storeKekToRegistry(key: KekId, kmsType: string, kmsKeyId: string, shared: boolean): Promise<Kek | null> {
     try {
-      return await this.executor.client!.registerKek(key.name, kmsType, kmsKeyId, shared)
+      return await this.executor.client!.registerKek(key.name, kmsType, kmsKeyId, shared, undefined, undefined, key.context)
     } catch (err) {
       if (err instanceof RestError && err.status === 409) {
         return null
