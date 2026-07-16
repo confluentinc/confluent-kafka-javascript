@@ -49,8 +49,8 @@ interface Dek {
 interface DekClient {
   config(): ClientConfig;
   registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
-              kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek>;
-  getKek(name: string, deleted: boolean): Promise<Kek>;
+              kmsProps?: { [key: string]: string }, doc?: string, context?: string): Promise<Kek>;
+  getKek(name: string, deleted: boolean, context?: string): Promise<Kek>;
   registerDek(kekName: string, subject: string, algorithm: string, version: number,
               encryptedKeyMaterial?: string): Promise<Dek>;
   getDek(kekName: string, subject: string, algorithm: string, version: number, deleted: boolean): Promise<Dek>;
@@ -98,8 +98,8 @@ class DekRegistryClient implements DekClient {
   }
 
   async registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
-    kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek> {
-    const cacheKey = stringify({ name, deleted: false });
+    kmsProps?: { [key: string]: string }, doc?: string, context?: string): Promise<Kek> {
+    const cacheKey = stringify({ name, deleted: false, context });
 
     return await this.kekMutex.runExclusive(async () => {
       const kek = this.kekCache.get(cacheKey);
@@ -116,8 +116,11 @@ class DekRegistryClient implements DekClient {
         shared,
       };
 
+      const path = context != null
+        ? `/dek-registry/v1/keks?context=${encodeURIComponent(context)}`
+        : '/dek-registry/v1/keks';
       const response = await this.restService.handleRequest<Kek>(
-        '/dek-registry/v1/keks',
+        path,
         'POST',
         request);
       this.kekCache.set(cacheKey, response.data);
@@ -125,8 +128,8 @@ class DekRegistryClient implements DekClient {
     });
   }
 
-  async getKek(name: string, deleted: boolean = false): Promise<Kek> {
-    const cacheKey = stringify({ name, deleted });
+  async getKek(name: string, deleted: boolean = false, context?: string): Promise<Kek> {
+    const cacheKey = stringify({ name, deleted, context });
 
     return await this.kekMutex.runExclusive(async () => {
       const kek = this.kekCache.get(cacheKey);
@@ -135,9 +138,10 @@ class DekRegistryClient implements DekClient {
       }
       name = encodeURIComponent(name);
 
-      const response = await this.restService.handleRequest<Kek>(
-        `/dek-registry/v1/keks/${name}?deleted=${deleted}`,
-        'GET');
+      const path = context != null
+        ? `/dek-registry/v1/keks/${name}?deleted=${deleted}&context=${encodeURIComponent(context)}`
+        : `/dek-registry/v1/keks/${name}?deleted=${deleted}`;
+      const response = await this.restService.handleRequest<Kek>(path, 'GET');
       this.kekCache.set(cacheKey, response.data);
       return response.data;
     });
