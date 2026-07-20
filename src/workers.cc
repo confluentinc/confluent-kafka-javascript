@@ -9,6 +9,8 @@
  */
 #include "src/workers.h"
 
+#include <algorithm>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -799,22 +801,44 @@ KafkaConsumerConsumeNum::KafkaConsumerConsumeNum(Nan::Callback *callback,
                                      KafkaConsumer* consumer,
                                      const uint32_t & num_messages,
                                      const int & timeout_ms,
-                                     bool timeout_only_for_first_message) :
+                                     bool timeout_only_for_first_message,
+                                     bool timeout_shared_by_batch) :
   ErrorAwareWorker(callback),
   m_consumer(consumer),
   m_num_messages(num_messages),
   m_timeout_ms(timeout_ms),
-  m_timeout_only_for_first_message(timeout_only_for_first_message) {}
+  m_timeout_only_for_first_message(timeout_only_for_first_message),
+  m_timeout_shared_by_batch(timeout_shared_by_batch) {}
 
 KafkaConsumerConsumeNum::~KafkaConsumerConsumeNum() {}
 
 void KafkaConsumerConsumeNum::Execute() {
   std::size_t max = static_cast<std::size_t>(m_num_messages);
   bool looping = true;
-  int timeout_ms = m_timeout_ms;
   std::size_t eof_event_count = 0;
 
+  int timeout_ms = m_timeout_ms;
+  int early_exit_ms = 1;
+
+  std::chrono::steady_clock::time_point start_time;
+  if (m_timeout_shared_by_batch) {
+    start_time = std::chrono::steady_clock::now();
+  }
+
   while (m_messages.size() - eof_event_count < max && looping) {
+    // Allow timeout_ms = early_exit_ms to take precedence
+    // timeout_ms > 1
+    if (m_timeout_shared_by_batch && timeout_ms > early_exit_ms) {
+      // Calc next single consume timeout remaining for batch
+      auto now = std::chrono::steady_clock::now();
+      auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time)
+        .count();
+      // `timeout_ms` of 0 triggers non-blocking behavior https://github.com/confluentinc/librdkafka/blob/3f52de491f8aae1d71a9a0b3f1c07bfd6df4aec3/src/rdkafka_int.h#L1189-L1190
+      // This still returns ERR_TIMED_OUT if no message available
+      timeout_ms = std::max(0, m_timeout_ms - static_cast<int>(elapsed));
+    }
+
     // Get a message
     Baton b = m_consumer->Consume(timeout_ms);
     if (b.err() == RdKafka::ERR_NO_ERROR) {
@@ -825,7 +849,7 @@ void KafkaConsumerConsumeNum::Execute() {
           // If partition EOF and have consumed messages, retry with timeout 1
           // This allows getting ready messages, while not waiting for new ones
           if (m_messages.size() > eof_event_count) {
-            timeout_ms = 1;
+            timeout_ms = early_exit_ms;
           }
 
           // We will only go into this code path when `enable.partition.eof`
@@ -848,7 +872,7 @@ void KafkaConsumerConsumeNum::Execute() {
           // within the timeout but not wait if we already have one or more
           // messages.
           if (m_timeout_only_for_first_message) {
-            timeout_ms = 1;
+            timeout_ms = early_exit_ms;
           }
 
           break;
