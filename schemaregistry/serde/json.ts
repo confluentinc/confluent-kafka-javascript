@@ -8,7 +8,8 @@ import {
 } from "./serde";
 import {
   Client, RuleMode, RulePhase,
-  SchemaInfo
+  SchemaInfo,
+  SchemaRegistryClient
 } from "../schemaregistry-client";
 import Ajv, {ErrorObject} from "ajv";
 import Ajv2019 from "ajv/dist/2019";
@@ -30,7 +31,8 @@ import { LRUCache } from "lru-cache";
 import { generateSchema } from "./json-util";
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
-import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
+import type {ConsumerConstructorConfig, IHeaders, ProducerConstructorConfig} from "@confluentinc/kafka-javascript/types/kafkajs";
+import { ClientConfig } from "rest-service";
 
 export const JSON_TYPE = "JSON"
 
@@ -186,6 +188,55 @@ export class JsonSerializer extends Serializer implements JsonSerde {
   }
 }
 
+export class KafkaJsonSerializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #jsonSerializeConfig?: JsonSerializerConfig | null = null
+  #serializerInitializer?: ((serializer: JsonSerializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  setClientConfig(clientConfig: ClientConfig): KafkaJsonSerializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  setJsonSerializerConfig(jsonSerializerConfig: JsonSerializerConfig): KafkaJsonSerializerBuilder<T> {
+    this.#jsonSerializeConfig = jsonSerializerConfig
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaJsonSerializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  setSerializerInitializer(initializer: (serializer: JsonSerializer) => void): KafkaJsonSerializerBuilder<T> {
+    this.#serializerInitializer = initializer
+    return this
+  }
+
+  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): JsonSerializer {
+    if (this.#clientConfig == null) {
+      throw new Error('Schema Registry client configuration is required')
+    }
+    if (this.#clientConfig.baseURLs == null || this.#clientConfig.baseURLs.length === 0) {
+      throw new Error('Schema Registry client baseURLs attribute is required')
+    }
+
+    const schemaRegistryClient = new SchemaRegistryClient(this.#clientConfig!);
+    const jsonSerializeConfig = this.#jsonSerializeConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    const serializer: JsonSerializer = new JsonSerializer(schemaRegistryClient, serdeType, jsonSerializeConfig, this.#ruleRegistry ?? undefined);
+    if (this.#serializerInitializer != null) {
+      this.#serializerInitializer(serializer)
+    }
+    return serializer
+  }
+}
+
+export function kafkaJsonSerializerBuilder<T>(): KafkaJsonSerializerBuilder<T> {
+  return new KafkaJsonSerializerBuilder<T>()
+}
+
 /**
  * JsonDeserializerConfig is the configuration for the JsonDeserializer.
  */
@@ -302,6 +353,56 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     return ''
   }
 }
+
+export class KafkaJsonDeserializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #jsonDeserializeConfig?: JsonDeserializerConfig | null = null
+  #deserializerInitializer?: ((deserializer: JsonDeserializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  setClientConfig(clientConfig: ClientConfig): KafkaJsonDeserializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  setJsonDeserializerConfig(jsonDeserializerConfig: JsonDeserializerConfig): KafkaJsonDeserializerBuilder<T> {
+    this.#jsonDeserializeConfig = jsonDeserializerConfig
+    return this
+  }
+
+  setDeserializerInitializer(initializer: (deserializer: JsonDeserializer) => void): KafkaJsonDeserializerBuilder<T> {
+    this.#deserializerInitializer = initializer
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaJsonDeserializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): JsonDeserializer {
+    if (this.#clientConfig == null) {
+      throw new Error('Schema Registry client configuration is required')
+    }
+    if (this.#clientConfig.baseURLs == null || this.#clientConfig.baseURLs.length === 0) {
+      throw new Error('Schema Registry client baseURLs attribute is required')
+    }
+
+    const schemaRegistryClient = new SchemaRegistryClient(this.#clientConfig!);
+    const jsonDeserializeConfig = this.#jsonDeserializeConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    const deserializer: JsonDeserializer = new JsonDeserializer(schemaRegistryClient, serdeType, jsonDeserializeConfig, this.#ruleRegistry ?? undefined);
+    if (this.#deserializerInitializer != null) {
+      this.#deserializerInitializer(deserializer)
+    }
+    return deserializer
+  }
+}
+
+export function kafkaJsonDeserializerBuilder<T>(): KafkaJsonDeserializerBuilder<T> {
+  return new KafkaJsonDeserializerBuilder<T>()
+}
+
 
 async function toValidateFunction(
   client: Client,
