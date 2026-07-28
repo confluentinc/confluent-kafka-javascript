@@ -142,6 +142,9 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
   }
 
+  override setClusterId(clusterId: string): void {
+  }
+
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
     const schema = await this.toType(ctx.target)
     if (typeof schema === 'boolean') {
@@ -318,6 +321,9 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
       }
     }
     return msg
+  }
+
+  override setClusterId(clusterId: string): void {
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {

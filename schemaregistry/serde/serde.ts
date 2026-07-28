@@ -484,6 +484,9 @@ export abstract class Serializer extends Serde {
    */
   abstract serialize(topic: string, msg: any, headers?: IHeaders): Promise<Buffer>
 
+
+  abstract setClusterId(clusterId: string): void;
+
   // GetSchemaID returns a schema ID for the given schema
   async getSchemaId(schemaType: string, topic: string, msg: any, info?: SchemaInfo, format?: string): Promise<[SchemaId, SchemaInfo]> {
     let autoRegister = this.config().autoRegisterSchemas
@@ -555,6 +558,8 @@ export abstract class Deserializer extends Serde {
    * @param headers - optional headers
    */
   abstract deserialize(topic: string, payload: Buffer, headers?: IHeaders): Promise<any>
+
+  abstract setClusterId(clusterId: string): void;
 
   deserializeSchemaId(topic: string, payload: Buffer, schemaId: SchemaId, headers?: IHeaders): number {
     const deserializer = this.config().schemaIdDeserializer ?? DualSchemaIdDeserializer

@@ -178,6 +178,9 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
   }
 
+  override setClusterId(clusterId: string): void {
+  }
+
   async getSchemaInfo(fileDesc: DescFile): Promise<SchemaInfo> {
     const value = this.descToSchemaCache.get(fileDesc.name)
     if (value != null) {
@@ -485,6 +488,9 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       return parent.nestedMessages[index]
     }
     return this.toNestedMessageDesc(parent.nestedMessages[index], msgIndexes.slice(1))
+  }
+
+  override setClusterId(clusterId: string): void {
   }
 
   async getRecordName(info?: SchemaInfo): Promise<string> {

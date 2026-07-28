@@ -140,6 +140,7 @@ export interface ProducerConfig {
 
 export interface Serializer<T> {
   serialize(topic: string, msg: T, headers?: IHeaders): Promise<Buffer>
+  setClusterId(clusterId: string): void
 }
 
 export interface KafkaSerializerBuilder<T> {
@@ -260,6 +261,7 @@ export interface ConsumerConfig {
 
 export interface Deserializer<T> {
   deserialize(topic: string, payload: Buffer, headers?: IHeaders): Promise<T>
+  setClusterId(clusterId: string): void
 }
 
 export interface KafkaDeserializerBuilder<T> {

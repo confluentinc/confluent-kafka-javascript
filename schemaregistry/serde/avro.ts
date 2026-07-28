@@ -108,6 +108,9 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
   }
 
+  override setClusterId(clusterId: string): void {
+  }
+
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
     const [schema, ] = await this.toType(ctx.target)
     return await transform(ctx, schema, msg, fieldTransform)
@@ -252,6 +255,9 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     msg = await this.executeRules(
       subject, topic, RuleMode.READ, null, target, msg, getInlineTags(info, deps))
     return msg
+  }
+
+  override setClusterId(clusterId: string): void {
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
