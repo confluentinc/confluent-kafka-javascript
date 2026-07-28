@@ -16,6 +16,8 @@ import {
   SchemaInfo,
   SchemaMetadata
 } from "../schemaregistry-client";
+import {ClientConfig} from "../rest-service";
+import {buildKafkaSerde} from "./kafka-builder";
 import {
   createFileRegistry, createMutableRegistry,
   DescField,
@@ -61,7 +63,7 @@ import {file_google_type_postal_address} from "../google/type/postal_address_pb"
 import {file_google_type_quaternion} from "../google/type/quaternion_pb";
 import {file_google_type_timeofday} from "../google/type/timeofday_pb";
 import {file_google_type_month} from "../google/type/month_pb";
-import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
+import type {ConsumerConstructorConfig, IHeaders, ProducerConstructorConfig} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const PROTOBUF_TYPE = "PROTOBUF"
 
@@ -397,6 +399,61 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 }
 
+export class KafkaProtobufSerializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #schemaRegistryClient?: Client | null = null
+  #protobufSerializerConfig?: ProtobufSerializerConfig | null = null
+  #serializerInitializer?: ((serializer: ProtobufSerializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  /**
+   * Configuration for a Schema Registry client the serializer creates and owns.
+   * Mutually exclusive with setSchemaRegistryClient.
+   */
+  setClientConfig(clientConfig: ClientConfig): KafkaProtobufSerializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  /**
+   * A Schema Registry client the application owns; it is never closed by the serializer.
+   * Mutually exclusive with setClientConfig.
+   */
+  setSchemaRegistryClient(client: Client): KafkaProtobufSerializerBuilder<T> {
+    this.#schemaRegistryClient = client
+    return this
+  }
+
+  setProtobufSerializerConfig(protobufSerializerConfig: ProtobufSerializerConfig): KafkaProtobufSerializerBuilder<T> {
+    this.#protobufSerializerConfig = protobufSerializerConfig
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaProtobufSerializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  setSerializerInitializer(initializer: (serializer: ProtobufSerializer) => void): KafkaProtobufSerializerBuilder<T> {
+    this.#serializerInitializer = initializer
+    return this
+  }
+
+  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): ProtobufSerializer {
+    const protobufSerializerConfig = this.#protobufSerializerConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    return buildKafkaSerde(
+      this.#clientConfig,
+      this.#schemaRegistryClient,
+      (client) => new ProtobufSerializer(client, serdeType, protobufSerializerConfig, this.#ruleRegistry ?? undefined),
+      this.#serializerInitializer)
+  }
+}
+
+export function kafkaProtobufSerializerBuilder<T>(): KafkaProtobufSerializerBuilder<T> {
+  return new KafkaProtobufSerializerBuilder<T>()
+}
+
 /**
  * ProtobufDeserializerConfig is the configuration for ProtobufDeserializer.
  */
@@ -553,6 +610,61 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     }
     return ''
   }
+}
+
+export class KafkaProtobufDeserializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #schemaRegistryClient?: Client | null = null
+  #protobufDeserializerConfig?: ProtobufDeserializerConfig | null = null
+  #deserializerInitializer?: ((deserializer: ProtobufDeserializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  /**
+   * Configuration for a Schema Registry client the deserializer creates and owns.
+   * Mutually exclusive with setSchemaRegistryClient.
+   */
+  setClientConfig(clientConfig: ClientConfig): KafkaProtobufDeserializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  /**
+   * A Schema Registry client the application owns; it is never closed by the deserializer.
+   * Mutually exclusive with setClientConfig.
+   */
+  setSchemaRegistryClient(client: Client): KafkaProtobufDeserializerBuilder<T> {
+    this.#schemaRegistryClient = client
+    return this
+  }
+
+  setProtobufDeserializerConfig(protobufDeserializerConfig: ProtobufDeserializerConfig): KafkaProtobufDeserializerBuilder<T> {
+    this.#protobufDeserializerConfig = protobufDeserializerConfig
+    return this
+  }
+
+  setDeserializerInitializer(initializer: (deserializer: ProtobufDeserializer) => void): KafkaProtobufDeserializerBuilder<T> {
+    this.#deserializerInitializer = initializer
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaProtobufDeserializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): ProtobufDeserializer {
+    const protobufDeserializerConfig = this.#protobufDeserializerConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    return buildKafkaSerde(
+      this.#clientConfig,
+      this.#schemaRegistryClient,
+      (client) => new ProtobufDeserializer(client, serdeType, protobufDeserializerConfig, this.#ruleRegistry ?? undefined),
+      this.#deserializerInitializer)
+  }
+}
+
+export function kafkaProtobufDeserializerBuilder<T>(): KafkaProtobufDeserializerBuilder<T> {
+  return new KafkaProtobufDeserializerBuilder<T>()
 }
 
 function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
