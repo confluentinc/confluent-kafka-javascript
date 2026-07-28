@@ -96,6 +96,39 @@ describe('Admin', function() {
     });
   });
 
+  describe('clusterId', function() {
+    it('should return the cluster id', function(done) {
+      // Unlike the producer and consumer, AdminClient.connect() is synchronous
+      // and does not make a metadata request, so the cluster id may not be
+      // cached yet. Allow time for the initial metadata response to arrive.
+      client.clusterId(5000, function(err, clusterId) {
+        t.ifError(err);
+        t.equal(typeof clusterId, 'string');
+        t.ok(clusterId.length > 0, 'Cluster id is empty');
+        done();
+      });
+    });
+
+    it('should return the cluster id of the client it was derived from', function(done) {
+      var derived = Kafka.AdminClient.createFrom(producer);
+
+      // The producer already fetched metadata while connecting, and the
+      // derived client shares its handle, so the cached value is available.
+      derived.clusterId(0, function(err, clusterId) {
+        t.ifError(err);
+        t.equal(typeof clusterId, 'string');
+        t.ok(clusterId.length > 0, 'Cluster id is empty');
+
+        producer.clusterId(0, function(err2, producerClusterId) {
+          t.ifError(err2);
+          t.equal(clusterId, producerClusterId);
+          derived.disconnect();
+          done();
+        });
+      });
+    });
+  });
+
   describe('createTopic', function() {
     it('should create topic sucessfully', function(done) {
       var topicName = 'admin-test-topic-' + time;
