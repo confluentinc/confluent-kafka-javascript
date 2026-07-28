@@ -238,6 +238,39 @@ Baton Connection::QueryWatermarkOffsets(
 }
 
 /**
+ * Fetch the id of the cluster this client is connected to.
+ *
+ * The cluster id is received as part of a metadata response and is cached by
+ * librdkafka, so once it is known this returns without a broker round trip.
+ * A timeout of 0 only ever consults the cache.
+ *
+ * @returns A baton specifying the error state. If there was no error,
+ *          `clusterid` is set to the cluster id.
+ */
+Baton Connection::ClusterId(int timeout_ms, std::string* clusterid) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  scoped_shared_read_lock lock(m_connection_lock);
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  // An empty string means either the timeout expired before any metadata
+  // arrived, or metadata arrived without a cluster id (broker too old, or
+  // api.version.request=false). librdkafka does not distinguish the two, so
+  // switching to the C API here would not give us a better error.
+  std::string id = m_client->clusterid(timeout_ms);
+  if (id.empty()) {
+    return Baton(RdKafka::ERR__TIMED_OUT, "Cluster id is not available");
+  }
+
+  *clusterid = id;
+  return Baton(RdKafka::ERR_NO_ERROR);
+}
+
+/**
  * Look up the offsets for the given partitions by timestamp.
  *
  * The returned offset for each partition is the earliest offset whose
@@ -495,6 +528,34 @@ NAN_METHOD(Connection::NodeQueryWatermarkOffsets) {
 
   Nan::AsyncQueueWorker(new Workers::ConnectionQueryWatermarkOffsets(
     callback, obj, topic_name, partition, timeout_ms));
+
+  info.GetReturnValue().Set(Nan::Null());
+}
+
+NAN_METHOD(Connection::NodeClusterId) {
+  Nan::HandleScope scope;
+
+  Connection* obj = ObjectWrap::Unwrap<Connection>(info.This());
+
+  if (!info[0]->IsNumber()) {
+    Nan::ThrowError("1st parameter must be a number of milliseconds");
+    return;
+  }
+
+  if (!info[1]->IsFunction()) {
+    Nan::ThrowError("2nd parameter must be a callback");
+    return;
+  }
+
+  // First parameter is the timeout
+  int timeout_ms = Nan::To<int>(info[0]).FromJust();
+
+  // Second parameter is the callback
+  v8::Local<v8::Function> cb = info[1].As<v8::Function>();
+  Nan::Callback *callback = new Nan::Callback(cb);
+
+  Nan::AsyncQueueWorker(
+    new Workers::ConnectionClusterId(callback, obj, timeout_ms));
 
   info.GetReturnValue().Set(Nan::Null());
 }

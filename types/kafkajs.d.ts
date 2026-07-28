@@ -212,6 +212,7 @@ export type Producer<K = Buffer | string, V = Buffer | string> = Client & {
   send(record: ProducerRecord<K,V>): Promise<RecordMetadata[]>
   sendBatch(batch: ProducerBatch<K,V>): Promise<RecordMetadata[]>
   flush(args?: { timeout?: number }): Promise<void>
+  clusterId(options?: { timeout?: number }): Promise<string>
 
   // Transactional producer-only methods.
   transaction(): Promise<Transaction>
@@ -422,6 +423,7 @@ export type Consumer<K = Buffer, V = Buffer> = Client & {
   paused(): TopicPartitions[]
   resume(topics: Array<{ topic: string; partitions?: number[] }>): void
   assignment(): TopicPartition[]
+  clusterId(options?: { timeout?: number }): Promise<string>
 }
 
 export interface AdminConfig {
@@ -460,6 +462,7 @@ export type Admin = {
   }): Promise<boolean>
   deleteTopics(options: { topics: string[]; timeout?: number }): Promise<void>
   listTopics(options?: { timeout?: number }): Promise<string[]>
+  clusterId(options?: { timeout?: number }): Promise<string>
   listGroups(options?: {
     timeout?: number,
     matchConsumerGroupStates?: ConsumerGroupStates[],

@@ -4,6 +4,7 @@
 1. Support generating a JSON Schema title from a JSON payload (#505)
 2. Add support for saving Azure key version with DEK (#507)
 3. Pass context when clients make KEK calls to DEK Registry (#508)
+4. Add `clusterId` to the producer, consumer and admin clients to fetch the id of the cluster the client is connected to. It is available on both the node-rdkafka API and the promisified API (#).
 
 
 # confluent-kafka-javascript 1.10.0

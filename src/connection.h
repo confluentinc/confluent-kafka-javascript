@@ -55,6 +55,7 @@ class Connection : public Nan::ObjectWrap {
   Baton CreateTopic(std::string);
   Baton CreateTopic(std::string, RdKafka::Conf*);
   Baton GetMetadata(bool, std::string, int);
+  Baton ClusterId(int timeout_ms, std::string* clusterid);
   Baton QueryWatermarkOffsets(std::string, int32_t, int64_t*, int64_t*, int);
   Baton OffsetsForTimes(std::vector<RdKafka::TopicPartition*> &, int);
   Baton SetSaslCredentials(std::string, std::string);
@@ -105,6 +106,7 @@ class Connection : public Nan::ObjectWrap {
   static NAN_METHOD(NodeConfigureCallbacks);
   static NAN_METHOD(NodeGetMetadata);
   static NAN_METHOD(NodeQueryWatermarkOffsets);
+  static NAN_METHOD(NodeClusterId);
   static NAN_METHOD(NodeOffsetsForTimes);
   static NAN_METHOD(NodeSetSaslCredentials);
   static NAN_METHOD(NodeSetOAuthBearerToken);

@@ -71,6 +71,7 @@ void Producer::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "disconnect", NodeDisconnect);
   Nan::SetPrototypeMethod(tpl, "getMetadata", NodeGetMetadata);
   Nan::SetPrototypeMethod(tpl, "queryWatermarkOffsets", NodeQueryWatermarkOffsets);  // NOLINT
+  Nan::SetPrototypeMethod(tpl, "clusterId", NodeClusterId);
   Nan::SetPrototypeMethod(tpl, "poll", NodePoll);
   Nan::SetPrototypeMethod(tpl, "setPollInBackground", NodeSetPollInBackground);
   Nan::SetPrototypeMethod(tpl, "setSaslCredentials", NodeSetSaslCredentials);

@@ -184,6 +184,52 @@ void ConnectionQueryWatermarkOffsets::HandleErrorCallback() {
 }
 
 /**
+ * @brief Client cluster id worker
+ *
+ * Easy Nan::AsyncWorker for fetching the id of the cluster the client is
+ * connected to
+ *
+ * @sa RdKafka::Handle::clusterid
+ * @sa NodeKafka::Connection::ClusterId
+ */
+
+ConnectionClusterId::ConnectionClusterId(
+  Nan::Callback *callback, Connection* connection, int timeout_ms) :
+  ErrorAwareWorker(callback),
+  m_connection(connection),
+  m_timeout_ms(timeout_ms) {}
+
+ConnectionClusterId::~ConnectionClusterId() {}
+
+void ConnectionClusterId::Execute() {
+  Baton b = m_connection->ClusterId(m_timeout_ms, &m_cluster_id);
+
+  // If we got any error here we need to bail out
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    SetErrorBaton(b);
+  }
+}
+
+void ConnectionClusterId::HandleOKCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 2;
+  v8::Local<v8::Value> argv[argc] = { Nan::Null(),
+    Nan::New<v8::String>(m_cluster_id).ToLocalChecked() };
+
+  callback->Call(argc, argv);
+}
+
+void ConnectionClusterId::HandleErrorCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 1;
+  v8::Local<v8::Value> argv[argc] = { GetErrorObject() };
+
+  callback->Call(argc, argv);
+}
+
+/**
  * @brief Producer connect worker.
  *
  * Easy Nan::AsyncWorker for setting up client connections
