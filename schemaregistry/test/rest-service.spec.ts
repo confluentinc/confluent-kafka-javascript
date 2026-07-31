@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import { RestService, BearerAuthCredentials } from '../rest-service';
+import { RestError } from '../rest-error';
 import * as retryHelper from '@confluentinc/schemaregistry/retry-helper';
 import { maxRetries, retriesWaitMs, retriesMaxWaitMs } from './test-constants';
 
@@ -108,6 +109,78 @@ describe('RestService Retry Policy', () => {
 
     expect(retryHelper.isRetriable).toHaveBeenCalledTimes(maxRetries);
     expect(retryHelper.isRetriable).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('RestService Error Responses', () => {
+  let restService: RestService;
+  let mock: InstanceType<typeof MockAdapter>;
+
+  beforeEach(() => {
+    mock = new MockAdapter(axios);
+    restService = new RestService(['http://localhost'], false, {}, undefined, undefined,
+      maxRetries, retriesWaitMs, retriesMaxWaitMs);
+  });
+
+  afterEach(() => {
+    mock.reset();
+  });
+
+  it('should report a Schema Registry error body as a RestError', async () => {
+    mock.onGet('/test').reply(404, { error_code: 40470, message: "Key 'test-value' not found" });
+
+    const error = await restService.handleRequest('/test', 'GET').catch((e) => e);
+
+    expect(error).toBeInstanceOf(RestError);
+    expect(error.status).toBe(404);
+    expect(error.errorCode).toBe(40470);
+    expect(error.message).toContain("Key 'test-value' not found");
+  });
+
+  it('should preserve the status when the error body is not a Schema Registry error', async () => {
+    // A response produced by a proxy rather than by Schema Registry. The status
+    // used to be dropped along with the body, leaving callers that classify
+    // errors by status (e.g. treating 404 as "not registered yet") unable to.
+    mock.onGet('/test').reply(404, '<html>not found</html>');
+
+    const error = await restService.handleRequest('/test', 'GET').catch((e) => e);
+
+    expect(error).toBeInstanceOf(RestError);
+    expect(error.status).toBe(404);
+    expect(error.errorCode).toBe(-1);
+  });
+
+  it('should preserve the status when the error response has no body', async () => {
+    mock.onGet('/test').reply(404);
+
+    const error = await restService.handleRequest('/test', 'GET').catch((e) => e);
+
+    expect(error).toBeInstanceOf(RestError);
+    expect(error.status).toBe(404);
+    expect(error.errorCode).toBe(-1);
+  });
+
+  it('should preserve an error code of zero', async () => {
+    // A falsy error code must not be mistaken for a missing one.
+    mock.onGet('/test').reply(422, { error_code: 0, message: 'invalid' });
+
+    const error = await restService.handleRequest('/test', 'GET').catch((e) => e);
+
+    expect(error).toBeInstanceOf(RestError);
+    expect(error.status).toBe(422);
+    expect(error.errorCode).toBe(0);
+    expect(error.message).toContain('invalid');
+  });
+
+  it('should preserve the status of a retriable error once retries are exhausted', async () => {
+    mock.onGet('/test').reply(503, { error_code: 50301, message: 'unavailable' });
+
+    const error = await restService.handleRequest('/test', 'GET').catch((e) => e);
+
+    expect(error).toBeInstanceOf(RestError);
+    expect(error.status).toBe(503);
+    expect(error.errorCode).toBe(50301);
+    expect(mock.history.get.length).toBe(maxRetries + 1);
   });
 });
 
