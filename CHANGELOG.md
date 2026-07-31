@@ -5,6 +5,9 @@
 2. Add support for saving Azure key version with DEK (#507)
 3. Pass context when clients make KEK calls to DEK Registry (#508)
 
+## Fixes
+1. Preserve HTTP status on Schema Registry error responses (#519)
+
 
 # confluent-kafka-javascript 1.10.0
 
