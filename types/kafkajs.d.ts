@@ -140,6 +140,7 @@ export interface ProducerConfig {
 
 export interface Serializer<T> {
   serialize(topic: string, msg: T, headers?: IHeaders): Promise<Buffer>
+  needsClusterId(): boolean
   setClusterId(clusterId: string): void
 }
 
@@ -261,6 +262,7 @@ export interface ConsumerConfig {
 
 export interface Deserializer<T> {
   deserialize(topic: string, payload: Buffer, headers?: IHeaders): Promise<T>
+  needsClusterId(): boolean
   setClusterId(clusterId: string): void
 }
 
