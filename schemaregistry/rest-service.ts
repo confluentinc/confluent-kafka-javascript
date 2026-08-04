@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults } from 'axios';
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults } from 'axios';
 import { RestError } from './rest-error';
 import axiosRetry from "axios-retry";
 import { fullJitter, isRetriable, isSuccess } from './retry-helper';
@@ -74,6 +74,27 @@ const NON_RETRIABLE_AXIOS_CODES = new Set<string>([
   'ERR_BAD_OPTION_VALUE',
   'ERR_DEPRECATED',
 ]);
+
+// Error code reported when the response body does not carry one.
+const UNKNOWN_ERROR_CODE = -1;
+
+/**
+ * Convert an error response into a RestError, so that the HTTP status is always
+ * available to callers - code that treats a 404 as "not registered yet", for
+ * example. A body that is not in the Schema Registry format (an empty body, or a
+ * response produced by a proxy rather than by Schema Registry) is still reported
+ * with its status, rather than losing the status along with the body.
+ */
+function toRestError(error: AxiosError): RestError {
+  const { status, data } = error.response!;
+  if (data !== null && typeof data === 'object') {
+    const { error_code: errorCode, message } = data as { error_code?: number, message?: string };
+    if (errorCode !== undefined && message !== undefined) {
+      return new RestError(message, status, errorCode);
+    }
+  }
+  return new RestError(`Unknown error: ${error.message}`, status, UNKNOWN_ERROR_CODE);
+}
 
 export class RestService {
   private client: AxiosInstance;
@@ -214,12 +235,7 @@ export class RestService {
         return response;
       } catch (error) {
         if (axios.isAxiosError(error) && error.response && !isSuccess(error.response.status)) {
-          const data = error.response.data;
-          if (data.error_code && data.message) {
-            error = new RestError(data.message, error.response.status, data.error_code);
-          } else {
-            error = new Error(`Unknown error: ${error.message}`)
-          }
+          error = toRestError(error);
         }
         if (i === this.baseURLs.length - 1) {
           throw error;

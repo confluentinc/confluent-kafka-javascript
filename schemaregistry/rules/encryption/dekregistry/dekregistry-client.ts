@@ -1,6 +1,7 @@
 import { LRUCache } from 'lru-cache';
 import { Mutex } from 'async-mutex';
 import { ClientConfig, RestService } from '../../../rest-service';
+import { RestError } from '../../../rest-error';
 import stringify from 'json-stringify-deterministic';
 import {MockDekRegistryClient} from "./mock-dekregistry-client";
 
@@ -184,7 +185,9 @@ class DekRegistryClient implements DekClient {
       const response = await this.restService.handleRequest<Dek>(path, 'POST', request);
       return response.data;
     } catch (error: any) {
-      if (error.response && error.response.status === 405) {
+      // handleRequest reports an error response as a RestError, which carries
+      // the status directly rather than an underlying axios response.
+      if (error instanceof RestError && error.status === 405) {
         // Try fallback to older API that does not have subject in the path
         const encodedKekName = encodeURIComponent(kekName);
         const path = `/dek-registry/v1/keks/${encodedKekName}/deks`;
