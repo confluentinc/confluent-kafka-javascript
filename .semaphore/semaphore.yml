@@ -475,6 +475,50 @@ blocks:
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
             - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
 
+  - name: "Linux s390x: Release"
+    dependencies: [ ]
+    run:
+      when: "tag =~ '^v[0-9]\\.'"
+    task:
+      # Semaphore has no native s390x agent, so this runs on an amd64 agent and offloads
+      # the build over SSH to a dedicated IBM Z host, as librdkafka does. When native
+      # s390x agents are available, switch the agent type and call build-s390x.sh with
+      # --build-here instead.
+      agent:
+        machine:
+          type: s1-prod-ubuntu24-04-amd64-1
+      env_vars:
+        - name: ARCHITECTURE
+          value: "s390x"
+        - name: PLATFORM
+          value: "linux"
+        - name: LIBC
+          value: "glibc"
+        - name: S390X_USER
+          value: "ubuntu"
+        - name: LOCAL_KEY
+          value: "./s390x.prv"
+      epilogue:
+        commands:
+          - if [[ "$LOCAL_KEY" =~ ^\./.*$ ]]; then rm -f $LOCAL_KEY; fi
+      jobs:
+        # The ABIs are built one after another in a single job rather than as a matrix:
+        # every job would offload to the same two-core host, so a six-way matrix would
+        # only contend with itself. librdkafka is reused across ABIs within the run.
+        - name: "Release"
+          commands:
+            - . vault-setup
+            - |
+              for NODE_VERSION_ABI in 18.19.0,108 20.11.0,115 21.6.1,120 22.2.0,127 23.2.0,131 24.3.0,137; do
+                export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+                export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+                export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+                echo "=== $ARTIFACT_KEY ==="
+                .semaphore/build-s390x.sh
+                ls "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+                artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+              done
+
   - name: 'Packaging: tar all release artifacts'
     dependencies:
       - 'Linux amd64: Release'
@@ -484,6 +528,7 @@ blocks:
       - 'macOS arm64/m1: Release'
       - 'macOS Intel: Release'
       - 'Windows x64: Release'
+      - 'Linux s390x: Release'
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
