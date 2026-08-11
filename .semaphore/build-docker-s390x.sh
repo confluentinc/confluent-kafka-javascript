@@ -7,6 +7,11 @@
 # Node from the official nodejs.org tarball, which does ship linux-s390x for every
 # version we release for. Ubuntu 20.04 is glibc 2.31 — the same floor as bullseye — so
 # the resulting addon has the same reach as the other glibc artifacts.
+#
+# The container is needed even though the agent is itself s390x: the agent runs Ubuntu
+# 24.04 (glibc 2.39), which would raise the floor far above what the other platforms
+# ship. The agent also has no Node.js installed, which does not matter here since Node
+# comes from the tarball inside the container.
 
 set -e
 
