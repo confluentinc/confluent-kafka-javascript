@@ -507,7 +507,16 @@ blocks:
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
             - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:20.04 /v/.semaphore/build-docker-s390x.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
-            - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
+            # `artifact push` gives up after ~55s, which is not enough to ride out the
+            # intermittent DNS resolution failures seen from this pool. Losing a build
+            # that takes a quarter of an hour to a brief resolver hiccup is a poor trade.
+            - |
+              for attempt in 1 2 3 4 5; do
+                artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" && break
+                if [ $attempt -eq 5 ]; then echo "artifact push failed after 5 attempts"; exit 1; fi
+                echo "artifact push failed (attempt $attempt), retrying in $((attempt * 30))s"
+                sleep $((attempt * 30))
+              done
 
   - name: 'Packaging: tar all release artifacts'
     dependencies:
