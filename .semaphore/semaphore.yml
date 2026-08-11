@@ -509,6 +509,7 @@ blocks:
           commands:
             - . vault-setup
             - |
+              set -e
               for NODE_VERSION_ABI in 18.19.0,108 20.11.0,115 21.6.1,120 22.2.0,127 23.2.0,131 24.3.0,137; do
                 export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
                 export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)

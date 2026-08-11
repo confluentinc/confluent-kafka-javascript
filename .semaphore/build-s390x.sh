@@ -9,9 +9,8 @@
 # Two modes:
 #
 #   (default)      Driver. Reads the host and credentials from Vault, copies this
-#                  script, the build script and the agent's .npmrc to the host, runs
-#                  the build there, and copies the resulting tarball back so the
-#                  calling job can `artifact push` it.
+#                  script to the host, runs the build there, and copies the resulting
+#                  tarball back so the calling job can `artifact push` it.
 #
 #   --build-here   Does the actual build in the current directory. Runs on any s390x
 #                  machine. When native s390x agents become available, point the block
@@ -59,10 +58,12 @@ if [ "$MODE" != "--build-here" ]; then
 
     # Only this script needs copying to bootstrap; the build script comes from the
     # clone, so it always matches the commit under test.
+    #
+    # Note we deliberately do not forward the agent's ~/.npmrc. package-lock.json
+    # resolves everything from registry.npmjs.org, so no registry credentials are
+    # needed. The agent's CodeArtifact token is scoped to the job's OIDC identity
+    # anyway and is rejected when presented from another host.
     eval $SCP_COMMAND .semaphore/build-s390x.sh $SSH_USER_AT_HOST:$DIR/
-    # The lockfile resolves a couple of packages from CodeArtifact, so the build needs
-    # the agent's registry credentials. Removed together with the work directory below.
-    eval $SCP_COMMAND "$HOME/.npmrc" $SSH_USER_AT_HOST:$DIR/.npmrc
 
     set +e
     eval $SSH_COMMAND "NODE_VERSION=$NODE_VERSION $DIR/build-s390x.sh --build-here $CURRENT_TARGET $DIR"
@@ -135,16 +136,20 @@ echo "Building $(git log --oneline -1)"
 
 # No --platform flag: the host is natively s390x. -u 0 because the container writes
 # build output into the bind mount.
+# newgrp starts a new shell, so the docker exit code has to be carried out of the
+# heredoc explicitly rather than read from $? afterwards.
 set +e
 newgrp docker <<EOF
 docker run --rm -u 0 \
     -e NODE_VERSION="$NODE_VERSION" \
-    -v "$PWD:/v" -v "$DIR/.npmrc:/.npmrc" \
+    -v "$PWD:/v" \
     -w /v ubuntu:20.04 \
     /v/.semaphore/build-docker-s390x.sh
+exit \$?
 EOF
 RET=$?
 set -e
+echo "Build exited $RET"
 
 # The container ran as root, so hand ownership back or the driver cannot clean up.
 sudo chown -R "$(id -u):$(id -g)" "$DIR" || true
