@@ -1,6 +1,6 @@
 {
   "name": "@confluentinc/kafka-javascript",
-  "version": "1.10.0",
+  "version": "1.10.1-dev",
   "description": "Node.js bindings for librdkafka",
   "librdkafka": "2.15.0",
   "librdkafka_win": "2.15.0",
