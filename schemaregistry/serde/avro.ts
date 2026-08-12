@@ -1,10 +1,12 @@
 import {
   Deserializer, DeserializerConfig,
+  evaluateValidationRule,
   FieldTransform,
-  FieldType, Migration, RefResolver,
+  FieldType, Migration, parseValidationRules, RefResolver,
   RuleConditionError,
   RuleContext, SchemaId, SerdeType, SerializationError,
-  Serializer, SerializerConfig
+  Serializer, SerializerConfig,
+  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution
 } from "./serde";
 import {
   Client, RuleMode, RulePhase,
@@ -96,8 +98,14 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     let deps: Map<string, string>
     [avroType, deps] = await this.toType(info)
     const subject = await this.subjectName(topic, info)
+    if (this.validationEnabled(ValidationRulesExecution.BEFORE_DOMAIN_RULES)) {
+      await this.validateInlineRules(avroType, info, deps, msg)
+    }
     msg = await this.executeRules(
       subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(info, deps))
+    if (this.validationEnabled(ValidationRulesExecution.AFTER_DOMAIN_RULES)) {
+      await this.validateInlineRules(avroType, info, deps, msg)
+    }
     avroType.isValid(msg, {errorHook: (path, any, type) => {
       throw new SerializationError(
         `Invalid message at ${path.join('.')}, expected ${type}, got ${stringify(any)}`)
@@ -106,6 +114,24 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     msgBytes = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.WRITE, null, info, msgBytes, null)
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
+  }
+
+  /**
+   * Evaluates the schema's inline validation rules against msg, throwing a single
+   * SerializationError listing every violation found.
+   * @param avroType - the parsed schema
+   * @param info - the schema
+   * @param deps - the resolved schema dependencies
+   * @param msg - the message to validate
+   */
+  async validateInlineRules(avroType: Type, info: SchemaInfo, deps: Map<string, string>, msg: any): Promise<void> {
+    const violations = await validateAvroMessage(
+      this.validationRuleExecutor(),
+      avroType,
+      getInlineValidationRules(info, deps),
+      msg,
+      Boolean(this.config().validationRulesFailFast))
+    this.raiseValidationViolations(violations)
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
@@ -398,6 +424,213 @@ async function transformField(
     }
   } finally {
     ctx.leaveField()
+  }
+}
+
+/**
+ * InlineValidationRules holds the inline validation rules declared in a schema, keyed by
+ * the fully qualified record name for record-level rules and by `recordName.fieldName`
+ * for field-level rules.
+ */
+export interface InlineValidationRules {
+  recordRules: Map<string, ValidationRule[]>
+  fieldRules: Map<string, ValidationRule[]>
+}
+
+/**
+ * Reads the inline validation rules out of a schema and its dependencies.
+ *
+ * avsc drops unknown schema attributes when building a Type, so the rules are read from
+ * the raw schema JSON and looked up by name during the walk — the same approach
+ * getInlineTags takes for tags.
+ * @param info - the schema
+ * @param deps - the resolved schema dependencies
+ */
+export function getInlineValidationRules(info: SchemaInfo, deps: Map<string, string>): InlineValidationRules {
+  const rules: InlineValidationRules = { recordRules: new Map(), fieldRules: new Map() }
+  getInlineValidationRulesRecursively('', '', JSON.parse(info.schema), rules)
+  for (const depSchema of deps.values()) {
+    getInlineValidationRulesRecursively('', '', JSON.parse(depSchema), rules)
+  }
+  return rules
+}
+
+// iterate over the object and get all properties named 'confluent:rules'
+function getInlineValidationRulesRecursively(
+  ns: string, name: string, schema: any, rules: InlineValidationRules): void {
+  if (schema == null || typeof schema === 'string') {
+    return
+  } else if (Array.isArray(schema)) {
+    for (let i = 0; i < schema.length; i++) {
+      getInlineValidationRulesRecursively(ns, name, schema[i], rules)
+    }
+  } else if (typeof schema === 'object') {
+    const type = schema['type']
+    switch (type) {
+      case 'array':
+        getInlineValidationRulesRecursively(ns, name, schema['items'], rules)
+        break;
+      case 'map':
+        getInlineValidationRulesRecursively(ns, name, schema['values'], rules)
+        break;
+      case 'record': {
+        let recordNs = schema['namespace']
+        let recordName = schema['name']
+        if (recordNs === undefined) {
+          recordNs = impliedNamespace(name)
+        }
+        if (recordNs == null) {
+          recordNs = ns
+        }
+        if (recordNs !== '' && !recordName.startsWith(recordNs)) {
+          recordName = recordNs + '.' + recordName
+        }
+        const recordRules = parseValidationRules(schema['confluent:rules'])
+        if (recordRules.length > 0) {
+          rules.recordRules.set(recordName, recordRules)
+        }
+        const fields = schema['fields']
+        for (const field of fields) {
+          const fieldName = field['name']
+          if (fieldName !== undefined) {
+            const fieldRules = parseValidationRules(field['confluent:rules'])
+            if (fieldRules.length > 0) {
+              rules.fieldRules.set(recordName + '.' + fieldName, fieldRules)
+            }
+          }
+          const fieldType = field['type']
+          if (fieldType !== undefined) {
+            getInlineValidationRulesRecursively(recordNs, recordName, fieldType, rules)
+          }
+        }
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Walks msg against schema, evaluating every inline validation rule encountered and
+ * collecting all failures. Read-only — the message is not modified.
+ *
+ * Two kinds of rules are evaluated:
+ * - Record-level (`confluent:rules` on a record schema) — `this` is the record.
+ * - Field-level (`confluent:rules` on a record's field) — `this` is the field value.
+ *   Honors the skip-on-null contract: a field that is absent or null does not have its
+ *   rules invoked.
+ *
+ * Failures are returned with their dotted-path location (e.g. `addr.zip`, `tags[3]`,
+ * `scores["foo"]`). The walk continues after each failure so callers see the full set
+ * rather than only the first, unless failFast is set.
+ * @param executor - the validation rule executor
+ * @param schema - the schema to walk
+ * @param rules - the inline validation rules read from the raw schema
+ * @param msg - the message to validate
+ * @param failFast - whether to stop at the first violation
+ */
+export async function validateAvroMessage(
+  executor: ValidationRuleExecutor,
+  schema: Type,
+  rules: InlineValidationRules,
+  msg: any,
+  failFast: boolean,
+): Promise<ValidationRuleError[]> {
+  const out: ValidationRuleError[] = []
+  if (executor == null || schema == null || msg == null) {
+    return out
+  }
+  await validate(executor, schema, rules, '', msg, failFast, out)
+  return out
+}
+
+/**
+ * Mirrors transform's switch-on-typeName dispatch shape.
+ */
+async function validate(
+  executor: ValidationRuleExecutor,
+  schema: Type,
+  rules: InlineValidationRules,
+  path: string,
+  msg: any,
+  failFast: boolean,
+  out: ValidationRuleError[],
+): Promise<void> {
+  if (schema == null || msg == null) {
+    return
+  }
+  switch (schema.typeName) {
+    case 'union:unwrapped':
+    case 'union:wrapped': {
+      const [subschema, submsg] = resolveUnion(schema, msg)
+      if (subschema == null) {
+        return
+      }
+      await validate(executor, subschema, rules, path, submsg, failFast, out)
+      return
+    }
+    case 'array': {
+      const arraySchema = schema as ArrayType
+      if (!Array.isArray(msg)) {
+        return
+      }
+      for (let i = 0; i < msg.length; i++) {
+        await validate(executor, arraySchema.itemsType, rules, `${path}[${i}]`, msg[i], failFast, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+      return
+    }
+    case 'map': {
+      const mapSchema = schema as MapType
+      // An array is an object in JS, so reject it explicitly: iterating it as a map would
+      // walk numeric keys and report violations against a shape the schema never allowed.
+      if (typeof msg !== 'object' || Array.isArray(msg)) {
+        return
+      }
+      for (const key of Object.keys(msg)) {
+        await validate(executor, mapSchema.valuesType, rules, `${path}["${key}"]`, msg[key], failFast, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+      return
+    }
+    case 'record': {
+      const recordSchema = schema as RecordType
+      if (typeof msg !== 'object' || Array.isArray(msg)) {
+        return
+      }
+      const recordName = recordSchema.name ?? ''
+      // Record-level rules: this = the record value.
+      for (const rule of rules.recordRules.get(recordName) ?? []) {
+        await evaluateValidationRule(executor, rule, recordSchema, msg, path, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+      for (const field of recordSchema.fields) {
+        const value = msg[field.name]
+        const childPath = path ? `${path}.${field.name}` : field.name
+        // Skip-on-null: an absent or null field value does not invoke the executor.
+        // The recursion below still runs but no-ops for null.
+        if (value != null) {
+          for (const rule of rules.fieldRules.get(`${recordName}.${field.name}`) ?? []) {
+            await evaluateValidationRule(executor, rule, field.type, value, childPath, out)
+            if (failFast && out.length > 0) {
+              return
+            }
+          }
+        }
+        await validate(executor, field.type, rules, childPath, value, failFast, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+      return
+    }
+    default:
+      // primitive leaf — field-level rules were evaluated by the parent record case
   }
 }
 
