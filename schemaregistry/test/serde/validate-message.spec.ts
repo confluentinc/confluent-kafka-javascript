@@ -188,6 +188,38 @@ const JSON_ARRAY_OF_OBJECTS = {
 }
 
 describe('json validateMessage', () => {
+  it('does not mutate the shared schema while walking a multi-type property', async () => {
+    // validateSubtypes narrows `type` in place, and the schema handed to the walker comes
+    // from the dereferenced-schema cache. Restoring afterwards is not enough: the walk
+    // awaits while narrowed, so a concurrent walk on the same object would see a scalar
+    // type and skip its own narrowing. Reaching that window needs the multi-type branch to
+    // have children with rules, since a property's own rules fire in its parent.
+    const schema: any = {
+      type: 'object',
+      properties: {
+        v: {
+          type: ['object', 'null'],
+          properties: { inner: { type: 'integer', 'confluent:rules': RULE } },
+        },
+      },
+    }
+    const observed: unknown[] = []
+    class Observer implements ValidationRuleExecutor {
+      async execute(_rule: ValidationRule, _schema: any, _msg: any): Promise<any> {
+        observed.push(schema.properties.v.type)
+        return false
+      }
+    }
+
+    const errors = await validateJsonMessage(
+      new Observer(), schema as DereferencedJSONSchema, { v: { inner: 1 } }, false)
+
+    expect(fired(errors)).toEqual(['r@$.v.inner'])
+    // The shared schema must still declare both types while the nested rule is evaluated.
+    expect(observed).toEqual([['object', 'null']])
+    expect(schema.properties.v.type).toEqual(['object', 'null'])
+  })
+
   it('recurses into a nested object and produces a dotted path', async () => {
     const schema = {
       type: 'object',

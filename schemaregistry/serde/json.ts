@@ -409,14 +409,14 @@ async function transform(ctx: RuleContext, schema: DereferencedJSONSchema, path:
     fieldCtx.type = getType(schema)
   }
   if (schema.type != null && Array.isArray(schema.type) && schema.type.length > 0) {
-    let originalType = schema.type
-    let subschema = validateSubtypes(schema, msg)
-    try {
-      if (subschema != null) {
-        return await transform(ctx, subschema, path, msg, fieldTransform)
-      }
-    } finally {
-      schema.type = originalType
+    // validateSubtypes narrows schema.type in place, and this schema comes from the
+    // dereferenced-schema cache. Hand it a shallow copy: restoring afterwards is not
+    // enough, because the recursion below awaits with the shared schema still narrowed,
+    // and a concurrent serialization would then see a scalar type and skip its own
+    // narrowing. Falling through when nothing matches is unchanged.
+    const subschema = validateSubtypes({ ...schema }, msg)
+    if (subschema != null) {
+      return await transform(ctx, subschema, path, msg, fieldTransform)
     }
   }
   const hasAllOf = schema.allOf != null && schema.allOf.length > 0
@@ -563,14 +563,13 @@ async function validate(
     return
   }
   if (schema.type != null && Array.isArray(schema.type) && schema.type.length > 0) {
-    const originalType = schema.type
-    const subschema = validateSubtypes(schema, msg)
-    try {
-      if (subschema != null) {
-        await validate(executor, subschema, path, msg, failFast, out)
-      }
-    } finally {
-      schema.type = originalType
+    // validateSubtypes narrows schema.type in place, and this schema comes from the
+    // dereferenced-schema cache. Hand it a shallow copy: restoring afterwards is not
+    // enough, because the recursive await below suspends with the shared schema still
+    // narrowed, which a concurrent serialization would observe.
+    const subschema = validateSubtypes({ ...schema }, msg)
+    if (subschema != null) {
+      await validate(executor, subschema, path, msg, failFast, out)
     }
     return
   }
