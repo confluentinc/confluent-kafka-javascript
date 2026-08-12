@@ -209,11 +209,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     // generated code does not, letting the message through unchecked. Let the failure
     // abort serialization instead.
     const fileDesc = await this.toFileDesc(this.client, info)
-    const desc = findMessageDesc(fileDesc, messageDesc.typeName)
-    if (desc == null) {
-      throw new SerializationError(
-        `message descriptor ${messageDesc.typeName} not found in the schema being written`)
-    }
+    const desc = this.toMessageDescFromName(fileDesc, messageDesc.typeName)
     const violations = await validateProtobufMessage(
       this.validationRuleExecutor(),
       desc,
@@ -373,12 +369,14 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 
   toMessageDescFromName(fd: DescFile, msgName: string): DescMessage {
-    for (let i = 0; i < fd.messages.length; i++) {
-      if (fd.messages[i].typeName === msgName) {
-        return fd.messages[i]
-      }
+    // Searches nested types too: a nested message is not among the file's top-level
+    // messages, and failing to find it here aborts the rule paths that resolve a
+    // descriptor from the schema.
+    const desc = findMessageDesc(fd, msgName)
+    if (desc == null) {
+      throw new SerializationError('message descriptor not found')
     }
-    throw new SerializationError('message descriptor not found')
+    return desc
   }
 
   async getRecordName(info?: SchemaInfo): Promise<string> {
@@ -503,12 +501,14 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   }
 
   toMessageDescFromName(fd: DescFile, msgName: string): DescMessage {
-    for (let i = 0; i < fd.messages.length; i++) {
-      if (fd.messages[i].typeName === msgName) {
-        return fd.messages[i]
-      }
+    // Searches nested types too: a nested message is not among the file's top-level
+    // messages, and failing to find it here aborts the rule paths that resolve a
+    // descriptor from the schema.
+    const desc = findMessageDesc(fd, msgName)
+    if (desc == null) {
+      throw new SerializationError('message descriptor not found')
     }
-    throw new SerializationError('message descriptor not found')
+    return desc
   }
 
   toMessageDescFromIndexes(fd: DescFile, msgIndexes: number[]): DescMessage {

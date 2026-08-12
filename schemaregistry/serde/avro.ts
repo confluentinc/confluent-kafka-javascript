@@ -474,17 +474,7 @@ function getInlineValidationRulesRecursively(
         getInlineValidationRulesRecursively(ns, name, schema['values'], rules)
         break;
       case 'record': {
-        let recordNs = schema['namespace']
-        let recordName = schema['name']
-        if (recordNs === undefined) {
-          recordNs = impliedNamespace(name)
-        }
-        if (recordNs == null) {
-          recordNs = ns
-        }
-        if (recordNs !== '' && !recordName.startsWith(recordNs)) {
-          recordName = recordNs + '.' + recordName
-        }
+        const [recordNs, recordName] = resolveRecordFullname(schema, ns, name)
         const recordRules = parseValidationRules(schema['confluent:rules'])
         if (recordRules.length > 0) {
           rules.recordRules.set(recordName, recordRules)
@@ -739,17 +729,7 @@ function getInlineTagsRecursively(ns: string, name: string, schema: any, tags: M
         getInlineTagsRecursively(ns, name, schema['values'], tags)
         break;
       case 'record':
-        let recordNs = schema['namespace']
-        let recordName = schema['name']
-        if (recordNs === undefined) {
-          recordNs = impliedNamespace(name)
-        }
-        if (recordNs == null) {
-          recordNs = ns
-        }
-        if (recordNs !== '' && !recordName.startsWith(recordNs)) {
-          recordName = recordNs + '.' + recordName
-        }
+        const [recordNs, recordName] = resolveRecordFullname(schema, ns, name)
         const fields = schema['fields']
         for (const field of fields) {
           const fieldTags = field['confluent:tags']
@@ -765,6 +745,29 @@ function getInlineTagsRecursively(ns: string, name: string, schema: any, tags: M
         break;
     }
   }
+}
+
+/**
+ * Resolves a record's Avro fullname, and the namespace its nested definitions inherit.
+ *
+ * Per the Avro spec a `name` containing a dot is already a fullname, and any `namespace`
+ * attribute is ignored for it. Otherwise the fullname is the namespace followed by the
+ * name — which is not a prefix test: a record named `foobar` in namespace `foo` is
+ * `foo.foobar`, not `foobar`.
+ */
+function resolveRecordFullname(schema: any, ns: string, name: string): [string, string] {
+  const recordName: string = schema['name']
+  if (recordName.includes('.')) {
+    return [impliedNamespace(recordName) ?? '', recordName]
+  }
+  let recordNs = schema['namespace']
+  if (recordNs === undefined) {
+    recordNs = impliedNamespace(name)
+  }
+  if (recordNs == null) {
+    recordNs = ns
+  }
+  return [recordNs, recordNs !== '' ? recordNs + '.' + recordName : recordName]
 }
 
 function impliedNamespace(name: string): string | null {

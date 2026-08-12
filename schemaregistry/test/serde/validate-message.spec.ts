@@ -68,6 +68,27 @@ const AVRO_ARRAY_OF_RECORDS = {
 }
 
 describe('avro validateMessage', () => {
+  it('qualifies a record name whose namespace is also its prefix', async () => {
+    // The fullname of `foobar` in namespace `foo` is `foo.foobar`. Treating the namespace
+    // as an already-present prefix would key the rules under `foobar`, which never matches
+    // the name avsc reports, silently skipping them.
+    const schema = {
+      type: 'record', namespace: 'foo', name: 'foobar',
+      fields: [{ name: 'x', type: 'int', 'confluent:rules': RULE }],
+    }
+    expect(await avro(schema, { x: 1 })).toEqual(['r@x'])
+  })
+
+  it('ignores the namespace attribute when the name is already a fullname', async () => {
+    // Avro ignores `namespace` when `name` contains a dot, so the fullname here is `a.B`,
+    // not `x.a.B`.
+    const schema = {
+      type: 'record', namespace: 'x', name: 'a.B',
+      fields: [{ name: 'y', type: 'int', 'confluent:rules': RULE }],
+    }
+    expect(await avro(schema, { y: 1 })).toEqual(['r@y'])
+  })
+
   it('recurses into a nested record and produces a dotted path', async () => {
     const schema = {
       type: 'record', name: 'Outer',

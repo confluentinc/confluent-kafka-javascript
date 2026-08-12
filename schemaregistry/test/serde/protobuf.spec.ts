@@ -31,7 +31,8 @@ import {
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
 import {
-  NestedMessage_InnerMessageSchema
+  NestedMessage_InnerMessageSchema,
+  file_test_schemaregistry_serde_nested
 } from "./test/nested_pb";
 import {TestMessageSchema} from "./test/test_pb";
 import {DependencyMessageSchema} from "./test/dep_pb";
@@ -39,6 +40,7 @@ import {RuleRegistry} from "@confluentinc/schemaregistry/serde/rule-registry";
 import {LinkedListSchema} from "./test/cycle_pb";
 import {clearKmsClients} from "@confluentinc/schemaregistry/rules/encryption/kms-registry";
 import {CelExecutor} from "../../rules/cel/cel-executor";
+import {CelFieldExecutor} from "../../rules/cel/cel-field-executor";
 
 const encryptionExecutor = EncryptionExecutor.register()
 const fieldEncryptionExecutor = FieldEncryptionExecutor.register()
@@ -232,6 +234,42 @@ describe('ProtobufSerializer', () => {
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
+  })
+  it('cel field transform on a nested message type', async () => {
+    // A nested type is not top-level in the file descriptor, so resolving the descriptor
+    // for the domain-rule path has to search nested messages too.
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    CelFieldExecutor.register()
+    let ser = new ProtobufSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    ser.registry.add(NestedMessage_InnerMessageSchema)
+
+    let celRule: Rule = {
+      name: 'test-cel',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITE,
+      type: 'CEL_FIELD',
+      expr: "name == 'id' ; value + '-suffix'"
+    }
+    let ruleSet: RuleSet = {
+      domainRules: [celRule]
+    }
+    let info: SchemaInfo = {
+      schemaType: 'PROTOBUF',
+      schema: Buffer.from(toBinary(FileDescriptorProtoSchema, file_test_schemaregistry_serde_nested.proto)).toString('base64'),
+      ruleSet
+    }
+    await client.register(subject, info, false)
+
+    let obj = create(NestedMessage_InnerMessageSchema, { id: 'inner' })
+    let bytes = await ser.serialize(topic, obj)
+
+    let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.id).toEqual('inner-suffix')
   })
   it('serialize reference', async () => {
     let conf: ClientConfig = {
