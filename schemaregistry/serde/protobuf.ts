@@ -1,12 +1,14 @@
 import {
   Deserializer,
   DeserializerConfig,
+  evaluateValidationRule,
   FieldTransform,
   FieldType, RuleConditionError,
   RuleContext, SchemaId,
   SerdeType, SerializationError,
   Serializer,
-  SerializerConfig
+  SerializerConfig,
+  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution
 } from "./serde";
 import {
   Client, Reference, RuleMode, RulePhase,
@@ -20,6 +22,7 @@ import {
   DescMessage,
   FileRegistry,
   fromBinary, getExtension, hasExtension, MutableRegistry,
+  Registry,
   ScalarType,
   toBinary,
 } from "@bufbuild/protobuf";
@@ -41,7 +44,7 @@ import {
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
 import { LRUCache } from "lru-cache";
-import {field_meta, file_confluent_meta, Meta} from "../confluent/meta_pb";
+import {field_meta, file_confluent_meta, Meta, message_meta, Rule as MetaRule} from "../confluent/meta_pb";
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 import {file_confluent_types_decimal} from "../confluent/types/decimal_pb";
@@ -170,12 +173,37 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     }
     const [schemaId, info] = await this.getSchemaId(PROTOBUF_TYPE, topic, msg, schema, 'serialized')
     const subject = await this.subjectName(topic, info)
+    if (this.validationEnabled(ValidationRulesExecution.BEFORE_DOMAIN_RULES)) {
+      await this.validateInlineRules(messageDesc, msg)
+    }
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
+    if (this.validationEnabled(ValidationRulesExecution.AFTER_DOMAIN_RULES)) {
+      await this.validateInlineRules(messageDesc, msg)
+    }
     schemaId.messageIndexes = this.toMessageIndexArray(messageDesc)
     let msgBytes = Buffer.from(toBinary(messageDesc, msg))
     msgBytes = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.WRITE, null, info, msgBytes, null)
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
+  }
+
+  override protoRegistry(): Registry {
+    return this.registry
+  }
+
+  /**
+   * Evaluates the descriptor's inline validation rules against msg, throwing a single
+   * SerializationError listing every violation found.
+   * @param messageDesc - the message descriptor
+   * @param msg - the message to validate
+   */
+  async validateInlineRules(messageDesc: DescMessage, msg: any): Promise<void> {
+    const violations = await validateProtobufMessage(
+      this.validationRuleExecutor(),
+      messageDesc,
+      msg,
+      Boolean(this.config().validationRulesFailFast))
+    this.raiseValidationViolations(violations)
   }
 
   async getSchemaInfo(fileDesc: DescFile): Promise<SchemaInfo> {
@@ -383,6 +411,10 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
       conf.subjectNameStrategyConfig ?? {},
       this.getRecordName.bind(this)
     )
+  }
+
+  override protoRegistry(): Registry {
+    return this.fileRegistry
   }
 
   /**
@@ -712,6 +744,133 @@ function getType(fd: DescField): FieldType {
     default:
       return FieldType.NULL
   }
+}
+
+/**
+ * Walks msg against descriptor, evaluating every inline validation rule declared in the
+ * `confluent.Meta` extension and collecting all failures. Read-only — the message is not
+ * modified.
+ *
+ * Two kinds of rules are evaluated:
+ * - Message-level (`confluent.message_meta` rules) — `this` is the message.
+ * - Field-level (`confluent.field_meta` rules) — `this` is the field value; for repeated
+ *   and map fields that is the whole collection. Honors the skip-on-null contract: a
+ *   field that is unset (proto3 `optional`, singular message fields, oneof members) does
+ *   not have its rules invoked.
+ *
+ * Failures are returned with their dotted-path location (e.g. `addr.zip`, `items[3]`,
+ * `labels["k"]`). The walk continues after each failure unless failFast is set.
+ *
+ * Only `message_meta` and `field_meta` rules are evaluated; rules on files, enums and
+ * enum values are ignored, matching the JVM client.
+ * @param executor - the validation rule executor
+ * @param descriptor - the message descriptor to walk
+ * @param msg - the message to validate
+ * @param failFast - whether to stop at the first violation
+ */
+export async function validateProtobufMessage(
+  executor: ValidationRuleExecutor,
+  descriptor: DescMessage,
+  msg: any,
+  failFast: boolean,
+): Promise<ValidationRuleError[]> {
+  const out: ValidationRuleError[] = []
+  if (executor == null || descriptor == null || msg == null) {
+    return out
+  }
+  await validate(executor, descriptor, '', msg, failFast, out)
+  return out
+}
+
+/**
+ * Mirrors transform's dispatch shape, walking the descriptor's fields and descending
+ * into message-valued fields, map values and repeated elements.
+ */
+async function validate(
+  executor: ValidationRuleExecutor,
+  descriptor: DescMessage,
+  path: string,
+  msg: any,
+  failFast: boolean,
+  out: ValidationRuleError[],
+): Promise<void> {
+  if (descriptor == null || msg == null || msg.$typeName == null) {
+    return
+  }
+  // Message-level rules: this = the message.
+  for (const rule of getMessageValidationRules(descriptor)) {
+    await evaluateValidationRule(executor, rule, descriptor, msg, path, out)
+    if (failFast && out.length > 0) {
+      return
+    }
+  }
+  for (const fd of descriptor.fields) {
+    let value: any
+    if (fd.oneof != null) {
+      const oneof = msg[fd.oneof.localName]
+      if (oneof == null || oneof.case !== fd.localName) {
+        // skip oneof members that are not set
+        continue
+      }
+      value = oneof.value
+    } else {
+      value = msg[fd.localName]
+    }
+    // Skip-on-null: a field with explicit presence that is unset does not invoke the
+    // executor. Repeated/map fields are always present as an empty collection.
+    if (value == null) {
+      continue
+    }
+    const childPath = path ? `${path}.${fd.name}` : fd.name
+    for (const rule of getFieldValidationRules(fd)) {
+      await evaluateValidationRule(executor, rule, fd, value, childPath, out)
+      if (failFast && out.length > 0) {
+        return
+      }
+    }
+    if (fd.fieldKind === 'message') {
+      await validate(executor, fd.message, childPath, value, failFast, out)
+      if (failFast && out.length > 0) {
+        return
+      }
+    } else if (fd.fieldKind === 'list' && fd.listKind === 'message') {
+      for (let i = 0; i < value.length; i++) {
+        await validate(executor, fd.message, `${childPath}[${i}]`, value[i], failFast, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+    } else if (fd.fieldKind === 'map' && fd.mapKind === 'message') {
+      for (const key of Object.keys(value)) {
+        await validate(executor, fd.message, `${childPath}["${key}"]`, value[key], failFast, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+    }
+  }
+}
+
+function getMessageValidationRules(desc: DescMessage): ValidationRule[] {
+  const options = desc.proto.options
+  if (options != null && hasExtension(options, message_meta)) {
+    const meta: Meta = getExtension(options, message_meta)
+    return toValidationRules(meta.rules)
+  }
+  return []
+}
+
+function getFieldValidationRules(fd: DescField): ValidationRule[] {
+  const options = fd.proto.options
+  if (options != null && hasExtension(options, field_meta)) {
+    const meta: Meta = getExtension(options, field_meta)
+    return toValidationRules(meta.rules)
+  }
+  return []
+}
+
+function toValidationRules(rules: MetaRule[]): ValidationRule[] {
+  return rules.map(r => ({ name: r.name, doc: r.doc, expr: r.expr, sql: r.sql }))
 }
 
 function getInlineTags(fd: DescField): Set<string> {
