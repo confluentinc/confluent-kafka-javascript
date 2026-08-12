@@ -11,6 +11,7 @@ import {
   ValidationDynamicMessageSchema,
   ValidationPersonSchema,
 } from './test/validation_widget_pb';
+import { NestedMessage_InnerMessageSchema } from './test/nested_pb';
 
 /**
  * Serializer-level tests for inline validation rules — these exercise the
@@ -199,6 +200,26 @@ describe('protobuf inline validation', () => {
     const ser = protobufSer({ validationRulesExecution: ValidationRulesExecution.AFTER_DOMAIN_RULES })
     const msg = create(ValidationDynamicMessageSchema, { age: -5 })
     await expect(ser.serialize(topic, msg)).rejects.toThrow(/age must be positive, got -5/)
+  })
+
+  it('validates a nested message type', async () => {
+    // Nested types are not top-level in the file descriptor, so resolving the schema being
+    // written has to search nested messages too - otherwise this throws instead of
+    // validating.
+    const ser = protobufSer({ validationRulesExecution: ValidationRulesExecution.AFTER_DOMAIN_RULES })
+    ser.registry.add(NestedMessage_InnerMessageSchema)
+    const msg = create(NestedMessage_InnerMessageSchema, {})
+    expect((await ser.serialize(topic, msg)).length).toBeGreaterThan(0)
+  })
+
+  it('fails rather than skipping validation when the schema cannot be resolved', async () => {
+    // Falling back to the caller's descriptor here would silently drop any rule the
+    // registered schema carries, so an unresolvable schema must abort serialization.
+    const ser = protobufSer({ validationRulesExecution: ValidationRulesExecution.AFTER_DOMAIN_RULES })
+    const msg = create(ValidationPersonSchema, { age: 30, name: 'Alice' })
+    const desc = ser.registry.getMessage(ValidationPersonSchema.typeName)!
+    await expect(ser.validateInlineRules(desc, { schemaType: 'PROTOBUF', schema: 'not-a-descriptor' }, msg))
+      .rejects.toThrow()
   })
 
   it('reads rules from the schema being written, not the local descriptor', async () => {

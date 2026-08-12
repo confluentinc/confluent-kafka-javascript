@@ -204,12 +204,15 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
    * @param msg - the message to validate
    */
   async validateInlineRules(messageDesc: DescMessage, info: SchemaInfo, msg: any): Promise<void> {
-    let desc = messageDesc
-    try {
-      const fileDesc = await this.toFileDesc(this.client, info)
-      desc = this.toMessageDescFromName(fileDesc, messageDesc.typeName)
-    } catch (e) {
-      // Leave desc as the caller's descriptor.
+    // Resolving the schema being written is not best-effort: falling back to the caller's
+    // descriptor would silently drop any rule the registered schema carries and the
+    // generated code does not, letting the message through unchecked. Let the failure
+    // abort serialization instead.
+    const fileDesc = await this.toFileDesc(this.client, info)
+    const desc = findMessageDesc(fileDesc, messageDesc.typeName)
+    if (desc == null) {
+      throw new SerializationError(
+        `message descriptor ${messageDesc.typeName} not found in the schema being written`)
     }
     const violations = await validateProtobufMessage(
       this.validationRuleExecutor(),
@@ -781,6 +784,27 @@ function getType(fd: DescField): FieldType {
  * @param msg - the message to validate
  * @param failFast - whether to stop at the first violation
  */
+/**
+ * Finds a message descriptor by fully qualified name anywhere in a file, including nested
+ * types. Unlike toMessageDescFromName, which scans only top-level messages, this is used
+ * where a miss has to be distinguishable from "the type is nested".
+ */
+function findMessageDesc(fileDesc: DescFile, typeName: string): DescMessage | undefined {
+  const search = (messages: readonly DescMessage[]): DescMessage | undefined => {
+    for (const message of messages) {
+      if (message.typeName === typeName) {
+        return message
+      }
+      const nested = search(message.nestedMessages)
+      if (nested != null) {
+        return nested
+      }
+    }
+    return undefined
+  }
+  return search(fileDesc.messages)
+}
+
 export async function validateProtobufMessage(
   executor: ValidationRuleExecutor,
   descriptor: DescMessage,
