@@ -583,7 +583,9 @@ async function validate(
     }
     case 'map': {
       const mapSchema = schema as MapType
-      if (typeof msg !== 'object') {
+      // An array is an object in JS, so reject it explicitly: iterating it as a map would
+      // walk numeric keys and report violations against a shape the schema never allowed.
+      if (typeof msg !== 'object' || Array.isArray(msg)) {
         return
       }
       for (const key of Object.keys(msg)) {
@@ -596,7 +598,7 @@ async function validate(
     }
     case 'record': {
       const recordSchema = schema as RecordType
-      if (typeof msg !== 'object') {
+      if (typeof msg !== 'object' || Array.isArray(msg)) {
         return
       }
       const recordName = recordSchema.name ?? ''

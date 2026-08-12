@@ -89,6 +89,27 @@ describe('avro validateMessage', () => {
       .toEqual(['r@items[0].x'])
   })
 
+  it('skips values whose shape the schema does not allow', async () => {
+    // An array is an object in JS, so a map or record schema must reject it rather than
+    // walking it by numeric keys and reporting violations against a shape that could
+    // never have been written.
+    const mapSchema = {
+      type: 'record', name: 'Outer',
+      fields: [{
+        name: 'scores',
+        type: { type: 'map', values: { type: 'int', 'confluent:rules': RULE } },
+      }],
+    }
+    expect(await avro(mapSchema, { scores: [1, 2] })).toEqual([])
+
+    const recordSchema = {
+      type: 'record', name: 'Outer',
+      'confluent:rules': RULE,
+      fields: [{ name: 'x', type: 'int' }],
+    }
+    expect(await avro(recordSchema, [1, 2])).toEqual([])
+  })
+
   it('fires a rule per map entry with a keyed path', async () => {
     const schema = {
       type: 'record', name: 'Outer',

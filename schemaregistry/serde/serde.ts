@@ -1462,7 +1462,12 @@ export interface ValidationRuleExecutor {
 
 /**
  * Parses the `confluent:rules` property value — a list of objects with name/doc/expr/sql
- * keys. Missing or malformed entries are ignored, yielding an empty list.
+ * keys. A value that is not such a list yields no rules, and entries that are not objects
+ * are skipped.
+ *
+ * An object entry is kept even when it declares no expression: a rule present in the
+ * schema but malformed is reported as a violation by the executor rather than silently
+ * dropped, which is also what the other clients do.
  */
 export function parseValidationRules(propValue: any): ValidationRule[] {
   if (!Array.isArray(propValue)) {
@@ -1511,7 +1516,8 @@ export async function evaluateValidationRule(
     }
   } else {
     throw new SerializationError(
-      `Validation rule '${rule.name}' resolved to an unexpected type: ${typeof result}`)
+      `Validation rule '${rule.name ?? 'unnamed'}' resolved to an unexpected type: ` +
+      `${typeof result}`)
   }
 }
 
