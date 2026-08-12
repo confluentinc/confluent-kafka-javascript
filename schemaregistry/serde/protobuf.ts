@@ -174,11 +174,11 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const [schemaId, info] = await this.getSchemaId(PROTOBUF_TYPE, topic, msg, schema, 'serialized')
     const subject = await this.subjectName(topic, info)
     if (this.validationEnabled(ValidationRulesExecution.BEFORE_DOMAIN_RULES)) {
-      await this.validateInlineRules(messageDesc, msg)
+      await this.validateInlineRules(messageDesc, info, msg)
     }
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
     if (this.validationEnabled(ValidationRulesExecution.AFTER_DOMAIN_RULES)) {
-      await this.validateInlineRules(messageDesc, msg)
+      await this.validateInlineRules(messageDesc, info, msg)
     }
     schemaId.messageIndexes = this.toMessageIndexArray(messageDesc)
     let msgBytes = Buffer.from(toBinary(messageDesc, msg))
@@ -192,15 +192,28 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 
   /**
-   * Evaluates the descriptor's inline validation rules against msg, throwing a single
+   * Evaluates the schema's inline validation rules against msg, throwing a single
    * SerializationError listing every violation found.
-   * @param messageDesc - the message descriptor
+   *
+   * The rules are read from the descriptor parsed out of the schema being written, which
+   * is the one carrying the Meta options — the caller's generated descriptor may predate
+   * them. Mirrors what fieldTransform does for domain rules, and falls back to the
+   * caller's descriptor if the schema cannot be parsed into one.
+   * @param messageDesc - the caller's message descriptor
+   * @param info - the schema being written
    * @param msg - the message to validate
    */
-  async validateInlineRules(messageDesc: DescMessage, msg: any): Promise<void> {
+  async validateInlineRules(messageDesc: DescMessage, info: SchemaInfo, msg: any): Promise<void> {
+    let desc = messageDesc
+    try {
+      const fileDesc = await this.toFileDesc(this.client, info)
+      desc = this.toMessageDescFromName(fileDesc, messageDesc.typeName)
+    } catch (e) {
+      // Leave desc as the caller's descriptor.
+    }
     const violations = await validateProtobufMessage(
       this.validationRuleExecutor(),
-      messageDesc,
+      desc,
       msg,
       Boolean(this.config().validationRulesFailFast))
     this.raiseValidationViolations(violations)

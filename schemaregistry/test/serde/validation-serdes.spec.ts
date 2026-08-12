@@ -200,4 +200,21 @@ describe('protobuf inline validation', () => {
     const msg = create(ValidationDynamicMessageSchema, { age: -5 })
     await expect(ser.serialize(topic, msg)).rejects.toThrow(/age must be positive, got -5/)
   })
+
+  it('reads rules from the schema being written, not the local descriptor', async () => {
+    // Register the schema under the subject, then write against it with useLatestVersion so
+    // the rules have to come from the descriptor parsed out of the registered schema.
+    const registrar = protobufSer()
+    await registrar.serialize(topic, create(ValidationPersonSchema, { age: 30, name: 'Alice' }))
+
+    const ser = protobufSer({
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      validationRulesExecution: ValidationRulesExecution.AFTER_DOMAIN_RULES,
+    })
+    await expect(ser.serialize(topic, create(ValidationPersonSchema, { age: -5, name: 'Alice' })))
+      .rejects.toThrow(/age must not be negative/)
+    const valid = await ser.serialize(topic, create(ValidationPersonSchema, { age: 30, name: 'Alice' }))
+    expect(valid.length).toBeGreaterThan(0)
+  })
 })
