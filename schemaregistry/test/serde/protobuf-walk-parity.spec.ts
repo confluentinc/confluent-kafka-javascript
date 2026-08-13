@@ -8,6 +8,7 @@ import {
 import {
   FieldDescriptorProtoSchema,
   FileDescriptorProtoSchema,
+  FieldOptionsSchema,
   MessageOptionsSchema,
 } from '@bufbuild/protobuf/wkt';
 import { setExtension } from '@bufbuild/protobuf';
@@ -384,6 +385,38 @@ describe('protobuf schema view', () => {
       asBytes)
 
     expect(errors).toEqual([])
+  })
+
+  it('presents unsigned fields to a validation rule as unsigned', async () => {
+    // protobuf-es hands back a number or bigint for signed and unsigned alike, and CEL
+    // reads those as int, so a rule authored against a uint field finds no matching
+    // overload and rejects a valid message. Covers the scalar, repeated and map shapes,
+    // since a repeated or map field binds the whole collection to `this`.
+    const schemaDesc = rebuiltWidget((proto) => {
+      const message = messageOf(proto, 'ValidationInner')
+      const fields: [string, number, number, string][] = [
+        // A singular field, then a repeated one: a repeated field binds the whole list to
+        // `this`, so every element has to be presented as unsigned too.
+        ['serial', 77, 1 /* LABEL_OPTIONAL */, 'this % 10u == 5u'],
+        ['serials', 78, 3 /* LABEL_REPEATED */, 'this.all(v, v % 10u == 5u)'],
+      ]
+      for (const [name, number, label, expr] of fields) {
+        const field = create(FieldDescriptorProtoSchema, {
+          name, jsonName: name, number, type: 4 /* TYPE_UINT64 */, label,
+        })
+        field.options = create(FieldOptionsSchema)
+        setExtension(field.options, field_meta, create(MetaSchema, {
+          rules: [{ name: `u_${name}`, doc: '', expr, sql: '' }],
+        }))
+        message.field.push(field)
+      }
+    }, 'test.ValidationInner')
+    const msg = create(schemaDesc, { x: 1, serial: 25n, serials: [5n, 15n] } as any)
+
+    const errors = await validateProtobufMessage(new CelValidator(), schemaDesc, msg, false,
+      schemaDesc)
+
+    expect(errors.map((e: ValidationRuleError) => `${e.rule.name}@${e.fieldPath}`)).toEqual([])
   })
 
   it('reports a message it cannot read through the schema as a serialization error', async () => {
