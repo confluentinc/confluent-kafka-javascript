@@ -1175,7 +1175,7 @@ export class RuleContext {
   }
 
   enterField(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
-             tags: Set<string> | null): FieldContext {
+             tags: Set<string> | null, isUnsigned: boolean = false): FieldContext {
     let allTags = new Set<string>(tags ?? this.getInlineTags(fullName))
     for (let v of this.getTags(fullName)) {
       allTags.add(v)
@@ -1185,7 +1185,8 @@ export class RuleContext {
       fullName,
       name,
       fieldType,
-      allTags
+      allTags,
+      isUnsigned
     )
     this.fieldContexts.push(fieldContext)
     return fieldContext
@@ -1300,13 +1301,21 @@ export class FieldContext {
   name: string
   type: FieldType
   tags: Set<string>
+  /**
+   * Whether the field's declared type is an unsigned integer. FieldType collapses those
+   * onto INT and LONG, but a rule evaluated against the value has to see it as unsigned to
+   * match the other clients - a uint64 compared against a `10u` literal, for instance.
+   */
+  isUnsigned: boolean
 
-  constructor(containingMessage: any, fullName: string, name: string, fieldType: FieldType, tags: Set<string>) {
+  constructor(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
+              tags: Set<string>, isUnsigned: boolean = false) {
     this.containingMessage = containingMessage
     this.fullName = fullName
     this.name = name
     this.type = fieldType
     this.tags = new Set<string>(tags)
+    this.isUnsigned = isUnsigned
   }
 
   isPrimitive(): boolean {

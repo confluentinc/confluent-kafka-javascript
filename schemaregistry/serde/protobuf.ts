@@ -197,8 +197,8 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
    *
    * The rules are read from the descriptor parsed out of the schema being written, which
    * is the one carrying the Meta options — the caller's generated descriptor may predate
-   * them. Mirrors what fieldTransform does for domain rules, and falls back to the
-   * caller's descriptor if the schema cannot be parsed into one.
+   * them. Mirrors what fieldTransform does for domain rules. There is deliberately no
+   * fallback to the caller's descriptor: see below.
    * @param messageDesc - the caller's message descriptor
    * @param info - the schema being written
    * @param msg - the message to validate
@@ -648,35 +648,17 @@ function resolveTypeName(
   }
 }
 
-async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fieldTransform: FieldTransform): Promise<any> {
+export async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fieldTransform: FieldTransform): Promise<any> {
   if (msg == null || descriptor == null) {
     return msg
   }
-  if (Array.isArray(msg)) {
-    for (let i = 0; i < msg.length; i++) {
-      msg[i] = await transform(ctx, descriptor, msg[i], fieldTransform)
-    }
-  }
-  if (msg instanceof Map) {
-    return msg
-  }
-  const typeName = msg.$typeName
-  if (typeName != null) {
-    const fields = descriptor.fields
-    for (let i = 0; i < fields.length; i++) {
-      const fd = fields[i]
+  if (msg.$typeName != null) {
+    for (const fd of descriptor.fields) {
       await transformField(ctx, fd, descriptor, msg, fieldTransform)
     }
     return msg
   }
-  const fieldCtx = ctx.currentField()
-  if (fieldCtx != null) {
-    const ruleTags = ctx.rule.tags ?? []
-    if (ruleTags == null || ruleTags.length === 0 || !disjoint(new Set<string>(ruleTags), fieldCtx.tags)) {
-      return await fieldTransform.transform(ctx, fieldCtx, msg)
-    }
-  }
-  return msg
+  return await transformLeaf(ctx, msg, fieldTransform)
 }
 
 async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage,
@@ -687,7 +669,8 @@ async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage
       desc.typeName + '.' + fd.name,
       fd.name,
       getType(fd),
-      getInlineTags(fd)
+      getInlineTags(fd),
+      isUnsignedField(fd)
     )
     let value = null;
     if (fd.oneof != null) {
@@ -701,7 +684,7 @@ async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage
     } else {
       value = msg[fd.localName]
     }
-    const newValue = await transform(ctx, desc, value, fieldTransform)
+    const newValue = await transformFieldValue(ctx, fd, value, fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
       if (newValue === false) {
         throw new RuleConditionError(ctx.rule)
@@ -716,6 +699,76 @@ async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage
   } finally {
     ctx.leaveField()
   }
+}
+
+/**
+ * Transforms one field's value, descending exactly the way the validation walk does: into a
+ * message-valued field with that field's own descriptor, into every element of a repeated
+ * field, and into every value of a message-valued map. Anything else is a leaf and goes to
+ * the field transform.
+ */
+async function transformFieldValue(ctx: RuleContext, fd: DescField, value: any,
+                                   fieldTransform: FieldTransform): Promise<any> {
+  if (value == null) {
+    return value
+  }
+  if (fd.fieldKind === 'message') {
+    return await transform(ctx, fd.message, value, fieldTransform)
+  }
+  if (fd.fieldKind === 'list') {
+    if (!Array.isArray(value)) {
+      return value
+    }
+    const result: any[] = []
+    for (const element of value) {
+      result.push(fd.listKind === 'message'
+        ? await transform(ctx, fd.message, element, fieldTransform)
+        : await transformLeaf(ctx, element, fieldTransform))
+    }
+    return result
+  }
+  if (fd.fieldKind === 'map') {
+    if (typeof value !== 'object' || fd.mapKind !== 'message') {
+      // A map of scalars has no tags below it to act on, which is also why the validation
+      // walk does not descend into one.
+      return value
+    }
+    const result: Record<string, any> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      result[key] = await transform(ctx, fd.message, entry, fieldTransform)
+    }
+    return result
+  }
+  return await transformLeaf(ctx, value, fieldTransform)
+}
+
+/**
+ * Hands a leaf value to the field transform, when the rule's tags overlap the field's.
+ */
+async function transformLeaf(ctx: RuleContext, value: any,
+                             fieldTransform: FieldTransform): Promise<any> {
+  const fieldCtx = ctx.currentField()
+  if (fieldCtx == null) {
+    return value
+  }
+  const ruleTags = ctx.rule.tags ?? []
+  if (ruleTags.length !== 0 && disjoint(new Set<string>(ruleTags), fieldCtx.tags)) {
+    return value
+  }
+  return await fieldTransform.transform(ctx, fieldCtx, value)
+}
+
+/**
+ * Whether a field's declared type is an unsigned integer. getType collapses these onto INT
+ * and LONG, so the unsignedness has to travel separately for a rule to see the value as the
+ * other clients do.
+ */
+function isUnsignedField(fd: DescField): boolean {
+  const scalar = fd.fieldKind === 'scalar' ? fd.scalar
+    : fd.fieldKind === 'list' && fd.listKind === 'scalar' ? fd.scalar
+      : undefined
+  return scalar === ScalarType.UINT32 || scalar === ScalarType.UINT64
+    || scalar === ScalarType.FIXED32 || scalar === ScalarType.FIXED64
 }
 
 function getType(fd: DescField): FieldType {
