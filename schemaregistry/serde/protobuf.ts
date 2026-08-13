@@ -896,16 +896,170 @@ export async function validateProtobufMessage(
   if (executor == null || descriptor == null || msg == null) {
     return out
   }
-  // Re-read the message through the registered schema's descriptor, so that a rule sees the
-  // fields the schema declares. Protobuf pairs fields by number on the wire, so this also
-  // carries a value across a rename - and a message-level rule binds `this` to a message
-  // whose fields the rule's own environment, built from the same schema, can resolve.
-  let value = msg
-  if (runtimeDescriptor != null && runtimeDescriptor !== descriptor) {
-    value = fromBinary(descriptor, toBinary(runtimeDescriptor, msg))
+  // The walk is driven by the caller's message throughout: it decides which fields exist,
+  // which are absent, and what the values are. A rule that binds `this` to a message needs
+  // one more thing - a view of that message in the schema's terms, since a rule's CEL
+  // environment is built from the schema and `this.renamed` cannot read a field the caller's
+  // type calls something else. Protobuf pairs fields by number on the wire, so re-reading the
+  // message through the registered descriptor produces exactly that view.
+  //
+  // Whether that is needed is decided once per descriptor pair (see needsSchemaView) rather
+  // than per record. A generated type describing the same fields as the registered schema
+  // skips it entirely, even though the two descriptors are distinct objects. A type that has
+  // fallen behind the schema does not: under use.latest.version the schema may declare a
+  // field the type has never heard of, and a rule that binds `this` can read the schema's
+  // default for it, so those producers re-read every record. That cost is the price of
+  // evaluating rules in the schema's terms, not an accident.
+  let schemaMsg: any = undefined
+  if (runtimeDescriptor != null && needsSchemaView(descriptor, runtimeDescriptor)) {
+    try {
+      schemaMsg = fromBinary(descriptor, toBinary(runtimeDescriptor, msg))
+    } catch (e) {
+      // The bytes the producer is about to write cannot be read through the registered
+      // schema, so a consumer reading with that schema could not read them either - a bytes
+      // field carrying non-UTF-8 data against a schema that declares a string, for instance,
+      // which is a compatible change. Fail in the channel the caller already handles rather
+      // than leaking a raw protobuf error, and name the type so it is searchable.
+      throw new SerializationError(
+        `could not read message ${descriptor.typeName} through the registered schema: `
+        + `${e instanceof Error ? e.message : String(e)}`)
+    }
   }
-  await validate(executor, descriptor, '', value, failFast, out, runtimeDescriptor)
+  await validate(executor, descriptor, runtimeDescriptor ?? descriptor, '', msg, schemaMsg,
+    failFast, out)
   return out
+}
+
+// Memoizes needsSchemaView, keyed by the registered schema's descriptor and then the runtime
+// one. Both are stable for the lifetime of a serializer, so this is one lookup per record
+// rather than a tree comparison.
+const schemaViewNeeded = new WeakMap<DescMessage, WeakMap<DescMessage, boolean>>()
+
+/**
+ * Whether a message whose runtime descriptor is runtimeDescriptor has to be re-read through
+ * descriptor before rules can bind `this` to it - true when the two disagree about any field
+ * a rule could observe: its name, its kind, or the shape of its values, at any depth.
+ *
+ * Presence deliberately does not count. Whether an unset field is absent is decided by the
+ * producer's message, which the walk reads directly, so a schema that only moved a field into
+ * or out of a oneof needs no re-read.
+ *
+ * A field the schema declares and the caller's type does not does count, which means a type
+ * running behind the registered schema - the use.latest.version case - re-reads every record.
+ * Only an exact match skips the re-read. Narrowing that to the rules that could actually
+ * observe the added field is possible but not simple: a rule binding `this` at any ancestor
+ * can traverse into the field, and a field-level rule on a message-valued field binds `this`
+ * to a type that need not declare rules of its own, so a per-descriptor test for
+ * message-level rules would be wrong in both directions.
+ */
+function needsSchemaView(descriptor: DescMessage, runtimeDescriptor: DescMessage): boolean {
+  if (runtimeDescriptor === descriptor) {
+    return false
+  }
+  let byRuntime = schemaViewNeeded.get(descriptor)
+  if (byRuntime == null) {
+    byRuntime = new WeakMap<DescMessage, boolean>()
+    schemaViewNeeded.set(descriptor, byRuntime)
+  }
+  const cached = byRuntime.get(runtimeDescriptor)
+  if (cached != null) {
+    return cached
+  }
+  const needed = !presentsSameValues(descriptor, runtimeDescriptor, new Set<string>())
+  byRuntime.set(runtimeDescriptor, needed)
+  return needed
+}
+
+/**
+ * Whether the two descriptors present every field they share - paired by number, which is how
+ * protobuf identifies a field - under the same name, kind and value shape, recursively through
+ * message-valued fields. Fields only the caller declares are ignored: no rule can name them,
+ * and the walk skips them.
+ *
+ * visited holds the descriptor pairs already compared, so a self-referential message type
+ * terminates.
+ */
+function presentsSameValues(descriptor: DescMessage, runtimeDescriptor: DescMessage,
+                            visited: Set<string>): boolean {
+  const pair = `${descriptor.typeName}\0${runtimeDescriptor.typeName}`
+  if (visited.has(pair)) {
+    // Already compared on another path, or cycling back to it. Either way this pair
+    // contributes no new disagreement.
+    return true
+  }
+  visited.add(pair)
+  for (const schemaFd of descriptor.fields) {
+    if (runtimeDescriptor.fields.find((f) => f.number === schemaFd.number) == null) {
+      return false
+    }
+  }
+  for (const runtimeFd of runtimeDescriptor.fields) {
+    const schemaFd = descriptor.fields.find((f) => f.number === runtimeFd.number)
+    if (schemaFd == null) {
+      continue
+    }
+    if (schemaFd.name !== runtimeFd.name || schemaFd.fieldKind !== runtimeFd.fieldKind) {
+      return false
+    }
+    switch (runtimeFd.fieldKind) {
+      case 'scalar':
+        if (schemaFd.fieldKind !== 'scalar' || schemaFd.scalar !== runtimeFd.scalar) {
+          return false
+        }
+        break
+      case 'message':
+        if (schemaFd.fieldKind !== 'message'
+          || !presentsSameValues(schemaFd.message, runtimeFd.message, visited)) {
+          return false
+        }
+        break
+      case 'list':
+        if (schemaFd.fieldKind !== 'list' || schemaFd.listKind !== runtimeFd.listKind) {
+          return false
+        }
+        if (runtimeFd.listKind === 'scalar' && schemaFd.listKind === 'scalar'
+          && schemaFd.scalar !== runtimeFd.scalar) {
+          return false
+        }
+        if (runtimeFd.listKind === 'message' && schemaFd.listKind === 'message'
+          && !presentsSameValues(schemaFd.message, runtimeFd.message, visited)) {
+          return false
+        }
+        break
+      case 'map':
+        if (schemaFd.fieldKind !== 'map' || schemaFd.mapKind !== runtimeFd.mapKind
+          || schemaFd.mapKey !== runtimeFd.mapKey) {
+          return false
+        }
+        if (runtimeFd.mapKind === 'scalar' && schemaFd.mapKind === 'scalar'
+          && schemaFd.scalar !== runtimeFd.scalar) {
+          return false
+        }
+        if (runtimeFd.mapKind === 'message' && schemaFd.mapKind === 'message'
+          && !presentsSameValues(schemaFd.message, runtimeFd.message, visited)) {
+          return false
+        }
+        break
+      default:
+        break
+    }
+  }
+  return true
+}
+
+/**
+ * The value a field holds on a message, or undefined when it is absent. A oneof member lives
+ * under its oneof's property and is present only when that oneof selects it.
+ */
+function readField(msg: any, fd: DescField): any {
+  if (fd.oneof != null) {
+    const oneof = msg[fd.oneof.localName]
+    if (oneof == null || oneof.case !== fd.localName) {
+      return undefined
+    }
+    return oneof.value
+  }
+  return msg[fd.localName]
 }
 
 /**
@@ -915,65 +1069,82 @@ export async function validateProtobufMessage(
 async function validate(
   executor: ValidationRuleExecutor,
   descriptor: DescMessage,
+  runtimeDescriptor: DescMessage,
   path: string,
   msg: any,
+  schemaMsg: any,
   failFast: boolean,
   out: ValidationRuleError[],
-  runtimeDescriptor?: DescMessage,
 ): Promise<void> {
   if (descriptor == null || msg == null || msg.$typeName == null) {
     return
   }
-  // Message-level rules: this = the message.
+  // Message-level rules: this = the message, read as the schema names it.
   for (const rule of getMessageValidationRules(descriptor)) {
-    await evaluateValidationRule(executor, rule, descriptor, msg, path, out)
+    await evaluateValidationRule(executor, rule, descriptor, schemaMsg ?? msg, path, out)
     if (failFast && out.length > 0) {
       return
     }
   }
-  // The message arrives in the schema's terms - validateProtobufMessage re-reads it through
-  // the registered schema's descriptor - so the walk is driven by the schema's fields and
-  // reads values under the schema's names.
-  for (const fd of descriptor.fields) {
-    let value: any
-    if (fd.oneof != null) {
-      const oneof = msg[fd.oneof.localName]
-      if (oneof == null || oneof.case !== fd.localName) {
-        // skip oneof members that are not set
-        continue
-      }
-      value = oneof.value
-    } else {
-      value = msg[fd.localName]
+  // The walk is driven by the caller's message: it decides which fields exist, which are
+  // absent, and what the values are. Each field is paired to the registered schema by number,
+  // and the schema's field supplies the rules and the name used in the reported path. Fields
+  // the schema does not declare are skipped, so the walk visits the intersection - the same
+  // fields the transform walk visits.
+  for (const runtimeFd of runtimeDescriptor.fields) {
+    const fd = schemaFieldFor(descriptor, runtimeDescriptor, runtimeFd)
+    if (fd == null) {
+      continue
     }
+    const value = readField(msg, runtimeFd)
     // Skip-on-null: a field with explicit presence that is unset does not invoke the
     // executor. Repeated/map fields are always present as an empty collection.
+    //
+    // Absence is read from the caller's message: whether an unset field counts as absent is
+    // decided by the type that wrote it, not by the registered schema, and the two can
+    // disagree - moving a field into or out of a oneof is a compatible change.
     if (value == null) {
       continue
     }
+    // Where a schema view exists, values come from it: the two descriptors can disagree about
+    // representation as well as naming. bytes and string are interchangeable at the same
+    // number - a compatible change - and a rule authored as `this == 'hello'` cannot match a
+    // Uint8Array.
+    const schemaValue = schemaMsg != null ? readField(schemaMsg, fd) : undefined
+    const ruleValue = schemaValue !== undefined ? schemaValue : value
     // Paths come from the registered schema, which is what a rule refers to.
     const childPath = path ? `${path}.${fd.name}` : fd.name
     for (const rule of getFieldValidationRules(fd)) {
-      await evaluateValidationRule(executor, rule, fd, value, childPath, out)
+      await evaluateValidationRule(executor, rule, fd, ruleValue, childPath, out)
       if (failFast && out.length > 0) {
         return
       }
     }
-    if (fd.fieldKind === 'message') {
-      await validate(executor, fd.message, childPath, value, failFast, out)
+    if (runtimeFd.fieldKind === 'message' && fd.fieldKind === 'message') {
+      await validate(executor, fd.message, runtimeFd.message, childPath, value, schemaValue,
+        failFast, out)
       if (failFast && out.length > 0) {
         return
       }
-    } else if (fd.fieldKind === 'list' && fd.listKind === 'message') {
+    } else if (runtimeFd.fieldKind === 'list' && runtimeFd.listKind === 'message'
+      && fd.fieldKind === 'list' && fd.listKind === 'message') {
       for (let i = 0; i < value.length; i++) {
-        await validate(executor, fd.message, `${childPath}[${i}]`, value[i], failFast, out)
+        // Both lists came from the same bytes, so they line up; the guard is for safety.
+        const schemaElement = Array.isArray(schemaValue) && i < schemaValue.length
+          ? schemaValue[i] : undefined
+        await validate(executor, fd.message, runtimeFd.message, `${childPath}[${i}]`, value[i],
+          schemaElement, failFast, out)
         if (failFast && out.length > 0) {
           return
         }
       }
-    } else if (fd.fieldKind === 'map' && fd.mapKind === 'message') {
+    } else if (runtimeFd.fieldKind === 'map' && runtimeFd.mapKind === 'message'
+      && fd.fieldKind === 'map' && fd.mapKind === 'message') {
       for (const key of Object.keys(value)) {
-        await validate(executor, fd.message, `${childPath}["${key}"]`, value[key], failFast, out)
+        // Map values pair by key rather than position.
+        const schemaEntry = schemaValue != null ? schemaValue[key] : undefined
+        await validate(executor, fd.message, runtimeFd.message, `${childPath}["${key}"]`,
+          value[key], schemaEntry, failFast, out)
         if (failFast && out.length > 0) {
           return
         }

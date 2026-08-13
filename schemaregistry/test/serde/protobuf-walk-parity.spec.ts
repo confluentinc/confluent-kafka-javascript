@@ -5,9 +5,13 @@ import {
   createFileRegistry,
   DescFile,
 } from '@bufbuild/protobuf';
-import { FileDescriptorProtoSchema, MessageOptionsSchema } from '@bufbuild/protobuf/wkt';
+import {
+  FieldDescriptorProtoSchema,
+  FileDescriptorProtoSchema,
+  MessageOptionsSchema,
+} from '@bufbuild/protobuf/wkt';
 import { setExtension } from '@bufbuild/protobuf';
-import { MetaSchema, message_meta } from '../../confluent/meta_pb';
+import { field_meta, MetaSchema, message_meta } from '../../confluent/meta_pb';
 import { RuleContext } from '../../serde/serde';
 import { RuleMode } from '../../schemaregistry-client';
 import { transform, validateProtobufMessage } from '../../serde/protobuf';
@@ -237,5 +241,203 @@ describe('protobuf renamed fields', () => {
     // `this.renamed > 0` holds because the message was re-read through the schema, so the
     // value is under `renamed`. Without that, the rule reads a missing field and fails.
     expect(errors).toEqual([])
+  })
+})
+
+describe('protobuf schema view', () => {
+  /**
+   * Rebuilds the validation widget file from its own descriptor proto, applying mutate to the
+   * copy. The result is a registry distinct from the generated one, so a test can pair a
+   * registered schema against the generated types the way use.latest.version does.
+   */
+  function rebuiltWidget(mutate: (proto: any) => void, messageName: string) {
+    const original: DescFile = ValidationOuterSchema.file
+    const proto = clone(FileDescriptorProtoSchema, original.proto)
+    mutate(proto)
+    const deps = new Map<string, DescFile>()
+    const collect = (file: DescFile) => {
+      for (const dep of file.dependencies) {
+        if (!deps.has(dep.proto.name)) {
+          deps.set(dep.proto.name, dep)
+          collect(dep)
+        }
+      }
+    }
+    collect(original)
+    const registry = createFileRegistry(proto, (name) => deps.get(name)?.proto)
+    return registry.getMessage(messageName)!
+  }
+
+  function messageOf(proto: any, name: string) {
+    return proto.messageType.find((m: any) => m.name === name)!
+  }
+
+  /** Records the value each rule was handed, so a test can inspect what `this` was bound to. */
+  class Recorder implements ValidationRuleExecutor {
+    readonly seen: any[] = []
+
+    async execute(rule: ValidationRule, schema: any, msg: any): Promise<any> {
+      this.seen.push(msg)
+      return true
+    }
+  }
+
+  it('does not re-read a message whose type already presents the schema\'s fields', async () => {
+    // A generated type's descriptor is never the same object as the one built from the
+    // registered schema, so an identity check alone would re-read every record. When the two
+    // describe the same fields, the rule is handed the caller's own message - no copy.
+    const schemaDesc = rebuiltWidget((proto) => {
+      // A message-level rule, so `this` is bound to the message and the test can see which
+      // object the rule was handed. The field set is untouched.
+      const message = messageOf(proto, 'ValidationInner')
+      message.options = message.options ?? create(MessageOptionsSchema)
+      setExtension(message.options, message_meta, create(MetaSchema, {
+        rules: [{ name: 'm', doc: '', expr: 'true', sql: '' }],
+      }))
+    }, 'test.ValidationInner')
+    const msg = create(ValidationInnerSchema, { x: 5 })
+    expect(schemaDesc).not.toBe(ValidationInnerSchema)
+
+    const recorder = new Recorder()
+    await validateProtobufMessage(recorder, schemaDesc, msg, false, ValidationInnerSchema)
+
+    expect(recorder.seen.length).toBeGreaterThan(0)
+    expect(recorder.seen.some((v) => v === msg)).toBe(true)
+  })
+
+  it('re-reads a message whose type names a field differently', async () => {
+    // The counterpart: when the names disagree the rule has to be handed a copy read through
+    // the registered schema, not the caller's message.
+    const schemaDesc = rebuiltWidget((proto) => {
+      const message = messageOf(proto, 'ValidationInner')
+      const field = message.field.find((f: any) => f.number === 1)!
+      field.name = 'renamed_x'
+      field.jsonName = 'renamedX'
+      message.options = message.options ?? create(MessageOptionsSchema)
+      setExtension(message.options, message_meta, create(MetaSchema, {
+        rules: [{ name: 'm', doc: '', expr: 'true', sql: '' }],
+      }))
+    }, 'test.ValidationInner')
+    const msg = create(ValidationInnerSchema, { x: 5 })
+
+    const recorder = new Recorder()
+    await validateProtobufMessage(recorder, schemaDesc, msg, false, ValidationInnerSchema)
+
+    expect(recorder.seen.length).toBeGreaterThan(0)
+    expect(recorder.seen.some((v) => v === msg)).toBe(false)
+  })
+
+  it('shows a message rule a field only the registered schema declares', async () => {
+    // Adding a field is the most ordinary compatible change there is, so the registered schema
+    // can declare one the generated type has never heard of - and a message-level rule can
+    // reference it, expecting the schema's default. That only works if the message is read
+    // through the schema, so a field with no counterpart is itself a reason to re-read.
+    //
+    // The added field is repeated deliberately. CEL resolves field access through the
+    // registry built from the registered schema, so a missing *scalar* property already reads
+    // as that field's default and would pass either way; a missing repeated one does not.
+    const schemaDesc = rebuiltWidget((proto) => {
+      const message = messageOf(proto, 'ValidationInner')
+      message.field.push(create(FieldDescriptorProtoSchema, {
+        name: 'added',
+        jsonName: 'added',
+        number: 99,
+        type: 9, // TYPE_STRING
+        label: 3, // LABEL_REPEATED
+      }))
+      message.options = message.options ?? create(MessageOptionsSchema)
+      setExtension(message.options, message_meta, create(MetaSchema, {
+        rules: [{ name: 'm', doc: '', expr: 'size(this.added) == 0', sql: '' }],
+      }))
+    }, 'test.ValidationInner')
+    const msg = create(ValidationInnerSchema, { x: 5 })
+
+    const errors = await validateProtobufMessage(new CelValidator(), schemaDesc, msg, false,
+      ValidationInnerSchema)
+
+    expect(errors).toEqual([])
+  })
+
+  it('hands a scalar rule the schema\'s representation of the value', async () => {
+    // bytes and string are interchangeable at the same number - a compatible change - so a
+    // producer can write bytes against a schema that declares a string. The rule is authored
+    // against the schema, so it has to be handed the string: naming is not the only thing the
+    // schema's view fixes.
+    const asString = rebuiltWidget((proto) => {
+      const field = messageOf(proto, 'ValidationInner').field.find((f: any) => f.number === 1)!
+      field.name = 'payload'
+      field.jsonName = 'payload'
+      field.type = 9 // TYPE_STRING
+      setExtension(field.options!, field_meta, create(MetaSchema, {
+        rules: [{ name: 'r', doc: '', expr: 'this == \'hello\'', sql: '' }],
+      }))
+    }, 'test.ValidationInner')
+    const asBytes = rebuiltWidget((proto) => {
+      const field = messageOf(proto, 'ValidationInner').field.find((f: any) => f.number === 1)!
+      field.name = 'payload'
+      field.jsonName = 'payload'
+      field.type = 12 // TYPE_BYTES
+    }, 'test.ValidationInner')
+    const msg = create(asBytes, { payload: new TextEncoder().encode('hello') } as any)
+
+    const errors = await validateProtobufMessage(new CelValidator(), asString, msg, false,
+      asBytes)
+
+    expect(errors).toEqual([])
+  })
+
+  it('reports a message it cannot read through the schema as a serialization error', async () => {
+    // bytes and string are interchangeable at the same number, so a producer writing non-UTF-8
+    // bytes can meet a registered schema that declares a string. Those bytes cannot be read
+    // through it - a consumer using that schema could not read them either - so the failure has
+    // to arrive as a SerializationError rather than a raw protobuf error.
+    const asString = rebuiltWidget((proto) => {
+      const field = messageOf(proto, 'ValidationInner').field.find((f: any) => f.number === 1)!
+      field.name = 'payload'
+      field.jsonName = 'payload'
+      field.type = 9 // TYPE_STRING
+    }, 'test.ValidationInner')
+    const asBytes = rebuiltWidget((proto) => {
+      const field = messageOf(proto, 'ValidationInner').field.find((f: any) => f.number === 1)!
+      field.name = 'payload'
+      field.jsonName = 'payload'
+      field.type = 12 // TYPE_BYTES
+    }, 'test.ValidationInner')
+    const msg = create(asBytes, { payload: new Uint8Array([0xff, 0xfe]) } as any)
+
+    await expect(validateProtobufMessage(new AlwaysFail(), asString, msg, false, asBytes))
+      .rejects.toThrow(/could not read message test.ValidationInner/)
+  })
+
+  it('pairs nested, repeated and map values to their own schema view', async () => {
+    // A rule that binds `this` to a nested message needs that message in the schema's terms,
+    // not just the top-level one - on the singular, repeated and map paths alike. The repeated
+    // elements also have to be paired positionally, and map values by key.
+    const schemaDesc = rebuiltWidget((proto) => {
+      for (const [messageName, fieldName] of [['ValidationInner', 'renamed_x'],
+        ['ValidationItem', 'renamed_v']]) {
+        const message = messageOf(proto, messageName)
+        const field = message.field.find((f: any) => f.number === 1)!
+        field.name = fieldName
+        field.jsonName = fieldName
+        message.options = message.options ?? create(MessageOptionsSchema)
+        setExtension(message.options, message_meta, create(MetaSchema, {
+          rules: [{ name: `${messageName}Rule`, doc: '', expr: `this.${fieldName} > 0`, sql: '' }],
+        }))
+      }
+    }, 'test.ValidationOuter')
+    const msg = create(ValidationOuterSchema, {
+      inner: create(ValidationInnerSchema, { x: 5 }),
+      items: [create(ValidationItemSchema, { v: 1 }), create(ValidationItemSchema, { v: -5 })],
+      labels: { a: create(ValidationItemSchema, { v: 2 }) },
+    })
+
+    const errors = await validateProtobufMessage(new CelValidator(), schemaDesc, msg, false,
+      ValidationOuterSchema)
+
+    expect(errors.map((e: ValidationRuleError) => `${e.rule.name}@${e.fieldPath}`))
+      // tagsNotEmpty is the widget's own rule on the empty repeated field, unrelated to the
+      // pairing under test.
+      .toEqual(['ValidationItemRule@items[1]', 'tagsNotEmpty@tags'])
   })
 })
