@@ -7,6 +7,7 @@ import {
 } from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
 import {CelExecutor} from "./cel-executor";
+import {celUint} from "@bufbuild/cel";
 
 export class CelFieldExecutor extends FieldRuleExecutor {
   executor: CelExecutor = new CelExecutor()
@@ -48,7 +49,12 @@ export class CelFieldExecutorTransform implements FieldTransform {
       return fieldValue
     }
     const args = {
-      value: fieldValue,
+      // An unsigned field's value has to be presented to CEL as unsigned; FieldType
+      // collapses uint32/uint64 onto INT and LONG, so the field context carries the
+      // distinction.
+      value: fieldCtx.isUnsigned && (typeof fieldValue === 'bigint' || typeof fieldValue === 'number')
+        ? celUint(BigInt(fieldValue))
+        : fieldValue,
       fullName: fieldCtx.fullName,
       name: fieldCtx.name,
       typeName: fieldCtx.typeName(),
