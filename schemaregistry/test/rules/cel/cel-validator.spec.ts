@@ -1,8 +1,19 @@
 import { describe, expect, it } from '@jest/globals';
-import { create } from '@bufbuild/protobuf';
+import { clone, create, createFileRegistry, DescFile } from '@bufbuild/protobuf';
+import {
+  FieldDescriptorProto_Label,
+  FieldDescriptorProto_Type,
+  FieldDescriptorProtoSchema,
+  FileDescriptorProtoSchema,
+} from '@bufbuild/protobuf/wkt';
 import { CelValidator } from '../../../rules/cel/cel-validator';
 import { RuleError, ValidationRule } from '../../../serde/serde';
-import { ValidationPersonSchema } from '../../serde/test/validation_widget_pb';
+import {
+  ValidationInnerSchema,
+  ValidationItemSchema,
+  ValidationOuterSchema,
+  ValidationPersonSchema,
+} from '../../serde/test/validation_widget_pb';
 
 /**
  * Tests for CelValidator — the per-rule CEL semantics, independent of any walker.
@@ -97,7 +108,87 @@ describe('CelValidator protobuf values', () => {
     expect(await validator.execute(rule('this.age <= 150'), ValidationPersonSchema, person)).toBe(true)
     expect(await validator.execute(rule("this.name == 'Alice'"), ValidationPersonSchema, person)).toBe(true)
   })
+
+  // Field-level rules are handed the field descriptor, not a message descriptor, and a
+  // message, list or map field still binds a protobuf value to `this` — whose fields
+  // only resolve if the env carries a registry that knows the value's type.
+  it('binds the fields of a message-valued field', async () => {
+    const validator = new CelValidator()
+    const fd = ValidationOuterSchema.fields.find((f) => f.name === 'inner')!
+    const inner = create(ValidationInnerSchema, { x: 5 })
+    expect(await validator.execute(rule('this.x > 0'), fd, inner)).toBe(true)
+  })
+
+  it('binds the fields of a repeated message field', async () => {
+    const validator = new CelValidator()
+    const fd = ValidationOuterSchema.fields.find((f) => f.name === 'items')!
+    const items = [create(ValidationItemSchema, { v: 1 })]
+    expect(await validator.execute(rule('this[0].v > 0'), fd, items)).toBe(true)
+  })
+
+  it('binds the fields of a map message field', async () => {
+    const validator = new CelValidator()
+    const fd = ValidationOuterSchema.fields.find((f) => f.name === 'labels')!
+    const labels = { a: create(ValidationItemSchema, { v: 1 }) }
+    expect(await validator.execute(rule("this['a'].v > 0"), fd, labels)).toBe(true)
+  })
+
+  // One env per descriptor file has to know every type in that file, not just the first
+  // one validated through it.
+  it('binds fields of two message types declared in the same file', async () => {
+    const validator = new CelValidator()
+    const item = create(ValidationItemSchema, { v: 1 })
+    expect(await validator.execute(rule('this.v > 0'), ValidationItemSchema, item)).toBe(true)
+    const inner = create(ValidationInnerSchema, { x: 1 })
+    expect(await validator.execute(rule('this.x > 0'), ValidationInnerSchema, inner)).toBe(true)
+  })
+
+  // Two schemas can declare the same .proto filename with different contents - different
+  // subjects, or two versions of one subject - so the filename cannot identify the env.
+  it('does not reuse an env across schemas that share a filename', async () => {
+    const validator = new CelValidator()
+    const inner = create(ValidationInnerSchema, { x: 5 })
+    expect(await validator.execute(rule('this.x > 0'), ValidationInnerSchema, inner)).toBe(true)
+
+    const evolved = evolvedInnerDescriptor()
+    const evolvedMsg = { $typeName: evolved.typeName, x: 5, extra: 7 } as any
+    expect(await validator.execute(rule('this.extra > 0'), evolved, evolvedMsg)).toBe(true)
+  })
 })
+
+/**
+ * ValidationInner from a second descriptor file that keeps the original filename but adds
+ * a field, standing in for a schema that has evolved or for another subject that happens
+ * to use the same .proto name.
+ */
+function evolvedInnerDescriptor() {
+  const original: DescFile = ValidationInnerSchema.file
+  const proto = clone(FileDescriptorProtoSchema, original.proto)
+  const message = proto.messageType.find((m) => m.name === 'ValidationInner')!
+  message.field.push(
+    create(FieldDescriptorProtoSchema, {
+      name: 'extra',
+      number: 99,
+      type: FieldDescriptorProto_Type.INT32,
+      label: FieldDescriptorProto_Label.OPTIONAL,
+      jsonName: 'extra',
+    }),
+  )
+  // Keyed by the proto filename, which DescFile.name does not carry (it drops the
+  // extension).
+  const deps = new Map<string, DescFile>()
+  const collect = (file: DescFile) => {
+    for (const dep of file.dependencies) {
+      if (!deps.has(dep.proto.name)) {
+        deps.set(dep.proto.name, dep)
+        collect(dep)
+      }
+    }
+  }
+  collect(original)
+  const registry = createFileRegistry(proto, (name) => deps.get(name)?.proto)
+  return registry.getMessage('test.ValidationInner')!
+}
 
 describe('CelValidator caching', () => {
   it('caches one program per expression', async () => {
