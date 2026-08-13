@@ -1,5 +1,14 @@
 import { describe, expect, it } from '@jest/globals';
-import { create } from '@bufbuild/protobuf';
+import {
+  clone,
+  create,
+  createFileRegistry,
+  DescFile,
+} from '@bufbuild/protobuf';
+import {
+  FieldDescriptorProto_Type,
+  FileDescriptorProtoSchema,
+} from '@bufbuild/protobuf/wkt';
 import { RuleContext } from '../../serde/serde';
 import { RuleMode } from '../../schemaregistry-client';
 import { transform, validateProtobufMessage } from '../../serde/protobuf';
@@ -122,3 +131,87 @@ describe('protobuf unsigned fields', () => {
     expect(await transformer.transform(ctx, fieldCtx, 18446744073709551615n)).toBe(true)
   })
 })
+
+describe('protobuf absent fields', () => {
+  it('leaves a field with unset presence absent', async () => {
+    // Writing a transformed default back would materialize the field: an absent message or
+    // unset optional scalar would become present.
+    const fieldTransform = {
+      async transform(_ctx: RuleContext, _fieldCtx: any, value: any): Promise<any> {
+        return typeof value === 'string' ? `${value}-suffix` : value
+      },
+    }
+    const rule = { name: 't', type: 'TEST', mode: RuleMode.WRITE, kind: 'TRANSFORM' } as any
+    const target = { schema: '{}', schemaType: 'PROTOBUF' } as any
+    const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
+      rule, 0, [rule], null, null as any)
+    const msg = create(ValidationOuterSchema, { tags: ['t'] })
+
+    await transform(ctx, ValidationOuterSchema, msg, fieldTransform)
+
+    expect(msg.inner).toBeUndefined()
+    expect(msg.maybe).toBeUndefined()
+    expect(msg.tags).toEqual(['t-suffix'])
+  })
+})
+
+describe('protobuf renamed fields', () => {
+  /**
+   * ValidationInner with field 1 renamed and tagged, standing in for a registered schema
+   * whose field names have moved on from the generated class. Renaming a field at the same
+   * number is a compatible change, since protobuf identifies a field by its number.
+   */
+  function renamedInner() {
+    const original: DescFile = ValidationInnerSchema.file
+    const proto = clone(FileDescriptorProtoSchema, original.proto)
+    const message = proto.messageType.find((m: any) => m.name === 'ValidationInner')!
+    const field = message.field.find((f: any) => f.number === 1)!
+    field.name = 'renamed'
+    field.jsonName = 'renamed'
+    field.type = FieldDescriptorProto_Type.STRING
+    const deps = new Map<string, DescFile>()
+    const collect = (file: DescFile) => {
+      for (const dep of file.dependencies) {
+        if (!deps.has(dep.proto.name)) {
+          deps.set(dep.proto.name, dep)
+          collect(dep)
+        }
+      }
+    }
+    collect(original)
+    const registry = createFileRegistry(proto, (name) => deps.get(name)?.proto)
+    return registry.getMessage('test.ValidationInner')!
+  }
+
+  it('both walks pair fields by number, not by name', async () => {
+    const schemaDesc = renamedInner()
+    // The generated class calls field 1 "x"; the registered schema calls it "renamed".
+    const msg = create(ValidationInnerSchema, { x: 5 })
+
+    const errors = await validateProtobufMessage(new AlwaysFail(), schemaDesc, msg, false,
+      ValidationInnerSchema)
+    // The rule on field 1 fires, reported under the registered schema's name.
+    expect(errors.map((e: ValidationRuleError) => `${e.rule.name}@${e.fieldPath}`))
+      .toEqual(['r@renamed'])
+
+    const visited: string[] = []
+    const fieldTransform = {
+      async transform(_ctx: RuleContext, fieldCtx: any, value: any): Promise<any> {
+        visited.push(fieldCtx.name)
+        return value
+      },
+    }
+    const rule = { name: 't', type: 'TEST', mode: RuleMode.WRITE, kind: 'TRANSFORM' } as any
+    const target = { schema: '{}', schemaType: 'PROTOBUF' } as any
+    const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
+      rule, 0, [rule], null, null as any)
+
+    await transform(ctx, schemaDesc, msg, fieldTransform, ValidationInnerSchema)
+
+    // The value was reached through the runtime property, and reported under the
+    // registered name.
+    expect(visited).toEqual(['renamed'])
+    expect(msg.x).toBe(5)
+  })
+})
+

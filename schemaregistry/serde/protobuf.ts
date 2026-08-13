@@ -214,7 +214,10 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
       this.validationRuleExecutor(),
       desc,
       msg,
-      Boolean(this.config().validationRulesFailFast))
+      Boolean(this.config().validationRulesFailFast),
+      // The caller's descriptor names the properties the values live under, which the
+      // registered schema may name differently.
+      messageDesc)
     this.raiseValidationViolations(violations)
   }
 
@@ -343,7 +346,10 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     const fileDesc = await this.toFileDesc(this.client, ctx.target)
     const typeName = msg.$typeName
     const messageDesc = this.toMessageDescFromName(fileDesc, typeName)
-    return await transform(ctx, messageDesc, msg, fieldTransform)
+    // The registry holds the caller's own descriptor, which names the properties the values
+    // live under; the registered schema may name the same fields differently.
+    return await transform(ctx, messageDesc, msg, fieldTransform,
+      this.registry.getMessage(typeName))
   }
 
   async toFileDesc(client: Client, info: SchemaInfo): Promise<DescFile> {
@@ -475,6 +481,8 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     const fileDesc = await this.toFileDesc(this.client, ctx.target)
     const typeName = msg.$typeName
     const messageDesc = this.toMessageDescFromName(fileDesc, typeName)
+    // No runtime descriptor here: the deserializer builds the message from the
+    // schema-derived descriptor, so the properties already carry the schema's names.
     return await transform(ctx, messageDesc, msg, fieldTransform)
   }
 
@@ -648,52 +656,63 @@ function resolveTypeName(
   }
 }
 
-export async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any, fieldTransform: FieldTransform): Promise<any> {
+export async function transform(ctx: RuleContext, descriptor: DescMessage, msg: any,
+                                fieldTransform: FieldTransform,
+                                runtimeDescriptor?: DescMessage): Promise<any> {
   if (msg == null || descriptor == null) {
     return msg
   }
   if (msg.$typeName != null) {
-    for (const fd of descriptor.fields) {
-      await transformField(ctx, fd, descriptor, msg, fieldTransform)
+    // Driven by the message's own fields when the runtime descriptor is known, each paired
+    // to the schema field by number - see schemaFieldFor.
+    for (const runtimeFd of (runtimeDescriptor ?? descriptor).fields) {
+      const fd = schemaFieldFor(descriptor, runtimeDescriptor, runtimeFd)
+      if (fd == null) {
+        // The schema does not declare this field, so it carries no tags.
+        continue
+      }
+      await transformField(ctx, fd, runtimeFd, descriptor, msg, fieldTransform)
     }
     return msg
   }
   return await transformLeaf(ctx, msg, fieldTransform)
 }
 
-async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage,
-                              msg: any, fieldTransform: FieldTransform) {
+async function transformField(ctx: RuleContext, fd: DescField, runtimeFd: DescField,
+                              desc: DescMessage, msg: any, fieldTransform: FieldTransform) {
   try {
+    // Names and tags come from the schema-side field - rules and metadata tags are written
+    // against the registered schema; the value is read through the runtime one.
     ctx.enterField(
       msg,
       desc.typeName + '.' + fd.name,
       fd.name,
-      getType(fd),
+      getType(runtimeFd),
       getInlineTags(fd),
-      isUnsignedField(fd)
+      isUnsignedField(runtimeFd)
     )
     let value = null;
-    if (fd.oneof != null) {
-      let oneof = msg[fd.oneof.localName]
-      if (oneof != null && oneof.case === fd.localName) {
+    if (runtimeFd.oneof != null) {
+      let oneof = msg[runtimeFd.oneof.localName]
+      if (oneof != null && oneof.case === runtimeFd.localName) {
         value = oneof.value
       } else {
         // skip oneof fields that are not set
         return
       }
     } else {
-      value = msg[fd.localName]
+      value = msg[runtimeFd.localName]
     }
-    const newValue = await transformFieldValue(ctx, fd, value, fieldTransform)
+    const newValue = await transformFieldValue(ctx, fd, runtimeFd, value, fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
       if (newValue === false) {
         throw new RuleConditionError(ctx.rule)
       }
     } else {
-      if (fd.oneof != null) {
-        msg[fd.oneof.localName] = { case: fd.localName, value: newValue }
+      if (runtimeFd.oneof != null) {
+        msg[runtimeFd.oneof.localName] = { case: runtimeFd.localName, value: newValue }
       } else {
-        msg[fd.localName] = newValue
+        msg[runtimeFd.localName] = newValue
       }
     }
   } finally {
@@ -707,13 +726,21 @@ async function transformField(ctx: RuleContext, fd: DescField, desc: DescMessage
  * field, and into every value of a message-valued map. Anything else is a leaf and goes to
  * the field transform.
  */
-async function transformFieldValue(ctx: RuleContext, fd: DescField, value: any,
+async function transformFieldValue(ctx: RuleContext, fd: DescField, runtimeFd: DescField,
+                                   value: any,
                                    fieldTransform: FieldTransform): Promise<any> {
   if (value == null) {
     return value
   }
+  // The nested walk needs both descriptors again: the schema's for tags and names, the
+  // runtime's for the properties the values live under.
+  const nestedRuntime = runtimeFd.fieldKind === 'message'
+    || (runtimeFd.fieldKind === 'list' && runtimeFd.listKind === 'message')
+    || (runtimeFd.fieldKind === 'map' && runtimeFd.mapKind === 'message')
+    ? runtimeFd.message
+    : undefined
   if (fd.fieldKind === 'message') {
-    return await transform(ctx, fd.message, value, fieldTransform)
+    return await transform(ctx, fd.message, value, fieldTransform, nestedRuntime)
   }
   if (fd.fieldKind === 'list') {
     if (!Array.isArray(value)) {
@@ -722,7 +749,7 @@ async function transformFieldValue(ctx: RuleContext, fd: DescField, value: any,
     const result: any[] = []
     for (const element of value) {
       result.push(fd.listKind === 'message'
-        ? await transform(ctx, fd.message, element, fieldTransform)
+        ? await transform(ctx, fd.message, element, fieldTransform, nestedRuntime)
         : await transformLeaf(ctx, element, fieldTransform))
     }
     return result
@@ -735,7 +762,7 @@ async function transformFieldValue(ctx: RuleContext, fd: DescField, value: any,
     }
     const result: Record<string, any> = {}
     for (const [key, entry] of Object.entries(value)) {
-      result[key] = await transform(ctx, fd.message, entry, fieldTransform)
+      result[key] = await transform(ctx, fd.message, entry, fieldTransform, nestedRuntime)
     }
     return result
   }
@@ -863,12 +890,13 @@ export async function validateProtobufMessage(
   descriptor: DescMessage,
   msg: any,
   failFast: boolean,
+  runtimeDescriptor?: DescMessage,
 ): Promise<ValidationRuleError[]> {
   const out: ValidationRuleError[] = []
   if (executor == null || descriptor == null || msg == null) {
     return out
   }
-  await validate(executor, descriptor, '', msg, failFast, out)
+  await validate(executor, descriptor, '', msg, failFast, out, runtimeDescriptor)
   return out
 }
 
@@ -883,6 +911,7 @@ async function validate(
   msg: any,
   failFast: boolean,
   out: ValidationRuleError[],
+  runtimeDescriptor?: DescMessage,
 ): Promise<void> {
   if (descriptor == null || msg == null || msg.$typeName == null) {
     return
@@ -894,23 +923,34 @@ async function validate(
       return
     }
   }
-  for (const fd of descriptor.fields) {
+  // The walk is driven by the message's own fields when the runtime descriptor is known,
+  // each paired to the schema field by number. Protobuf identifies a field by its number,
+  // and renaming a field at the same number is a compatible change, so with
+  // use.latest.version the registered schema's name for a field - and with it the property
+  // the value lives under - can differ from the message's.
+  for (const runtimeFd of (runtimeDescriptor ?? descriptor).fields) {
+    const fd = schemaFieldFor(descriptor, runtimeDescriptor, runtimeFd)
+    if (fd == null) {
+      // The schema does not declare this field, so it declares no rules for it.
+      continue
+    }
     let value: any
-    if (fd.oneof != null) {
-      const oneof = msg[fd.oneof.localName]
-      if (oneof == null || oneof.case !== fd.localName) {
+    if (runtimeFd.oneof != null) {
+      const oneof = msg[runtimeFd.oneof.localName]
+      if (oneof == null || oneof.case !== runtimeFd.localName) {
         // skip oneof members that are not set
         continue
       }
       value = oneof.value
     } else {
-      value = msg[fd.localName]
+      value = msg[runtimeFd.localName]
     }
     // Skip-on-null: a field with explicit presence that is unset does not invoke the
     // executor. Repeated/map fields are always present as an empty collection.
     if (value == null) {
       continue
     }
+    // Paths come from the registered schema, which is what a rule refers to.
     const childPath = path ? `${path}.${fd.name}` : fd.name
     for (const rule of getFieldValidationRules(fd)) {
       await evaluateValidationRule(executor, rule, fd, value, childPath, out)
@@ -918,27 +958,46 @@ async function validate(
         return
       }
     }
+    const nestedRuntime = runtimeFd.fieldKind === 'message'
+      || (runtimeFd.fieldKind === 'list' && runtimeFd.listKind === 'message')
+      || (runtimeFd.fieldKind === 'map' && runtimeFd.mapKind === 'message')
+      ? runtimeFd.message
+      : undefined
     if (fd.fieldKind === 'message') {
-      await validate(executor, fd.message, childPath, value, failFast, out)
+      await validate(executor, fd.message, childPath, value, failFast, out, nestedRuntime)
       if (failFast && out.length > 0) {
         return
       }
     } else if (fd.fieldKind === 'list' && fd.listKind === 'message') {
       for (let i = 0; i < value.length; i++) {
-        await validate(executor, fd.message, `${childPath}[${i}]`, value[i], failFast, out)
+        await validate(executor, fd.message, `${childPath}[${i}]`, value[i], failFast, out,
+          nestedRuntime)
         if (failFast && out.length > 0) {
           return
         }
       }
     } else if (fd.fieldKind === 'map' && fd.mapKind === 'message') {
       for (const key of Object.keys(value)) {
-        await validate(executor, fd.message, `${childPath}["${key}"]`, value[key], failFast, out)
+        await validate(executor, fd.message, `${childPath}["${key}"]`, value[key], failFast, out,
+          nestedRuntime)
         if (failFast && out.length > 0) {
           return
         }
       }
     }
   }
+}
+
+/**
+ * The schema-side field corresponding to a runtime field, paired by number. When no runtime
+ * descriptor is supplied the two are the same descriptor and the field is returned as is.
+ */
+function schemaFieldFor(descriptor: DescMessage, runtimeDescriptor: DescMessage | undefined,
+                        runtimeFd: DescField): DescField | undefined {
+  if (runtimeDescriptor == null) {
+    return runtimeFd
+  }
+  return descriptor.fields.find((f) => f.number === runtimeFd.number)
 }
 
 function getMessageValidationRules(desc: DescMessage): ValidationRule[] {
