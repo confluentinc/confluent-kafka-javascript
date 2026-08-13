@@ -3,13 +3,18 @@ import {RuleContext, RuleExecutor} from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
 import stringify from "json-stringify-deterministic";
 import {LRUCache} from "lru-cache";
-import {celEnv, parse, plan} from "@bufbuild/cel";
-import { STRINGS_EXT_FUNCS } from "@bufbuild/cel/ext/strings";
+import {CelEnv, celEnv, parse, plan} from "@bufbuild/cel";
+import { strings } from "@bufbuild/cel/ext";
+import type {Registry} from "@bufbuild/protobuf";
 
 export class CelExecutor implements RuleExecutor {
   config: Map<string, string> | null = null
-  env = celEnv({ funcs: STRINGS_EXT_FUNCS });
+  env: CelEnv = celEnv({ funcs: strings });
   cache: LRUCache<string, any> = new LRUCache({max: 1000})
+  // Envs carrying a protobuf registry, one per registry encountered. CEL resolves field
+  // access on a protobuf message through its registry, so evaluating a rule against one
+  // requires an env that knows the message's type.
+  protoEnvs: WeakMap<Registry, CelEnv> = new WeakMap()
 
   static register(): CelExecutor {
     const executor = new CelExecutor()
@@ -67,10 +72,28 @@ export class CelExecutor implements RuleExecutor {
     let program = this.cache.get(ruleJson)
     if (program == null) {
       const parsedExpr = parse(expr)
-      program = plan(this.env, parsedExpr)
+      program = plan(this.envFor(ctx.registry), parsedExpr)
       this.cache.set(ruleJson, program)
     }
     return program(args)
+  }
+
+  /**
+   * Returns the env to evaluate with: one carrying the serde's protobuf registry when
+   * there is one, otherwise the shared registry-less env. A plan is bound to the env it
+   * was created with, so the program cache key includes the schema, which determines
+   * which registry a rule is evaluated against.
+   */
+  envFor(registry?: Registry): CelEnv {
+    if (registry == null) {
+      return this.env
+    }
+    let env = this.protoEnvs.get(registry)
+    if (env == null) {
+      env = celEnv({ funcs: strings, registry })
+      this.protoEnvs.set(registry, env)
+    }
+    return env
   }
 
   async close(): Promise<void> {
