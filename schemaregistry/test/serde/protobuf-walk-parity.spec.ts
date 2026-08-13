@@ -5,15 +5,15 @@ import {
   createFileRegistry,
   DescFile,
 } from '@bufbuild/protobuf';
-import {
-  FieldDescriptorProto_Type,
-  FileDescriptorProtoSchema,
-} from '@bufbuild/protobuf/wkt';
+import { FileDescriptorProtoSchema, MessageOptionsSchema } from '@bufbuild/protobuf/wkt';
+import { setExtension } from '@bufbuild/protobuf';
+import { MetaSchema, message_meta } from '../../confluent/meta_pb';
 import { RuleContext } from '../../serde/serde';
 import { RuleMode } from '../../schemaregistry-client';
 import { transform, validateProtobufMessage } from '../../serde/protobuf';
 import { TestMessageSchema } from './test/test_pb';
 import { CelFieldExecutor } from '../../rules/cel/cel-field-executor';
+import { CelValidator } from '../../rules/cel/cel-validator';
 import { FieldContext, FieldType } from '../../serde/serde';
 import {
   ValidationInnerSchema,
@@ -166,9 +166,16 @@ describe('protobuf renamed fields', () => {
     const proto = clone(FileDescriptorProtoSchema, original.proto)
     const message = proto.messageType.find((m: any) => m.name === 'ValidationInner')!
     const field = message.field.find((f: any) => f.number === 1)!
+    // Only the name changes: renaming a field at the same number is compatible, whereas
+    // changing its type is not - and the message would not transcode.
     field.name = 'renamed'
     field.jsonName = 'renamed'
-    field.type = FieldDescriptorProto_Type.STRING
+    // A message-level rule that refers to the field by its new name, as a rule authored
+    // against the registered schema would.
+    message.options = message.options ?? create(MessageOptionsSchema)
+    setExtension(message.options, message_meta, create(MetaSchema, {
+      rules: [{ name: 'm', doc: '', expr: 'this.renamed > 0', sql: '' }],
+    }))
     const deps = new Map<string, DescFile>()
     const collect = (file: DescFile) => {
       for (const dep of file.dependencies) {
@@ -190,9 +197,10 @@ describe('protobuf renamed fields', () => {
 
     const errors = await validateProtobufMessage(new AlwaysFail(), schemaDesc, msg, false,
       ValidationInnerSchema)
-    // The rule on field 1 fires, reported under the registered schema's name.
+    // The message-level rule fires at the root, and the rule on field 1 fires under the
+    // registered schema's name for it.
     expect(errors.map((e: ValidationRuleError) => `${e.rule.name}@${e.fieldPath}`))
-      .toEqual(['r@renamed'])
+      .toEqual(['m@', 'r@renamed'])
 
     const visited: string[] = []
     const fieldTransform = {
@@ -213,5 +221,21 @@ describe('protobuf renamed fields', () => {
     expect(visited).toEqual(['renamed'])
     expect(msg.x).toBe(5)
   })
-})
 
+  it('a message-level rule sees the values under the schema\'s names', async () => {
+    // A message-level rule binds `this` to the message, and its CEL environment is built
+    // from the registered schema - so the message it evaluates has to be in the schema's
+    // terms too. Otherwise `this.renamed` reads a missing field and returns false, failing
+    // a valid message.
+    const schemaDesc = renamedInner()
+    const msg = create(ValidationInnerSchema, { x: 5 })
+    const validator = new CelValidator()
+
+    const errors = await validateProtobufMessage(validator, schemaDesc, msg, false,
+      ValidationInnerSchema)
+
+    // `this.renamed > 0` holds because the message was re-read through the schema, so the
+    // value is under `renamed`. Without that, the rule reads a missing field and fails.
+    expect(errors).toEqual([])
+  })
+})

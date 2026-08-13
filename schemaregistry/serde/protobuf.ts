@@ -896,7 +896,15 @@ export async function validateProtobufMessage(
   if (executor == null || descriptor == null || msg == null) {
     return out
   }
-  await validate(executor, descriptor, '', msg, failFast, out, runtimeDescriptor)
+  // Re-read the message through the registered schema's descriptor, so that a rule sees the
+  // fields the schema declares. Protobuf pairs fields by number on the wire, so this also
+  // carries a value across a rename - and a message-level rule binds `this` to a message
+  // whose fields the rule's own environment, built from the same schema, can resolve.
+  let value = msg
+  if (runtimeDescriptor != null && runtimeDescriptor !== descriptor) {
+    value = fromBinary(descriptor, toBinary(runtimeDescriptor, msg))
+  }
+  await validate(executor, descriptor, '', value, failFast, out, runtimeDescriptor)
   return out
 }
 
@@ -923,27 +931,20 @@ async function validate(
       return
     }
   }
-  // The walk is driven by the message's own fields when the runtime descriptor is known,
-  // each paired to the schema field by number. Protobuf identifies a field by its number,
-  // and renaming a field at the same number is a compatible change, so with
-  // use.latest.version the registered schema's name for a field - and with it the property
-  // the value lives under - can differ from the message's.
-  for (const runtimeFd of (runtimeDescriptor ?? descriptor).fields) {
-    const fd = schemaFieldFor(descriptor, runtimeDescriptor, runtimeFd)
-    if (fd == null) {
-      // The schema does not declare this field, so it declares no rules for it.
-      continue
-    }
+  // The message arrives in the schema's terms - validateProtobufMessage re-reads it through
+  // the registered schema's descriptor - so the walk is driven by the schema's fields and
+  // reads values under the schema's names.
+  for (const fd of descriptor.fields) {
     let value: any
-    if (runtimeFd.oneof != null) {
-      const oneof = msg[runtimeFd.oneof.localName]
-      if (oneof == null || oneof.case !== runtimeFd.localName) {
+    if (fd.oneof != null) {
+      const oneof = msg[fd.oneof.localName]
+      if (oneof == null || oneof.case !== fd.localName) {
         // skip oneof members that are not set
         continue
       }
       value = oneof.value
     } else {
-      value = msg[runtimeFd.localName]
+      value = msg[fd.localName]
     }
     // Skip-on-null: a field with explicit presence that is unset does not invoke the
     // executor. Repeated/map fields are always present as an empty collection.
@@ -958,28 +959,21 @@ async function validate(
         return
       }
     }
-    const nestedRuntime = runtimeFd.fieldKind === 'message'
-      || (runtimeFd.fieldKind === 'list' && runtimeFd.listKind === 'message')
-      || (runtimeFd.fieldKind === 'map' && runtimeFd.mapKind === 'message')
-      ? runtimeFd.message
-      : undefined
     if (fd.fieldKind === 'message') {
-      await validate(executor, fd.message, childPath, value, failFast, out, nestedRuntime)
+      await validate(executor, fd.message, childPath, value, failFast, out)
       if (failFast && out.length > 0) {
         return
       }
     } else if (fd.fieldKind === 'list' && fd.listKind === 'message') {
       for (let i = 0; i < value.length; i++) {
-        await validate(executor, fd.message, `${childPath}[${i}]`, value[i], failFast, out,
-          nestedRuntime)
+        await validate(executor, fd.message, `${childPath}[${i}]`, value[i], failFast, out)
         if (failFast && out.length > 0) {
           return
         }
       }
     } else if (fd.fieldKind === 'map' && fd.mapKind === 'message') {
       for (const key of Object.keys(value)) {
-        await validate(executor, fd.message, `${childPath}["${key}"]`, value[key], failFast, out,
-          nestedRuntime)
+        await validate(executor, fd.message, `${childPath}["${key}"]`, value[key], failFast, out)
         if (failFast && out.length > 0) {
           return
         }
