@@ -14,7 +14,8 @@ export class CelExecutor implements RuleExecutor {
   // Envs carrying a protobuf registry, one per registry encountered. CEL resolves field
   // access on a protobuf message through its registry, so evaluating a rule against one
   // requires an env that knows the message's type.
-  protoEnvs: WeakMap<Registry, CelEnv> = new WeakMap()
+  protoEnvs: WeakMap<Registry, ProtoEnv> = new WeakMap()
+  private nextProtoEnvId = 1
 
   static register(): CelExecutor {
     const executor = new CelExecutor()
@@ -63,37 +64,46 @@ export class CelExecutor implements RuleExecutor {
   async executeRule(ctx: RuleContext, expr: string, obj: any, args: { [key: string]: any }): Promise<any> {
     const schema = ctx.target.schema
     const scriptType = ctx.target.schemaType
+    const { env, id } = this.envFor(ctx.registry)
     const rule: RuleWithArgs = {
       rule: expr,
       scriptType: scriptType,
-      schema: schema
+      schema: schema,
+      // A plan resolves protobuf field access through the env it was created with, so the
+      // env's identity is part of the key. The schema text alone is not enough: the same
+      // text can be served by different registries - one per serde instance, and whose
+      // references may resolve to different dependency versions - and a plan built from
+      // one of them resolves fields against that one's types.
+      env: id
     }
     const ruleJson = stringify(rule)
     let program = this.cache.get(ruleJson)
     if (program == null) {
       const parsedExpr = parse(expr)
-      program = plan(this.envFor(ctx.registry), parsedExpr)
+      program = plan(env, parsedExpr)
       this.cache.set(ruleJson, program)
     }
     return program(args)
   }
 
   /**
-   * Returns the env to evaluate with: one carrying the serde's protobuf registry when
-   * there is one, otherwise the shared registry-less env. A plan is bound to the env it
-   * was created with, so the program cache key includes the schema, which determines
-   * which registry a rule is evaluated against.
+   * Returns the env to evaluate with, and its identity for the program cache: one env
+   * carrying the serde's protobuf registry when there is one, otherwise the shared
+   * registry-less env.
    */
-  envFor(registry?: Registry): CelEnv {
+  envFor(registry?: Registry): ProtoEnv {
     if (registry == null) {
-      return this.env
+      return { env: this.env, id: '' }
     }
-    let env = this.protoEnvs.get(registry)
-    if (env == null) {
-      env = celEnv({ funcs: strings, registry })
-      this.protoEnvs.set(registry, env)
+    let protoEnv = this.protoEnvs.get(registry)
+    if (protoEnv == null) {
+      protoEnv = {
+        env: celEnv({ funcs: strings, registry }),
+        id: String(this.nextProtoEnvId++)
+      }
+      this.protoEnvs.set(registry, protoEnv)
     }
-    return env
+    return protoEnv
   }
 
   async close(): Promise<void> {
@@ -104,4 +114,11 @@ interface RuleWithArgs {
   rule?: string
   scriptType?: string
   schema?: string
+  env?: string
+}
+
+interface ProtoEnv {
+  env: CelEnv
+  // Identifies the env within this executor, for keying the program cache.
+  id: string
 }
