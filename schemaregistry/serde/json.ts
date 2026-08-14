@@ -1,10 +1,13 @@
 import {
   Deserializer, DeserializerConfig,
+  evaluateValidationRule,
   FieldTransform,
-  FieldType, Migration, RefResolver, RuleConditionError,
+  FieldType, Migration, parseValidationRules, RefResolver, RuleConditionError,
   RuleContext, SchemaId,
   SerdeType, SerializationError,
-  Serializer, SerializerConfig
+  Serializer, SerializerConfig,
+  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution,
+  schemaCacheKey,
 } from "./serde";
 import {
   Client, RuleMode, RulePhase,
@@ -29,7 +32,6 @@ import { validateJSON } from '@criteria/json-schema-validation'
 import { LRUCache } from "lru-cache";
 import { generateSchema } from "./json-util";
 import {RuleRegistry} from "./rule-registry";
-import stringify from "json-stringify-deterministic";
 import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const JSON_TYPE = "JSON"
@@ -126,7 +128,13 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     }
     const [schemaId, info] = await this.getSchemaId(JSON_TYPE, topic, msg, schema)
     const subject = await this.subjectName(topic, info)
+    if (this.validationEnabled(ValidationRulesExecution.BEFORE_DOMAIN_RULES)) {
+      await this.validateInlineRules(info, msg)
+    }
     msg = await this.executeRules(subject, topic, RuleMode.WRITE, null, info, msg, null)
+    if (this.validationEnabled(ValidationRulesExecution.AFTER_DOMAIN_RULES)) {
+      await this.validateInlineRules(info, msg)
+    }
     if ((this.conf as JsonSerdeConfig).validate) {
       const validate = await this.toValidateFunction(info)
       if (validate != null && !validate(msg)) {
@@ -138,6 +146,22 @@ export class JsonSerializer extends Serializer implements JsonSerde {
     msgBytes = await this.executeRulesWithPhase(
       subject, topic, RulePhase.ENCODING, RuleMode.WRITE, null, info, msgBytes, null)
     return this.serializeSchemaId(topic, msgBytes, schemaId, headers)
+  }
+
+  /**
+   * Evaluates the schema's inline validation rules against msg, throwing a single
+   * SerializationError listing every violation found.
+   * @param info - the schema
+   * @param msg - the message to validate
+   */
+  async validateInlineRules(info: SchemaInfo, msg: any): Promise<void> {
+    const schema = await this.toType(info)
+    const violations = await validateJsonMessage(
+      this.validationRuleExecutor(),
+      schema,
+      msg,
+      Boolean(this.config().validationRulesFailFast))
+    this.raiseValidationViolations(violations)
   }
 
   async fieldTransform(ctx: RuleContext, fieldTransform: FieldTransform, msg: any): Promise<any> {
@@ -310,7 +334,7 @@ async function toValidateFunction(
     info: SchemaInfo,
     refResolver: RefResolver,
 ): Promise<ValidateFunction | undefined> {
-  let fn = serde.schemaToValidateCache.get(stringify(info.schema))
+  let fn = serde.schemaToValidateCache.get(schemaCacheKey(info))
   if (fn != null) {
     return fn
   }
@@ -337,7 +361,7 @@ async function toValidateFunction(
     })
     fn = ajv.compile(json)
   }
-  serde.schemaToValidateCache.set(stringify(info.schema), fn)
+  serde.schemaToValidateCache.set(schemaCacheKey(info), fn)
   return fn
 }
 
@@ -348,7 +372,7 @@ async function toType(
   info: SchemaInfo,
   refResolver: RefResolver,
 ): Promise<DereferencedJSONSchema> {
-  let type = serde.schemaToTypeCache.get(stringify(info.schema))
+  let type = serde.schemaToTypeCache.get(schemaCacheKey(info))
   if (type != null) {
     return type
   }
@@ -372,7 +396,7 @@ async function toType(
   } else {
     schema = await dereferenceJSONSchemaDraft07(json, { retrieve })
   }
-  serde.schemaToTypeCache.set(stringify(info.schema), schema)
+  serde.schemaToTypeCache.set(schemaCacheKey(info), schema)
   return schema
 }
 
@@ -385,14 +409,14 @@ async function transform(ctx: RuleContext, schema: DereferencedJSONSchema, path:
     fieldCtx.type = getType(schema)
   }
   if (schema.type != null && Array.isArray(schema.type) && schema.type.length > 0) {
-    let originalType = schema.type
-    let subschema = validateSubtypes(schema, msg)
-    try {
-      if (subschema != null) {
-        return await transform(ctx, subschema, path, msg, fieldTransform)
-      }
-    } finally {
-      schema.type = originalType
+    // validateSubtypes narrows schema.type in place, and this schema comes from the
+    // dereferenced-schema cache. Hand it a shallow copy: restoring afterwards is not
+    // enough, because the recursion below awaits with the shared schema still narrowed,
+    // and a concurrent serialization would then see a scalar type and skip its own
+    // narrowing. Falling through when nothing matches is unchanged.
+    const subschema = validateSubtypes({ ...schema }, msg)
+    if (subschema != null) {
+      return await transform(ctx, subschema, path, msg, fieldTransform)
     }
   }
   const hasAllOf = schema.allOf != null && schema.allOf.length > 0
@@ -488,6 +512,185 @@ async function transformField(ctx: RuleContext, path: string, propName: string, 
   } finally {
     ctx.leaveField()
   }
+}
+
+/**
+ * Walks msg against schema, evaluating every inline `confluent:rules` constraint
+ * encountered and collecting all failures. Read-only — the message is not modified.
+ *
+ * Two kinds of rules are evaluated:
+ * - Object-level (`confluent:rules` on an object schema) — `this` is the object.
+ * - Property-level (`confluent:rules` on a property schema) — `this` is the property
+ *   value. Honors the skip-on-null contract: a property that is absent or null does not
+ *   have its rules invoked.
+ *
+ * Failures are returned with their location, rooted at `$` to match the JVM client
+ * (e.g. `$.addr.zip`, `$.tags[3]`). The walk continues after each failure unless
+ * failFast is set.
+ * @param executor - the validation rule executor
+ * @param schema - the dereferenced schema to walk
+ * @param msg - the message to validate
+ * @param failFast - whether to stop at the first violation
+ */
+export async function validateJsonMessage(
+  executor: ValidationRuleExecutor,
+  schema: DereferencedJSONSchema,
+  msg: any,
+  failFast: boolean,
+): Promise<ValidationRuleError[]> {
+  const out: ValidationRuleError[] = []
+  if (executor == null || schema == null || msg == null) {
+    return out
+  }
+  await validate(executor, schema, '$', msg, failFast, out)
+  return out
+}
+
+/**
+ * Mirrors transform's dispatch shape: type arrays, then the combined keywords
+ * (allOf/anyOf/oneOf) with their sibling properties/items, then items, then $ref, then
+ * object properties.
+ */
+async function validate(
+  executor: ValidationRuleExecutor,
+  schema: DereferencedJSONSchema,
+  path: string,
+  msg: any,
+  failFast: boolean,
+  out: ValidationRuleError[],
+): Promise<void> {
+  if (msg == null || schema == null || typeof schema === 'boolean') {
+    return
+  }
+  if (schema.type != null && Array.isArray(schema.type) && schema.type.length > 0) {
+    // validateSubtypes narrows schema.type in place, and this schema comes from the
+    // dereferenced-schema cache. Hand it a shallow copy: restoring afterwards is not
+    // enough, because the recursive await below suspends with the shared schema still
+    // narrowed, which a concurrent serialization would observe.
+    const subschema = validateSubtypes({ ...schema }, msg)
+    if (subschema != null) {
+      await validate(executor, subschema, path, msg, failFast, out)
+    }
+    return
+  }
+  const hasAllOf = schema.allOf != null && schema.allOf.length > 0
+  const hasAnyOf = schema.anyOf != null && schema.anyOf.length > 0
+  const hasOneOf = schema.oneOf != null && schema.oneOf.length > 0
+  if (hasAllOf || hasAnyOf || hasOneOf) {
+    if (hasAllOf) {
+      for (const subschema of schema.allOf!) {
+        await validate(executor, subschema, path, msg, failFast, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+    } else if (hasOneOf) {
+      for (const subschema of schema.oneOf!) {
+        if (validateSubschema(subschema, msg) != null) {
+          await validate(executor, subschema, path, msg, failFast, out)
+          break
+        }
+      }
+    } else {
+      // anyOf
+      for (const subschema of schema.anyOf!) {
+        if (validateSubschema(subschema, msg) != null) {
+          await validate(executor, subschema, path, msg, failFast, out)
+          if (failFast && out.length > 0) {
+            return
+          }
+        }
+      }
+    }
+    if (failFast && out.length > 0) {
+      return
+    }
+    // Also visit sibling properties/items at this level
+    // (siblings to allOf/anyOf/oneOf).
+    await validateObject(executor, schema, path, msg, failFast, out)
+    if (failFast && out.length > 0) {
+      return
+    }
+    if (schema.items != null && Array.isArray(msg)) {
+      for (let i = 0; i < msg.length; i++) {
+        await validate(executor, schema.items, `${path}[${i}]`, msg[i], failFast, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+    }
+    return
+  }
+  if (schema.items != null && Array.isArray(msg)) {
+    for (let i = 0; i < msg.length; i++) {
+      await validate(executor, schema.items, `${path}[${i}]`, msg[i], failFast, out)
+      if (failFast && out.length > 0) {
+        return
+      }
+    }
+    return
+  }
+  if (schema.$ref != null) {
+    await validate(executor, schema.$ref, path, msg, failFast, out)
+    return
+  }
+  await validateObject(executor, schema, path, msg, failFast, out)
+}
+
+/**
+ * Evaluates object-level rules, then each declared property's rules, then recurses into
+ * the property values. Undeclared properties (additionalProperties / patternProperties)
+ * are not walked, matching the JVM client.
+ */
+async function validateObject(
+  executor: ValidationRuleExecutor,
+  schema: DereferencedJSONSchema,
+  path: string,
+  msg: any,
+  failFast: boolean,
+  out: ValidationRuleError[],
+): Promise<void> {
+  if (typeof schema === 'boolean' || msg == null || typeof msg !== 'object' || Array.isArray(msg)) {
+    return
+  }
+  // Object-level rules: this = the object value.
+  for (const rule of getInlineValidationRules(schema)) {
+    await evaluateValidationRule(executor, rule, schema, msg, path, out)
+    if (failFast && out.length > 0) {
+      return
+    }
+  }
+  if (schema.properties == null) {
+    return
+  }
+  for (const [propName, propSchema] of Object.entries(schema.properties)) {
+    const fullName = `${path}.${propName}`
+    const value = msg[propName]
+    // Skip-on-null: an absent or null property does not invoke the executor.
+    if (value != null) {
+      for (const rule of getInlineValidationRules(propSchema)) {
+        await evaluateValidationRule(executor, rule, propSchema, value, fullName, out)
+        if (failFast && out.length > 0) {
+          return
+        }
+      }
+    }
+    await validate(executor, propSchema, fullName, value, failFast, out)
+    if (failFast && out.length > 0) {
+      return
+    }
+  }
+}
+
+/**
+ * Reads the `confluent:rules` keyword off a schema. Unknown keywords are preserved
+ * verbatim on the dereferenced schema, so this is a plain lookup.
+ */
+function getInlineValidationRules(schema: DereferencedJSONSchema): ValidationRule[] {
+  if (schema == null || typeof schema === 'boolean') {
+    return []
+  }
+  return parseValidationRules((schema as any)['confluent:rules'])
 }
 
 function validateSubtypes(schema: DereferencedJSONSchema, msg: any): DereferencedJSONSchema | null {
