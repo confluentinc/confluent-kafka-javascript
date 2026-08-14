@@ -741,6 +741,14 @@ function getType(schema: DereferencedJSONSchema): FieldType {
   if (typeof schema === 'boolean') {
     return FieldType.NULL
   }
+  // An enumeration is typed by its values, and JSON Schema does not require it to declare a
+  // type as well - {"enum": ["a", "b"]} is the ordinary form. Checked before the typeless
+  // case so that form is not read as a typeless node: the JVM client answers ENUM for it,
+  // and ENUM is not primitive, so a field rule that would otherwise be charged against it
+  // is skipped there and has to be here too.
+  if (schema.const != null || schema.enum != null) {
+    return FieldType.ENUM
+  }
   if (schema.type == null) {
     if (schema.properties != null && Object.keys(schema.properties).length > 0) {
       return FieldType.RECORD
@@ -749,9 +757,6 @@ function getType(schema: DereferencedJSONSchema): FieldType {
   }
   if (Array.isArray(schema.type)) {
     return FieldType.COMBINED
-  }
-  if (schema.const != null || schema.enum != null) {
-    return FieldType.ENUM
   }
   switch (schema.type) {
     case 'object':
