@@ -12,6 +12,7 @@ import {ClientConfig} from "../rest-service";
 import {RestError} from "../rest-error";
 import {BufferWrapper, MAX_VARINT_LEN_64} from "./buffer-wrapper";
 import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
+import type {Registry} from "@bufbuild/protobuf";
 import {LRUCache} from "lru-cache";
 import stringify from "json-stringify-deterministic";
 
@@ -232,6 +233,15 @@ export abstract class Serde {
     return
   }
 
+  /**
+   * Returns the protobuf registry describing the message types this serde handles, or
+   * undefined for formats that have none. CEL resolves field access on a protobuf
+   * message through a registry, so executors need it to evaluate rules against one.
+   */
+  protoRegistry(): Registry | undefined {
+    return undefined
+  }
+
   async subjectName(topic: string, info?: SchemaInfo): Promise<string> {
     const strategy = this.conf.subjectNameStrategy!
     return await strategy(topic, this.serdeType, info)
@@ -321,7 +331,8 @@ export abstract class Serde {
     for (let i = 0; i < rules.length; i++ ) {
       let rule = rules[i]
       let ctx = new RuleContext(enabledEnv, source, target, subject, topic,
-        this.serdeType === SerdeType.KEY, ruleMode, rule, i, rules, inlineTags, this.fieldTransformer!)
+        this.serdeType === SerdeType.KEY, ruleMode, rule, i, rules, inlineTags, this.fieldTransformer!,
+        this.protoRegistry())
       if (this.isDisabled(ctx, rule)) {
         continue
       }
@@ -462,6 +473,16 @@ export interface SerializerConfig extends SerdeConfig {
   normalizeSchemas?: boolean
   // schemaIdSerializer determines how to serialize schema IDs
   schemaIdSerializer?: SchemaIdSerializerFunc
+  // validationRulesExecution determines when inline validation rules run,
+  // relative to domain rule transformations. Defaults to DISABLED.
+  validationRulesExecution?: ValidationRulesExecution
+  // validationRulesFailFast stops validation at the first failed rule and reports only
+  // that violation. When false (default), every node is visited and all violations are
+  // reported.
+  validationRulesFailFast?: boolean
+  // validationRuleExecutor overrides the executor used to evaluate inline validation
+  // rules. Defaults to CelValidator.
+  validationRuleExecutor?: ValidationRuleExecutor
 }
 
 /**
@@ -515,6 +536,57 @@ export abstract class Serializer extends Serde {
   serializeSchemaId(topic: string, payload: Buffer, schemaId: SchemaId, headers?: IHeaders): Buffer {
     const serializer = this.config().schemaIdSerializer ?? PrefixSchemaIdSerializer
     return serializer(topic, this.serdeType, payload, schemaId, headers)
+  }
+
+  /**
+   * Returns true when inline validation rules should run at the given phase.
+   *
+   * Pass no phase when there is a single validation point — a serialization path that
+   * applies no domain rules has nothing to run before or after, so any enabled mode
+   * validates there.
+   * @param phase - the phase to check, or undefined for "any enabled mode"
+   */
+  validationEnabled(phase?: ValidationRulesExecution): boolean {
+    const execution = this.config().validationRulesExecution ?? ValidationRulesExecution.DISABLED
+    if (phase == null) {
+      return execution !== ValidationRulesExecution.DISABLED
+    }
+    return execution === phase
+  }
+
+  /**
+   * Returns the executor used to evaluate inline validation rules, defaulting to the
+   * CEL-backed one. Imported lazily so the CEL machinery is only loaded once validation
+   * is actually enabled.
+   */
+  validationRuleExecutor(): ValidationRuleExecutor {
+    let executor = this.config().validationRuleExecutor
+    if (executor == null) {
+      // Required lazily: cel-validator imports from this module, so a static import
+      // would introduce a cycle, and the CEL machinery is only needed once validation
+      // is actually enabled.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { CelValidator } = require('../rules/cel/cel-validator')
+      executor = new CelValidator() as ValidationRuleExecutor
+      this.config().validationRuleExecutor = executor
+    }
+    return executor
+  }
+
+  /**
+   * Throws a single SerializationError aggregating every violation found.
+   * @param violations - the violations to report
+   */
+  raiseValidationViolations(violations: ValidationRuleError[]): void {
+    if (violations.length === 0) {
+      return
+    }
+    const count = violations.length
+    const lines = [`Validation rule failed (${count} violation${count === 1 ? '' : 's'}):`]
+    for (const violation of violations) {
+      lines.push(`  - ${violation}`)
+    }
+    throw new SerializationError(lines.join('\n'))
   }
 }
 
@@ -1040,11 +1112,18 @@ export class RuleContext {
   rules: Rule[]
   inlineTags: Map<string, Set<string>> | null
   fieldTransformer: FieldTransformer
+  /**
+   * The protobuf registry describing the message types being (de)serialized, when the
+   * format has one. Rule executors need it to evaluate expressions against protobuf
+   * messages, whose field access is resolved through the registry.
+   */
+  registry?: Registry
   private fieldContexts: FieldContext[]
 
   constructor(enabledEnv: string | undefined, source: SchemaInfo | null, target: SchemaInfo, subject: string, topic: string,
               isKey: boolean, ruleMode: RuleMode, rule: Rule, index: number, rules: Rule[],
-              inlineTags: Map<string, Set<string>> | null, fieldTransformer: FieldTransformer) {
+              inlineTags: Map<string, Set<string>> | null, fieldTransformer: FieldTransformer,
+              registry?: Registry) {
     this.enabledEnv = enabledEnv
     this.source = source
     this.target = target
@@ -1057,6 +1136,7 @@ export class RuleContext {
     this.rules = rules
     this.inlineTags = inlineTags
     this.fieldTransformer = fieldTransformer
+    this.registry = registry
     this.fieldContexts = []
   }
 
@@ -1095,7 +1175,7 @@ export class RuleContext {
   }
 
   enterField(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
-             tags: Set<string> | null): FieldContext {
+             tags: Set<string> | null, fieldDescriptor?: any): FieldContext {
     let allTags = new Set<string>(tags ?? this.getInlineTags(fullName))
     for (let v of this.getTags(fullName)) {
       allTags.add(v)
@@ -1105,7 +1185,8 @@ export class RuleContext {
       fullName,
       name,
       fieldType,
-      allTags
+      allTags,
+      fieldDescriptor
     )
     this.fieldContexts.push(fieldContext)
     return fieldContext
@@ -1220,13 +1301,26 @@ export class FieldContext {
   name: string
   type: FieldType
   tags: Set<string>
+  /**
+   * The producer's own handle on the field, for formats that have one: a protobuf
+   * DescField. Undefined for Avro and JSON Schema, whose walks carry no such object.
+   *
+   * `name` and `fullName` are the *registered schema's* names for the field, which can
+   * differ from the producer's under a compatible rename, and FieldType collapses
+   * distinctions the format makes - uint32/uint64 onto INT and LONG, int32 onto INT. So
+   * anything that has to present the value faithfully goes through this rather than
+   * re-deriving the field from a name.
+   */
+  fieldDescriptor?: any
 
-  constructor(containingMessage: any, fullName: string, name: string, fieldType: FieldType, tags: Set<string>) {
+  constructor(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
+              tags: Set<string>, fieldDescriptor?: any) {
     this.containingMessage = containingMessage
     this.fullName = fullName
     this.name = name
     this.type = fieldType
     this.tags = new Set<string>(tags)
+    this.fieldDescriptor = fieldDescriptor
   }
 
   isPrimitive(): boolean {
@@ -1300,6 +1394,144 @@ export class NoneAction implements RuleAction {
   }
 
   close(): void {
+  }
+}
+
+/**
+ * ValidationRulesExecution determines when inline validation rules run, relative to
+ * domain rule transformations.
+ */
+export enum ValidationRulesExecution {
+  DISABLED = 'DISABLED',
+  BEFORE_DOMAIN_RULES = 'BEFORE_DOMAIN_RULES',
+  AFTER_DOMAIN_RULES = 'AFTER_DOMAIN_RULES',
+}
+
+/**
+ * ValidationRule represents an inline validation rule (a CHECK constraint) declared on
+ * a schema, either on a record/message/object or on one of its fields.
+ */
+export interface ValidationRule {
+  name?: string
+  doc?: string
+  expr?: string
+  sql?: string
+}
+
+/**
+ * ValidationRuleError represents a single inline validation rule failure, located at
+ * fieldPath within the message that was validated.
+ */
+export class ValidationRuleError {
+  rule: ValidationRule
+  fieldPath: string
+  /**
+   * Optional dynamic error message returned by the rule itself — set when the rule
+   * expression returned a non-empty string explaining the failure (e.g.
+   * `x > 0 ? '' : 'x must be positive'`). Undefined when the failure was a plain
+   * false or a CEL evaluation error.
+   */
+  message?: string
+  cause?: Error
+
+  constructor(rule: ValidationRule, fieldPath: string, message?: string, cause?: Error) {
+    this.rule = rule
+    this.fieldPath = fieldPath
+    this.message = message
+    this.cause = cause
+  }
+
+  toString(): string {
+    const path = this.fieldPath ? this.fieldPath : '<root>'
+    const name = this.rule?.name ? this.rule.name : 'unnamed'
+    // Prefer the dynamic message returned by the rule itself; fall back to the rule's
+    // authored doc / SQL / CEL expression in that order.
+    let detail: string | undefined
+    if (this.message) {
+      detail = this.message
+    } else if (this.rule?.doc) {
+      detail = this.rule.doc
+    } else if (this.rule?.sql) {
+      detail = this.rule.sql
+    } else {
+      detail = this.rule?.expr
+    }
+    let result = `${path}: ${name}: ${detail}`
+    if (this.cause != null) {
+      result += ` (caused by: ${this.cause.message})`
+    }
+    return result
+  }
+}
+
+/**
+ * ValidationRuleExecutor evaluates a single inline validation rule against a value.
+ *
+ * Implementations return either a boolean (false meaning the rule failed) or a string
+ * (non-empty meaning the rule failed, with that string as the failure message).
+ */
+export interface ValidationRuleExecutor {
+  execute(rule: ValidationRule, schema: any, msg: any): Promise<any>
+}
+
+/**
+ * Parses the `confluent:rules` property value — a list of objects with name/doc/expr/sql
+ * keys. A value that is not such a list yields no rules, and entries that are not objects
+ * are skipped.
+ *
+ * An object entry is kept even when it declares no expression: a rule present in the
+ * schema but malformed is reported as a violation by the executor rather than silently
+ * dropped, which is also what the other clients do.
+ */
+export function parseValidationRules(propValue: any): ValidationRule[] {
+  if (!Array.isArray(propValue)) {
+    return []
+  }
+  const rules: ValidationRule[] = []
+  for (const entry of propValue) {
+    if (entry != null && typeof entry === 'object' && !Array.isArray(entry)) {
+      rules.push({ name: entry.name, doc: entry.doc, expr: entry.expr, sql: entry.sql })
+    }
+  }
+  return rules
+}
+
+/**
+ * Evaluates one inline validation rule, appending a ValidationRuleError to `out` when it
+ * fails. A rule that throws RuleError is itself recorded as a violation so the walk can
+ * continue; a rule resolving to something other than a boolean or string is a
+ * programming error and propagates.
+ */
+export async function evaluateValidationRule(
+  executor: ValidationRuleExecutor,
+  rule: ValidationRule,
+  schema: any,
+  value: any,
+  path: string,
+  out: ValidationRuleError[],
+): Promise<void> {
+  let result: any
+  try {
+    result = await executor.execute(rule, schema, value)
+  } catch (e) {
+    if (e instanceof RuleError) {
+      out.push(new ValidationRuleError(rule, path, undefined, e))
+      return
+    }
+    throw e
+  }
+  if (typeof result === 'boolean') {
+    if (result === false) {
+      out.push(new ValidationRuleError(rule, path, undefined, undefined))
+    }
+  } else if (typeof result === 'string') {
+    if (result.length > 0) {
+      out.push(new ValidationRuleError(rule, path, result, undefined))
+    }
+  } else {
+    throw new SerializationError(
+      `Validation rule '${rule.name ?? 'unnamed'}' resolved to an unexpected type: ` +
+      `${typeof result}`)
   }
 }
 
