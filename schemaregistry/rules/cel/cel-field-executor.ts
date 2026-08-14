@@ -7,7 +7,21 @@ import {
 } from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
 import {CelExecutor} from "./cel-executor";
-import {celUint} from "@bufbuild/cel";
+import {celFromScalar} from "@bufbuild/cel";
+import type {DescField} from "@bufbuild/protobuf";
+import type {ScalarValue} from "@bufbuild/protobuf/reflect";
+
+/**
+ * The field value as CEL should see it, converted through the field's declared scalar type
+ * when the walk supplied the field. celFromScalar is protobuf-es's own bridge for this.
+ */
+function celScalarValue(fieldCtx: FieldContext, fieldValue: any): any {
+  const fd = fieldCtx.fieldDescriptor as DescField | undefined
+  if (fd == null || fd.fieldKind !== 'scalar') {
+    return fieldValue
+  }
+  return celFromScalar(fd.scalar, fieldValue as ScalarValue)
+}
 
 export class CelFieldExecutor extends FieldRuleExecutor {
   executor: CelExecutor = new CelExecutor()
@@ -49,12 +63,12 @@ export class CelFieldExecutorTransform implements FieldTransform {
       return fieldValue
     }
     const args = {
-      // An unsigned field's value has to be presented to CEL as unsigned; FieldType
-      // collapses uint32/uint64 onto INT and LONG, so the field context carries the
-      // distinction.
-      value: fieldCtx.isUnsigned && (typeof fieldValue === 'bigint' || typeof fieldValue === 'number')
-        ? celUint(BigInt(fieldValue))
-        : fieldValue,
+      // Present the value the way the field's declared type implies: protobuf-es picks
+      // whichever JS type is convenient - a number for an int32, a bigint for both int64
+      // and uint64 - and CEL reads those as double and int, leaving a rule written against
+      // the field's own type without a matching overload. FieldType cannot express the
+      // difference, so the field itself travels on the context.
+      value: celScalarValue(fieldCtx, fieldValue),
       fullName: fieldCtx.fullName,
       name: fieldCtx.name,
       typeName: fieldCtx.typeName(),

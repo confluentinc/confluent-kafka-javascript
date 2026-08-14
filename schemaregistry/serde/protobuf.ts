@@ -689,7 +689,9 @@ async function transformField(ctx: RuleContext, fd: DescField, runtimeFd: DescFi
       fd.name,
       getType(runtimeFd),
       getInlineTags(fd),
-      isUnsignedField(runtimeFd)
+      // The producer's own field: it is what says how the value should be presented to a
+      // rule, which neither the reported name nor FieldType can express.
+      runtimeFd
     )
     let value = null;
     if (runtimeFd.oneof != null) {
@@ -783,19 +785,6 @@ async function transformLeaf(ctx: RuleContext, value: any,
     return value
   }
   return await fieldTransform.transform(ctx, fieldCtx, value)
-}
-
-/**
- * Whether a field's declared type is an unsigned integer. getType collapses these onto INT
- * and LONG, so the unsignedness has to travel separately for a rule to see the value as the
- * other clients do.
- */
-function isUnsignedField(fd: DescField): boolean {
-  const scalar = fd.fieldKind === 'scalar' ? fd.scalar
-    : fd.fieldKind === 'list' && fd.listKind === 'scalar' ? fd.scalar
-      : undefined
-  return scalar === ScalarType.UINT32 || scalar === ScalarType.UINT64
-    || scalar === ScalarType.FIXED32 || scalar === ScalarType.FIXED64
 }
 
 function getType(fd: DescField): FieldType {

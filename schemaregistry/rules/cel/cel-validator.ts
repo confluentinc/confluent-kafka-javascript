@@ -1,6 +1,7 @@
-import { CelEnv, celEnv, celUint, isCelError, parse, plan } from "@bufbuild/cel"
+import { CelEnv, celEnv, celFromScalar, isCelError, parse, plan } from "@bufbuild/cel"
 import { strings } from "@bufbuild/cel/ext"
-import { createRegistry, DescField, DescFile, ScalarType } from "@bufbuild/protobuf"
+import { createRegistry, DescField, DescFile } from "@bufbuild/protobuf"
+import type { ScalarValue } from "@bufbuild/protobuf/reflect"
 import { timestampNow } from "@bufbuild/protobuf/wkt"
 import { LRUCache } from "lru-cache"
 import { RuleError, ValidationRule, ValidationRuleExecutor } from "../../serde/serde"
@@ -96,14 +97,14 @@ export class CelValidator implements ValidationRuleExecutor {
 }
 
 /**
- * The value to bind to `this`, with unsigned protobuf integers presented to CEL as
- * unsigned.
+ * The value to bind to `this`, converted the way the field's declared type implies.
  *
- * protobuf-es represents both signed and unsigned integers as a number or a bigint, and
- * CEL reads those as `int`, so a rule authored against a uint field - `this % 10u == 5u`
- * - finds no matching overload and rejects a valid message. The field's declared type is
- * the only thing that distinguishes them, and it arrives here as the schema argument.
- * CelFieldExecutor does the same for domain rules, via FieldContext.isUnsigned.
+ * protobuf-es represents a scalar with whichever JS type is convenient - a `number` for an
+ * int32, a `bigint` for both int64 and uint64 - and CEL reads those as `double` and `int`.
+ * A rule authored against the field's own type is then left without a matching overload:
+ * `this % 10u == 5u` on a uint field, or `this / 2` on an int32. The field's declared type
+ * is what distinguishes them, and it arrives here as the schema argument. celFromScalar is
+ * protobuf-es's own bridge for exactly this, and is what protovalidate-es uses.
  */
 function celValue(schema: any, msg: any): any {
   if (schema == null || typeof schema !== 'object' || !('fieldKind' in schema)) {
@@ -114,33 +115,21 @@ function celValue(schema: any, msg: any): any {
   const fd = schema as DescField
   switch (fd.fieldKind) {
     case 'scalar':
-      return isUnsignedScalar(fd.scalar) ? toCelUint(msg) : msg
+      return celFromScalar(fd.scalar, msg as ScalarValue)
     case 'list':
       // A repeated field binds the whole list, so each element needs converting.
-      return fd.listKind === 'scalar' && isUnsignedScalar(fd.scalar) && Array.isArray(msg)
-        ? msg.map(toCelUint)
+      return fd.listKind === 'scalar' && Array.isArray(msg)
+        ? msg.map((element) => celFromScalar(fd.scalar, element as ScalarValue))
         : msg
     case 'map':
-      if (fd.mapKind !== 'scalar' || !isUnsignedScalar(fd.scalar)
-        || msg == null || typeof msg !== 'object') {
+      if (fd.mapKind !== 'scalar' || msg == null || typeof msg !== 'object') {
         return msg
       }
-      return Object.fromEntries(
-        Object.entries(msg).map(([key, value]) => [key, toCelUint(value)]))
+      return Object.fromEntries(Object.entries(msg).map(
+        ([key, value]) => [key, celFromScalar(fd.scalar, value as ScalarValue)]))
     default:
       return msg
   }
-}
-
-function isUnsignedScalar(scalar: ScalarType | undefined): boolean {
-  return scalar === ScalarType.UINT32 || scalar === ScalarType.UINT64
-    || scalar === ScalarType.FIXED32 || scalar === ScalarType.FIXED64
-}
-
-function toCelUint(value: any): any {
-  return typeof value === 'bigint' || typeof value === 'number'
-    ? celUint(BigInt(value))
-    : value
 }
 
 interface ProtoEnv {

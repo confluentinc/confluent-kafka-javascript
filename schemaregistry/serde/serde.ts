@@ -1175,7 +1175,7 @@ export class RuleContext {
   }
 
   enterField(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
-             tags: Set<string> | null, isUnsigned: boolean = false): FieldContext {
+             tags: Set<string> | null, fieldDescriptor?: any): FieldContext {
     let allTags = new Set<string>(tags ?? this.getInlineTags(fullName))
     for (let v of this.getTags(fullName)) {
       allTags.add(v)
@@ -1186,7 +1186,7 @@ export class RuleContext {
       name,
       fieldType,
       allTags,
-      isUnsigned
+      fieldDescriptor
     )
     this.fieldContexts.push(fieldContext)
     return fieldContext
@@ -1302,20 +1302,25 @@ export class FieldContext {
   type: FieldType
   tags: Set<string>
   /**
-   * Whether the field's declared type is an unsigned integer. FieldType collapses those
-   * onto INT and LONG, but a rule evaluated against the value has to see it as unsigned to
-   * match the other clients - a uint64 compared against a `10u` literal, for instance.
+   * The producer's own handle on the field, for formats that have one: a protobuf
+   * DescField. Undefined for Avro and JSON Schema, whose walks carry no such object.
+   *
+   * `name` and `fullName` are the *registered schema's* names for the field, which can
+   * differ from the producer's under a compatible rename, and FieldType collapses
+   * distinctions the format makes - uint32/uint64 onto INT and LONG, int32 onto INT. So
+   * anything that has to present the value faithfully goes through this rather than
+   * re-deriving the field from a name.
    */
-  isUnsigned: boolean
+  fieldDescriptor?: any
 
   constructor(containingMessage: any, fullName: string, name: string, fieldType: FieldType,
-              tags: Set<string>, isUnsigned: boolean = false) {
+              tags: Set<string>, fieldDescriptor?: any) {
     this.containingMessage = containingMessage
     this.fullName = fullName
     this.name = name
     this.type = fieldType
     this.tags = new Set<string>(tags)
-    this.isUnsigned = isUnsigned
+    this.fieldDescriptor = fieldDescriptor
   }
 
   isPrimitive(): boolean {

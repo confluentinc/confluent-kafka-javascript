@@ -4,6 +4,7 @@ import {
   create,
   createFileRegistry,
   DescFile,
+  ScalarType,
 } from '@bufbuild/protobuf';
 import {
   FieldDescriptorProtoSchema,
@@ -88,15 +89,17 @@ describe('protobuf walk parity', () => {
 })
 
 describe('protobuf unsigned fields', () => {
-  it('presents an unsigned field to a field rule as unsigned', async () => {
-    // FieldType collapses uint32/uint64 onto INT and LONG, so without the unsignedness
-    // travelling alongside, a rule comparing against a uint literal has no overload - and
-    // the other clients all bind these as unsigned.
+  it('hands a field rule the producer\'s own field', async () => {
+    // FieldType collapses uint32/uint64 onto INT and LONG and int32 onto INT, so a rule
+    // evaluated against the value cannot tell them apart from the context alone. The field
+    // itself travels alongside, and its declared scalar type is what says how to present
+    // the value.
     const seen: any[] = []
     const fieldTransform = {
       async transform(_ctx: RuleContext, fieldCtx: any, value: any): Promise<any> {
         if (fieldCtx.name === 'test_uint64' || fieldCtx.name === 'test_uint32') {
-          seen.push([fieldCtx.name, fieldCtx.isUnsigned])
+          seen.push([fieldCtx.name, fieldCtx.fieldDescriptor?.scalar === ScalarType.UINT32
+            || fieldCtx.fieldDescriptor?.scalar === ScalarType.UINT64])
         }
         return value
       },
@@ -130,10 +133,33 @@ describe('protobuf unsigned fields', () => {
     const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
       rule, 0, [rule], null, null as any)
     const fieldCtx = new FieldContext({}, 'test.TestMessage.test_uint64', 'test_uint64',
-      FieldType.LONG, new Set<string>(), true)
+      FieldType.LONG, new Set<string>(),
+      TestMessageSchema.fields.find((f) => f.name === 'test_uint64'))
 
     const transformer = await validator.newTransform(ctx)
     expect(await transformer.transform(ctx, fieldCtx, 18446744073709551615n)).toBe(true)
+  })
+})
+
+describe('protobuf domain rules on scalars', () => {
+  it('presents an int32 field to a CEL field rule as an integer', async () => {
+    // The same conversion the validation walk needs: protobuf-es hands back a number for an
+    // int32, which CEL reads as a double, so `value / 2` has no matching overload. Fixed by
+    // the field travelling on the context, exactly as for unsigned.
+    const executor = new CelFieldExecutor()
+    const rule = {
+      name: 't', type: 'CEL_FIELD', mode: RuleMode.WRITE, kind: 'TRANSFORM',
+      expr: "name == 'test_int32' ; value / 2 == 2",
+    } as any
+    const target = { schema: '{}', schemaType: 'PROTOBUF' } as any
+    const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
+      rule, 0, [rule], null, null as any)
+    const fieldCtx = new FieldContext({}, 'test.TestMessage.test_int32', 'test_int32',
+      FieldType.INT, new Set<string>(),
+      TestMessageSchema.fields.find((f) => f.name === 'test_int32'))
+
+    const transformer = await executor.newTransform(ctx)
+    expect(await transformer.transform(ctx, fieldCtx, 5)).toBe(true)
   })
 })
 
@@ -412,6 +438,30 @@ describe('protobuf schema view', () => {
       }
     }, 'test.ValidationInner')
     const msg = create(schemaDesc, { x: 1, serial: 25n, serials: [5n, 15n] } as any)
+
+    const errors = await validateProtobufMessage(new CelValidator(), schemaDesc, msg, false,
+      schemaDesc)
+
+    expect(errors.map((e: ValidationRuleError) => `${e.rule.name}@${e.fieldPath}`)).toEqual([])
+  })
+
+  it('presents a scalar to a rule as the type the field declares', async () => {
+    // protobuf-es picks whichever JS type is convenient - a number for an int32 - and CEL
+    // reads a number as a double, leaving `this / 2` without a matching overload. The
+    // field's declared type is what says otherwise.
+    const schemaDesc = rebuiltWidget((proto) => {
+      const message = messageOf(proto, 'ValidationInner')
+      const field = create(FieldDescriptorProtoSchema, {
+        name: 'count', jsonName: 'count', number: 80, type: 5 /* TYPE_INT32 */, label: 1,
+      })
+      field.options = create(FieldOptionsSchema)
+      setExtension(field.options, field_meta, create(MetaSchema, {
+        // Integer division: 5 / 2 is 2, not 2.5.
+        rules: [{ name: 'halved', doc: '', expr: 'this / 2 == 2', sql: '' }],
+      }))
+      message.field.push(field)
+    }, 'test.ValidationInner')
+    const msg = create(schemaDesc, { x: 1, count: 5 } as any)
 
     const errors = await validateProtobufMessage(new CelValidator(), schemaDesc, msg, false,
       schemaDesc)
