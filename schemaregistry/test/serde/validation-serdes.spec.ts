@@ -291,3 +291,62 @@ describe('json schema cache', () => {
     await expect(deser.deserialize('topic2', bytesB)).rejects.toThrow(/Invalid message/)
   })
 })
+
+// --------------------------------------------------------------------------------------
+// Rule evaluation count
+// --------------------------------------------------------------------------------------
+
+/**
+ * A rule on an object-valued property is declared once and must fire once. The property's
+ * schema and the schema the walk recurses into for it are the same object, so a walk that
+ * read rules both in the property loop and on arrival reports every such rule twice.
+ */
+describe('json rule evaluation count', () => {
+  const nestedRuleSchema = JSON.stringify({
+    type: 'object',
+    'confluent:rules': [{ name: 'rootRule', expr: 'has(this.child)' }],
+    properties: {
+      child: {
+        type: 'object',
+        'confluent:rules': [{ name: 'childRule', expr: "this.code == 'ok'" }],
+        properties: {
+          code: {
+            type: 'string',
+            'confluent:rules': [{ name: 'codeRule', expr: 'size(this) > 0' }],
+          },
+        },
+      },
+    },
+  })
+
+  const countFirings = async (msg: any): Promise<Record<string, number>> => {
+    await client.register(subject, { schemaType: 'JSON', schema: nestedRuleSchema }, false)
+    const ser = new JsonSerializer(client, SerdeType.VALUE, {
+      useLatestVersion: true,
+      validationRulesExecution: ValidationRulesExecution.AFTER_DOMAIN_RULES,
+    })
+    let text = ''
+    try {
+      await ser.serialize(topic, msg)
+    } catch (e: any) {
+      text = e.message ?? String(e)
+    }
+    const counts: Record<string, number> = {}
+    for (const name of ['rootRule', 'childRule', 'codeRule']) {
+      const n = (text.match(new RegExp(name, 'g')) ?? []).length
+      if (n > 0) counts[name] = n
+    }
+    return counts
+  }
+
+  it('evaluates each rule exactly once', async () => {
+    // Both the object-valued property's rule and the scalar property's rule are violated.
+    expect(await countFirings({ child: { code: '' } })).toEqual({ childRule: 1, codeRule: 1 })
+  })
+
+  it('still evaluates root and scalar rules', async () => {
+    // Proof that moving rule evaluation did not drop the root level.
+    expect(await countFirings({})).toEqual({ rootRule: 1 })
+    expect(await countFirings({ child: { code: 'ok' } })).toEqual({})
+  })
+})

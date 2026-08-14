@@ -547,9 +547,14 @@ export async function validateJsonMessage(
 }
 
 /**
- * Mirrors transform's dispatch shape: type arrays, then the combined keywords
- * (allOf/anyOf/oneOf) with their sibling properties/items, then items, then $ref, then
- * object properties.
+ * Evaluates the rules declared on schema against msg, then walks into whatever schema
+ * describes.
+ *
+ * This is the only place rules are read. A property's schema and the schema the walk
+ * recurses into for that property are the same object, so reading them in the property loop
+ * as well would charge every rule on an object-valued property twice. Matches the JVM
+ * client. The `msg == null` guard is also the skip-on-null contract: an absent or null
+ * value does not invoke the executor.
  */
 async function validate(
   executor: ValidationRuleExecutor,
@@ -562,6 +567,31 @@ async function validate(
   if (msg == null || schema == null || typeof schema === 'boolean') {
     return
   }
+  for (const rule of getInlineValidationRules(schema)) {
+    await evaluateValidationRule(executor, rule, schema, msg, path, out)
+    if (failFast && out.length > 0) {
+      return
+    }
+  }
+  await validateSchemaBody(executor, schema, path, msg, failFast, out)
+}
+
+/**
+ * Mirrors transform's dispatch shape: type arrays, then the combined keywords
+ * (allOf/anyOf/oneOf) with their sibling properties/items, then items, then $ref, then
+ * object properties. Rules for this node have already been evaluated by validate.
+ */
+async function validateSchemaBody(
+  executor: ValidationRuleExecutor,
+  schema: DereferencedJSONSchema,
+  path: string,
+  msg: any,
+  failFast: boolean,
+  out: ValidationRuleError[],
+): Promise<void> {
+  if (typeof schema === 'boolean') {
+    return
+  }
   if (schema.type != null && Array.isArray(schema.type) && schema.type.length > 0) {
     // validateSubtypes narrows schema.type in place, and this schema comes from the
     // dereferenced-schema cache. Hand it a shallow copy: restoring afterwards is not
@@ -569,7 +599,9 @@ async function validate(
     // narrowed, which a concurrent serialization would observe.
     const subschema = validateSubtypes({ ...schema }, msg)
     if (subschema != null) {
-      await validate(executor, subschema, path, msg, failFast, out)
+      // The narrowed schema is a copy of this one and carries the same rules, so only its
+      // body is walked.
+      await validateSchemaBody(executor, subschema, path, msg, failFast, out)
     }
     return
   }
@@ -638,9 +670,9 @@ async function validate(
 }
 
 /**
- * Evaluates object-level rules, then each declared property's rules, then recurses into
- * the property values. Undeclared properties (additionalProperties / patternProperties)
- * are not walked, matching the JVM client.
+ * Recurses into each declared property value. Undeclared properties
+ * (additionalProperties / patternProperties) are not walked, matching the JVM client.
+ * Rules are not read here - see validate, which each property value goes through.
  */
 async function validateObject(
   executor: ValidationRuleExecutor,
@@ -653,28 +685,12 @@ async function validateObject(
   if (typeof schema === 'boolean' || msg == null || typeof msg !== 'object' || Array.isArray(msg)) {
     return
   }
-  // Object-level rules: this = the object value.
-  for (const rule of getInlineValidationRules(schema)) {
-    await evaluateValidationRule(executor, rule, schema, msg, path, out)
-    if (failFast && out.length > 0) {
-      return
-    }
-  }
   if (schema.properties == null) {
     return
   }
   for (const [propName, propSchema] of Object.entries(schema.properties)) {
     const fullName = `${path}.${propName}`
     const value = msg[propName]
-    // Skip-on-null: an absent or null property does not invoke the executor.
-    if (value != null) {
-      for (const rule of getInlineValidationRules(propSchema)) {
-        await evaluateValidationRule(executor, rule, propSchema, value, fullName, out)
-        if (failFast && out.length > 0) {
-          return
-        }
-      }
-    }
     await validate(executor, propSchema, fullName, value, failFast, out)
     if (failFast && out.length > 0) {
       return
