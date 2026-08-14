@@ -116,20 +116,45 @@ function celValue(schema: any, msg: any): any {
   switch (fd.fieldKind) {
     case 'scalar':
       return celFromScalar(fd.scalar, msg as ScalarValue)
+    case 'enum':
+      return celFromEnum(msg)
     case 'list':
       // A repeated field binds the whole list, so each element needs converting.
-      return fd.listKind === 'scalar' && Array.isArray(msg)
-        ? msg.map((element) => celFromScalar(fd.scalar, element as ScalarValue))
-        : msg
-    case 'map':
-      if (fd.mapKind !== 'scalar' || msg == null || typeof msg !== 'object') {
+      if (!Array.isArray(msg)) {
         return msg
       }
-      return Object.fromEntries(Object.entries(msg).map(
-        ([key, value]) => [key, celFromScalar(fd.scalar, value as ScalarValue)]))
+      if (fd.listKind === 'scalar') {
+        return msg.map((element) => celFromScalar(fd.scalar, element as ScalarValue))
+      }
+      return fd.listKind === 'enum' ? msg.map(celFromEnum) : msg
+    case 'map':
+      if (msg == null || typeof msg !== 'object') {
+        return msg
+      }
+      if (fd.mapKind === 'scalar') {
+        return Object.fromEntries(Object.entries(msg).map(
+          ([key, value]) => [key, celFromScalar(fd.scalar, value as ScalarValue)]))
+      }
+      return fd.mapKind === 'enum'
+        ? Object.fromEntries(Object.entries(msg).map(([key, value]) => [key, celFromEnum(value)]))
+        : msg
     default:
       return msg
   }
+}
+
+/**
+ * Converts a protobuf enum value to a CEL int, which is what every other client binds an
+ * enum as - a rule reads `this == 1`, not the symbol name.
+ *
+ * protobuf-es represents an enum value as a plain JS number, and cel-es reads a number as a
+ * CEL double and a bigint as a CEL int. Passing the number through unchanged therefore
+ * types the field double: `this == 1` still holds, because cel-es compares across the
+ * numeric types, but `this % 2` and `this + 1` find no matching overload. protovalidate-es
+ * converts the same way, for the same reason.
+ */
+function celFromEnum(value: unknown): unknown {
+  return typeof value === 'number' ? BigInt(value) : value
 }
 
 interface ProtoEnv {

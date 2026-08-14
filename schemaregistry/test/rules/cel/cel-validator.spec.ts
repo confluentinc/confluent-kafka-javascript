@@ -14,6 +14,7 @@ import {
   ValidationOuterSchema,
   ValidationPersonSchema,
 } from '../../serde/test/validation_widget_pb';
+import { NestedMessageSchema, Status } from '../../serde/test/nested_pb';
 
 /**
  * Tests for CelValidator — the per-rule CEL semantics, independent of any walker.
@@ -124,6 +125,25 @@ describe('CelValidator protobuf values', () => {
     const fd = ValidationOuterSchema.fields.find((f) => f.name === 'items')!
     const items = [create(ValidationItemSchema, { v: 1 })]
     expect(await validator.execute(rule('this[0].v > 0'), fd, items)).toBe(true)
+  })
+
+  // An enum binds as a CEL int, as in every other client. protobuf-es represents an enum
+  // value as a plain JS number and cel-es reads a number as a double, so passing it through
+  // unchanged typed the field double: `this == 1` still held, because cel-es compares across
+  // the numeric types, but every integer operation on the field failed to find an overload.
+  it('binds an enum field as an int, not a double', async () => {
+    const validator = new CelValidator()
+    const fd = NestedMessageSchema.fields.find((f) => f.name === 'status')!
+    const inactive = Status.INACTIVE // = 1
+
+    expect(await validator.execute(rule('type(this) == int'), fd, inactive)).toBe(true)
+    expect(await validator.execute(rule('type(this) == double'), fd, inactive)).toBe(false)
+    // Integer operations, which have no overload for a double.
+    expect(await validator.execute(rule('this % 2 == 1'), fd, inactive)).toBe(true)
+    expect(await validator.execute(rule('this + 1 == 2'), fd, inactive)).toBe(true)
+    // And the plain comparison a rule is most likely to use.
+    expect(await validator.execute(rule('this == 1'), fd, inactive)).toBe(true)
+    expect(await validator.execute(rule('this == 0'), fd, inactive)).toBe(false)
   })
 
   it('binds the fields of a map message field', async () => {
