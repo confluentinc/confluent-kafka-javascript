@@ -6,7 +6,8 @@ import {
   RuleContext, SchemaId,
   SerdeType, SerializationError,
   Serializer, SerializerConfig,
-  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution
+  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution,
+  schemaCacheKey,
 } from "./serde";
 import {
   Client, RuleMode, RulePhase,
@@ -31,7 +32,6 @@ import { validateJSON } from '@criteria/json-schema-validation'
 import { LRUCache } from "lru-cache";
 import { generateSchema } from "./json-util";
 import {RuleRegistry} from "./rule-registry";
-import stringify from "json-stringify-deterministic";
 import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const JSON_TYPE = "JSON"
@@ -334,7 +334,7 @@ async function toValidateFunction(
     info: SchemaInfo,
     refResolver: RefResolver,
 ): Promise<ValidateFunction | undefined> {
-  let fn = serde.schemaToValidateCache.get(stringify(info.schema))
+  let fn = serde.schemaToValidateCache.get(schemaCacheKey(info))
   if (fn != null) {
     return fn
   }
@@ -361,7 +361,7 @@ async function toValidateFunction(
     })
     fn = ajv.compile(json)
   }
-  serde.schemaToValidateCache.set(stringify(info.schema), fn)
+  serde.schemaToValidateCache.set(schemaCacheKey(info), fn)
   return fn
 }
 
@@ -372,7 +372,7 @@ async function toType(
   info: SchemaInfo,
   refResolver: RefResolver,
 ): Promise<DereferencedJSONSchema> {
-  let type = serde.schemaToTypeCache.get(stringify(info.schema))
+  let type = serde.schemaToTypeCache.get(schemaCacheKey(info))
   if (type != null) {
     return type
   }
@@ -396,7 +396,7 @@ async function toType(
   } else {
     schema = await dereferenceJSONSchemaDraft07(json, { retrieve })
   }
-  serde.schemaToTypeCache.set(stringify(info.schema), schema)
+  serde.schemaToTypeCache.set(schemaCacheKey(info), schema)
   return schema
 }
 

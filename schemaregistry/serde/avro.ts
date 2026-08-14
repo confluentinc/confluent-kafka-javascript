@@ -6,7 +6,8 @@ import {
   RuleConditionError,
   RuleContext, SchemaId, SerdeType, SerializationError,
   Serializer, SerializerConfig,
-  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution
+  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution,
+  schemaCacheKey,
 } from "./serde";
 import {
   Client, RuleMode, RulePhase,
@@ -312,7 +313,7 @@ async function toType(
   info: SchemaInfo,
   refResolver: RefResolver,
 ): Promise<[Type, Map<string, string>]> {
-  let tuple = serde.schemaToTypeCache.get(stringify(info.schema))
+  let tuple = serde.schemaToTypeCache.get(schemaCacheKey(info))
   if (tuple != null) {
     return tuple
   }
@@ -339,7 +340,7 @@ async function toType(
     ...avroOpts,
     typeHook: addReferencedSchemas(avroOpts?.typeHook),
   })
-  serde.schemaToTypeCache.set(stringify(info.schema), [type, deps])
+  serde.schemaToTypeCache.set(schemaCacheKey(info), [type, deps])
   return [type, deps]
 }
 

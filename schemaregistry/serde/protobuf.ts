@@ -8,7 +8,8 @@ import {
   SerdeType, SerializationError,
   Serializer,
   SerializerConfig,
-  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution
+  ValidationRule, ValidationRuleError, ValidationRuleExecutor, ValidationRulesExecution,
+  schemaCacheKey,
 } from "./serde";
 import {
   Client, Reference, RuleMode, RulePhase,
@@ -46,7 +47,6 @@ import {
 import { LRUCache } from "lru-cache";
 import {field_meta, file_confluent_meta, Meta, message_meta, Rule as MetaRule} from "../confluent/meta_pb";
 import {RuleRegistry} from "./rule-registry";
-import stringify from "json-stringify-deterministic";
 import {file_confluent_types_decimal} from "../confluent/types/decimal_pb";
 import {file_google_type_calendar_period} from "../google/type/calendar_period_pb";
 import {file_google_type_color} from "../google/type/color_pb";
@@ -353,7 +353,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 
   async toFileDesc(client: Client, info: SchemaInfo): Promise<DescFile> {
-    const value = this.schemaToDescCache.get(stringify(info.schema))
+    const value = this.schemaToDescCache.get(schemaCacheKey(info))
     if (value != null) {
       return value
     }
@@ -361,7 +361,7 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
     if (fileDesc == null) {
       throw new SerializationError('file descriptor not found')
     }
-    this.schemaToDescCache.set(stringify(info.schema), fileDesc)
+    this.schemaToDescCache.set(schemaCacheKey(info), fileDesc)
     return fileDesc
   }
 
@@ -487,7 +487,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   }
 
   async toFileDesc(client: Client, info: SchemaInfo): Promise<DescFile> {
-    const value = this.schemaToDescCache.get(stringify(info.schema))
+    const value = this.schemaToDescCache.get(schemaCacheKey(info))
     if (value != null) {
       return value
     }
@@ -495,7 +495,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
     if (fileDesc == null) {
       throw new SerializationError('file descriptor not found')
     }
-    this.schemaToDescCache.set(stringify(info.schema), fileDesc)
+    this.schemaToDescCache.set(schemaCacheKey(info), fileDesc)
     return fileDesc
   }
 

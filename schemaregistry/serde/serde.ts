@@ -5,7 +5,8 @@ import {
   RuleMode, RulePhase,
   RuleSet,
   SchemaInfo,
-  SchemaMetadata
+  SchemaMetadata,
+  minimize
 } from "../schemaregistry-client";
 import {RuleRegistry} from "./rule-registry";
 import {ClientConfig} from "../rest-service";
@@ -15,6 +16,23 @@ import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
 import type {Registry} from "@bufbuild/protobuf";
 import {LRUCache} from "lru-cache";
 import stringify from "json-stringify-deterministic";
+
+/**
+ * Key identifying a schema in a parsed-schema cache.
+ *
+ * The whole schema, not just its text. Parsing resolves the schema's references
+ * and inlines what they contain, so two schemas whose text is identical but
+ * whose references point at different subjects or versions parse to different
+ * things - and inline validation rules can come entirely from a referenced
+ * schema. Keying on the text alone would hand the second schema the first one's
+ * resolution.
+ *
+ * Minimized first: callers routinely hand in a SchemaMetadata, whose id and
+ * version would otherwise split one schema across several cache entries.
+ */
+export function schemaCacheKey(info: SchemaInfo): string {
+  return stringify(minimize(info))
+}
 
 export enum SerdeType {
   KEY = 'KEY',

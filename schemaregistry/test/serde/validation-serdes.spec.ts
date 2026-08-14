@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from '@jest/globals';
 import { create } from '@bufbuild/protobuf';
 import { ClientConfig } from '../../rest-service';
 import { AvroSerializer, AvroSerializerConfig } from '../../serde/avro';
-import { JsonSerializer, JsonSerializerConfig } from '../../serde/json';
+import { JsonDeserializer, JsonSerializer, JsonSerializerConfig } from '../../serde/json';
 import { ProtobufSerializer, ProtobufSerializerConfig } from '../../serde/protobuf';
 import { SerdeType, ValidationRulesExecution } from '../../serde/serde';
 import { Client, SchemaRegistryClient } from '../../schemaregistry-client';
@@ -237,5 +237,57 @@ describe('protobuf inline validation', () => {
       .rejects.toThrow(/age must not be negative/)
     const valid = await ser.serialize(topic, create(ValidationPersonSchema, { age: 30, name: 'Alice' }))
     expect(valid.length).toBeGreaterThan(0)
+  })
+})
+
+// --------------------------------------------------------------------------------------
+// Schema caching
+// --------------------------------------------------------------------------------------
+
+/**
+ * A parsed-schema cache keyed only on schema text conflates two schemas whose
+ * text is identical but whose references point at different subjects: the second
+ * is served whatever the first resolved to, rules from a referenced schema
+ * included. Both of this serde's caches key on the whole schema instead.
+ */
+describe('json schema cache', () => {
+  // A root whose text is the same whichever schema it references. What its
+  // "$ref" resolves to is decided entirely by the reference list.
+  const sharedRoot = JSON.stringify({
+    type: 'object',
+    properties: { payload: { $ref: 'ref' } },
+  })
+
+  const refRequiring = (codeType: string) => JSON.stringify({
+    type: 'object',
+    properties: { code: { type: codeType } },
+    required: ['code'],
+  })
+
+  const rootReferencing = (refSubject: string) => ({
+    schemaType: 'JSON',
+    schema: sharedRoot,
+    references: [{ name: 'ref', subject: refSubject, version: 1 }],
+  })
+
+  it('separates schemas by their references', async () => {
+    await client.register('ref-a', { schemaType: 'JSON', schema: refRequiring('string') }, false)
+    await client.register('ref-b', { schemaType: 'JSON', schema: refRequiring('integer') }, false)
+    await client.register('topic1-value', rootReferencing('ref-a'), false)
+    await client.register('topic2-value', rootReferencing('ref-b'), false)
+
+    const obj = { payload: { code: 'A1' } }
+    const bytesA = await new JsonSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+      .serialize('topic1', obj)
+    const bytesB = await new JsonSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+      .serialize('topic2', obj)
+
+    // One deserializer, so both payloads go through the same cache. The two
+    // schemas agree on every byte of their text and differ only in what they
+    // reference, which is exactly the pair a text-keyed cache would conflate:
+    // "A1" satisfies ref-a's string but not ref-b's integer.
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, { validate: true })
+    await expect(deser.deserialize('topic1', bytesA)).resolves.toEqual(obj)
+    await expect(deser.deserialize('topic2', bytesB)).rejects.toThrow(/Invalid message/)
   })
 })
