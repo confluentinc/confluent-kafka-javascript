@@ -136,6 +136,35 @@ describe('Producer', function() {
       producer.produce('test', null, Buffer.from('value'), null, null, 'opaque');
     });
 
+    it('should preserve non-string primitive opaque values', function(done) {
+      var opaqueValues = [42, true];
+      var tt = setInterval(function() {
+        producer.poll();
+      }, 200);
+
+      function produceNext(index) {
+        producer.once('delivery-report', function(err, report) {
+          t.ifError(err);
+          t.notStrictEqual(report, undefined);
+          t.strictEqual(typeof report.topic, 'string');
+          t.strictEqual(typeof report.partition, 'number');
+          t.strictEqual(typeof report.offset, 'number');
+          t.strictEqual(report.opaque, opaqueValues[index]);
+
+          if (index === opaqueValues.length - 1) {
+            clearInterval(tt);
+            done();
+          } else {
+            produceNext(index + 1);
+          }
+        });
+
+        producer.produce('test', null, Buffer.from('value'), null, null, opaqueValues[index]);
+      }
+
+      produceNext(0);
+    });
+
 
     it('should get 100% deliverability', function(done) {
       var total = 0;

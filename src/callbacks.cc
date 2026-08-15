@@ -333,9 +333,10 @@ void DeliveryReportDispatcher::Flush() {
 
     if (event.opaque) {
       Napi::Reference<Napi::Value> *persistent =
-      static_cast<Napi::Reference<Napi::Value> *>(event.opaque);
-      Napi::Value object = persistent->Value();
-      (jsobj).Set(Napi::String::New(env, "opaque"), object);
+          static_cast<Napi::Reference<Napi::Value> *>(event.opaque);
+      Napi::Value boxed = persistent->Value();
+      Napi::Value original = boxed.As<Napi::Object>().Get("opaque");
+      (jsobj).Set(Napi::String::New(env, "opaque"), original);
 
       // Reset and destroy the persistent handle
       persistent->Reset();

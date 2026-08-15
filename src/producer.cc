@@ -550,7 +550,10 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
   // Opaque handling
   if (info.Length() > 5 && !info[5].IsUndefined()) {
     // We need to create a persistent handle
-    opaque = new Napi::Reference<Napi::Value>(Napi::Persistent(info[5]));
+    Napi::Object box = Napi::Object::New(env);
+    box.Set("opaque", info[5]);
+    Napi::Value boxValue = box;
+    opaque = new Napi::Reference<Napi::Value>(Napi::Persistent(boxValue));
     // To get the local from this later,
     // Napi::Object object = Napi::New(env, persistent);
   }
