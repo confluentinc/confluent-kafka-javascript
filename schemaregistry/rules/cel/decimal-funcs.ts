@@ -28,12 +28,17 @@
 
 import { Decimal } from "decimal.js";
 import { celFunc, CelScalar, objectType, type CelFunc } from "@bufbuild/cel";
-import { create } from "@bufbuild/protobuf";
 import { isReflectMessage, reflect, type ReflectMessage } from "@bufbuild/protobuf/reflect";
 import {
   DecimalSchema as ProtoDecimalSchema,
   type Decimal as ProtoDecimal,
 } from "../../confluent/types/decimal_pb";
+import {
+  bigIntToTwosComplementBytes,
+  bytesToBigIntSigned,
+  fromProtoDecimal,
+  toProtoDecimal,
+} from "../../confluent/types/decimal-utils";
 
 const { DYN, INT, BOOL, STRING, BYTES, DOUBLE } = CelScalar;
 const DECIMAL_TYPE = objectType(ProtoDecimalSchema);
@@ -41,62 +46,8 @@ const DECIMAL_TYPE = objectType(ProtoDecimalSchema);
 // 38-digit HALF_UP context for division, matching Flink / Java BigDecimal.
 const DivDecimal = Decimal.clone({ precision: 38, rounding: Decimal.ROUND_HALF_UP });
 
-function bytesToBigIntSigned(bytes: Uint8Array): bigint {
-  if (bytes.length === 0) return 0n;
-  let result = 0n;
-  for (const b of bytes) {
-    result = (result << 8n) | BigInt(b);
-  }
-  if (bytes[0] & 0x80) {
-    result -= 1n << BigInt(bytes.length * 8);
-  }
-  return result;
-}
-
-function bigIntToTwosComplementBytes(n: bigint): Uint8Array {
-  if (n === 0n) return new Uint8Array([0]);
-  const negative = n < 0n;
-  // Convert to an unsigned representation, then truncate the minimal number
-  // of bytes that preserve sign on the high bit.
-  let bits = (negative ? -n : n).toString(2).length;
-  // For positive numbers, ensure the top bit is 0.
-  // For negative numbers, ensure the top bit is 1.
-  let byteLen = Math.ceil((bits + 1) / 8);
-  if (byteLen === 0) byteLen = 1;
-  let v = negative ? (1n << BigInt(byteLen * 8)) + n : n;
-  const out = new Uint8Array(byteLen);
-  for (let i = byteLen - 1; i >= 0; i--) {
-    out[i] = Number(v & 0xffn);
-    v >>= 8n;
-  }
-  return out;
-}
-
-function protoToDecimal(p: ProtoDecimal): Decimal {
-  const value = p.value;
-  const scale = p.scale ?? 0;
-  if (!value || value.length === 0) {
-    return new Decimal(0).mul(new Decimal(10).pow(-scale));
-  }
-  return new Decimal(bytesToBigIntSigned(value).toString()).mul(
-    new Decimal(10).pow(-scale),
-  );
-}
-
-function decimalToProto(d: Decimal): ProtoDecimal {
-  const scale = d.decimalPlaces();
-  // Unscaled integer = d * 10^scale, exact (since decimalPlaces is the
-  // smallest scale that makes d an integer).
-  const unscaled = BigInt(d.times(new Decimal(10).pow(scale)).toFixed(0));
-  return create(ProtoDecimalSchema, {
-    value: bigIntToTwosComplementBytes(unscaled),
-    scale,
-    precision: 0,
-  });
-}
-
 function decimalToCel(d: Decimal): ReflectMessage {
-  return reflect(ProtoDecimalSchema, decimalToProto(d));
+  return reflect(ProtoDecimalSchema, toProtoDecimal(d));
 }
 
 function toDecimal(v: unknown): Decimal {
@@ -105,7 +56,7 @@ function toDecimal(v: unknown): Decimal {
   }
   // CEL passes proto messages as ReflectMessage.
   if (isReflectMessage(v, ProtoDecimalSchema)) {
-    return protoToDecimal(v.message as ProtoDecimal);
+    return fromProtoDecimal(v.message as ProtoDecimal);
   }
   if (v instanceof Decimal) return v;
   if (typeof v === "boolean") {
@@ -122,7 +73,7 @@ function toDecimal(v: unknown): Decimal {
     const anyV = v as any;
     // Bare confluent.type.Decimal proto message (not yet wrapped in Reflect).
     if (anyV.$typeName === "confluent.type.Decimal") {
-      return protoToDecimal(anyV as ProtoDecimal);
+      return fromProtoDecimal(anyV as ProtoDecimal);
     }
     if (v instanceof Uint8Array) {
       throw new Error(
@@ -180,7 +131,7 @@ function fromConstructorArg(v: unknown): ReflectMessage {
  */
 function stringExt(v: unknown): string {
   if (isReflectMessage(v, ProtoDecimalSchema)) {
-    return protoToDecimal(v.message as ProtoDecimal).toFixed();
+    return fromProtoDecimal(v.message as ProtoDecimal).toFixed();
   }
   if (v instanceof Decimal) return v.toFixed();
   // Fall through to stdlib semantics for the non-Decimal case.
@@ -202,7 +153,7 @@ function stringExt(v: unknown): string {
  */
 function doubleExt(v: unknown): number {
   if (isReflectMessage(v, ProtoDecimalSchema)) {
-    return protoToDecimal(v.message as ProtoDecimal).toNumber();
+    return fromProtoDecimal(v.message as ProtoDecimal).toNumber();
   }
   if (v instanceof Decimal) return v.toNumber();
   // Fall through to stdlib semantics for the non-Decimal case.
