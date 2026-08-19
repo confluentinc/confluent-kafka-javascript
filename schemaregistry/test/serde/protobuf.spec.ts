@@ -24,6 +24,7 @@ import {
 import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
 import {EncryptionExecutor, FieldEncryptionExecutor} from "../../rules/encryption/encrypt-executor";
 import {AuthorSchema, file_test_schemaregistry_serde_example, PizzaSchema} from "./test/example_pb";
+import {DecimalSchema, file_confluent_types_decimal} from "../../confluent/types/decimal_pb";
 import {create, toBinary} from "@bufbuild/protobuf";
 import {
   FieldDescriptorProto_Label,
@@ -490,6 +491,28 @@ describe('ProtobufSerializer', () => {
     }
     await client.register(subject, info, false)
     const obj = create(AuthorSchema, { name: 'Kafka', id: 123, picture: Buffer.from([1, 2]) })
+    const bytes = await ser.serialize(topic, obj)
+    const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+
+  it('cel proto decimal message passes', async () => {
+    const client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    ser.registry.add(DecimalSchema)
+    const encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'decimals.gt(decimal(message), decimal("10.00"))'
+    }
+    const info: SchemaInfo = {
+      schemaType: 'PROTOBUF',
+      schema: Buffer.from(toBinary(FileDescriptorProtoSchema, file_confluent_types_decimal.proto)).toString('base64'),
+      ruleSet: { domainRules: [encRule] },
+    }
+    await client.register(subject, info, false)
+    // 12.34 = unscaled 1234 (0x04D2) at scale 2.
+    const obj = create(DecimalSchema, { value: Buffer.from([0x04, 0xd2]), scale: 2 })
     const bytes = await ser.serialize(topic, obj)
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     const obj2 = await deser.deserialize(topic, bytes)
