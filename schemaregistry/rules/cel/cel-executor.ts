@@ -9,11 +9,12 @@ import { Registry } from "@bufbuild/protobuf";
 import { timestampNow } from "@bufbuild/protobuf/wkt";
 import { DECIMAL_FUNCS, decimalFromBytesScale, decimalToAvroBytes, isCelDecimal } from "./decimal-funcs";
 import { TIMESTAMP_FUNCS, avroTimestampToCel, isCelTimestamp, timestampToEpoch } from "./timestamp-funcs";
+import { IS_FUNCS } from "./is-funcs";
 
 export class CelExecutor implements RuleExecutor {
   config: Map<string, string> | null = null
   env: CelEnv = celEnv({
-    funcs: [...STRINGS_EXT_FUNCS, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS],
+    funcs: [...STRINGS_EXT_FUNCS, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS],
   });
   cache: LRUCache<string, any> = new LRUCache({max: 1000})
   // Envs carrying a protobuf registry, one per registry encountered. CEL resolves field
@@ -128,7 +129,7 @@ export class CelExecutor implements RuleExecutor {
     if (protoEnv == null) {
       protoEnv = {
         env: celEnv({
-          funcs: [...STRINGS_EXT_FUNCS, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS],
+          funcs: [...STRINGS_EXT_FUNCS, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS],
           registry,
         }),
         id: String(this.nextProtoEnvId++)

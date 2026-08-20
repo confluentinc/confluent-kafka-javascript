@@ -220,3 +220,30 @@ describe('CelValidator caching', () => {
     expect(validator.cache.size).toBe(2)
   })
 })
+
+describe('CelValidator is* format validators', () => {
+  const cases: [string, string, boolean][] = [
+    ['this.isEmail()', 'foo@bar.com', true],
+    ['this.isEmail()', 'not-an-email', false],
+    ['this.isHostname()', 'example.com', true],
+    ['this.isIpv4()', '192.168.0.1', true],
+    ['this.isIpv4()', '::1', false],
+    ['this.isIpv6()', '::1', true],
+    ['this.isUri()', 'https://example.com/x', true],
+    ['this.isUriRef()', './foo/bar', true],
+    ['this.isUuid()', '12345678-1234-1234-1234-123456789012', true],
+    ['this.isUuid()', 'nope', false],
+  ]
+
+  it.each(cases)('evaluates %s on %s', async (expr, value, expected) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, value)).toBe(expected)
+  })
+
+  // Decimal/timestamp functions are now available in the validator env too.
+  it('supports decimal functions in validation rules', async () => {
+    const validator = new CelValidator()
+    expect(await validator.execute(
+      rule('decimals.gt(decimal(this), decimal("10.00"))'), null, '12.34')).toBe(true)
+  })
+})
