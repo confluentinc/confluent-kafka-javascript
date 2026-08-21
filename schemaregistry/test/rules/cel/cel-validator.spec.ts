@@ -6,7 +6,11 @@ import {
   FieldDescriptorProtoSchema,
   FileDescriptorProtoSchema,
 } from '@bufbuild/protobuf/wkt';
+import avro from 'avsc';
 import { CelValidator } from '../../../rules/cel/cel-validator';
+import { VariantLogicalType } from '../../../serde/avro';
+import { Variant, VariantBuilder } from '../../../confluent/types/variant-utils';
+import { VariantSchema } from '../../../confluent/types/variant_pb';
 import { RuleError, ValidationRule } from '../../../serde/serde';
 import {
   ValidationInnerSchema,
@@ -278,5 +282,34 @@ describe('CelValidator variant functions', () => {
     const validator = new CelValidator()
     await expect(validator.execute(rule("variants.type(variant(this)) == 'object'"), null, 'x'))
       .rejects.toThrow(/Could not execute/)
+  })
+})
+
+describe('CelValidator variant serde into CEL', () => {
+  const expr = "variants.as(variants.field(variant(this), 'name'), 'string') == 'alice'"
+
+  // An Avro `variant` logical-type field decodes to a Variant (via the production
+  // VariantLogicalType), which then flows into CEL through variant(this).
+  it('passes an Avro variant (logical type) into CEL', async () => {
+    const type = avro.Type.forSchema(
+      {
+        type: 'record', name: 'confluent.type.Variant', logicalType: 'variant',
+        fields: [{ name: 'metadata', type: 'bytes' }, { name: 'value', type: 'bytes' }],
+      } as avro.Schema,
+      { logicalTypes: { variant: VariantLogicalType } },
+    )
+    const { value, metadata } = new VariantBuilder().build('{"name":"alice","age":30}')
+    const decoded = type.fromBuffer(type.toBuffer(new Variant(value, metadata)))
+    expect(decoded).toBeInstanceOf(Variant)
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, decoded)).toBe(true)
+  })
+
+  // A confluent.type.Variant proto message flows into CEL through variant(this).
+  it('passes a Protobuf variant message into CEL', async () => {
+    const { value, metadata } = new VariantBuilder().build('{"name":"alice","age":30}')
+    const msg = create(VariantSchema, { value, metadata })
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), VariantSchema, msg)).toBe(true)
   })
 })
