@@ -247,3 +247,36 @@ describe('CelValidator is* format validators', () => {
       rule('decimals.gt(decimal(this), decimal("10.00"))'), null, '12.34')).toBe(true)
   })
 })
+
+describe('CelValidator variant functions', () => {
+  // `this` is a JSON string; variants.parseJson(this) turns it into a Variant, then the
+  // variants.* accessors navigate and extract. Covers the null model (absent vs
+  // variant-null), navigation, typed extraction, and toJson.
+  const V = 'variants.parseJson(this)'
+  const json =
+    '{"name":"alice","age":30,"scores":[10,20,30],"nested":{"x":1},"explicit":null}'
+  const cases: string[] = [
+    `variants.type(${V}) == 'object'`,
+    `variants.as(variants.field(${V}, 'name'), 'string') == 'alice'`,
+    `variants.as(variants.field(${V}, 'age'), 'int') == 30`,
+    `variants.field(${V}, 'missing') == null`,
+    `variants.isNull(variants.field(${V}, 'explicit'))`,
+    `!variants.isNull(variants.field(${V}, 'missing'))`,
+    `variants.as(variants.path(${V}, '$.nested.x'), 'int') == 1`,
+    `variants.as(variants.index(variants.field(${V}, 'scores'), 2), 'int') == 30`,
+    `variants.tryAs(variants.field(${V}, 'age'), 'string') == null`,
+    `variants.toJson(variants.field(${V}, 'nested')) == '{"x":1}'`,
+  ]
+
+  it.each(cases)('evaluates %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
+  })
+
+  // A string is rejected by variant(...) with a redirect to parseJson.
+  it('rejects a string passed to variant()', async () => {
+    const validator = new CelValidator()
+    await expect(validator.execute(rule("variants.type(variant(this)) == 'object'"), null, 'x'))
+      .rejects.toThrow(/Could not execute/)
+  })
+})

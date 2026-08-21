@@ -8,6 +8,7 @@ import { RuleError, ValidationRule, ValidationRuleExecutor } from "../../serde/s
 import { DECIMAL_FUNCS } from "./decimal-funcs"
 import { TIMESTAMP_FUNCS } from "./timestamp-funcs"
 import { IS_FUNCS } from "./is-funcs"
+import { VARIANT_FUNCS } from "./variant-funcs"
 
 /**
  * CelValidator is a validation-rule executor backed by CEL. Each rule expression is
@@ -19,7 +20,7 @@ import { IS_FUNCS } from "./is-funcs"
  * static type declarations, so the same plan is reusable across every value shape.
  */
 export class CelValidator implements ValidationRuleExecutor {
-  env: CelEnv = celEnv({ funcs: [...strings, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS] })
+  env: CelEnv = celEnv({ funcs: [...strings, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS, ...VARIANT_FUNCS] })
   cache: LRUCache<string, any> = new LRUCache({ max: 1000 })
   // Envs carrying a protobuf registry, one per descriptor file. CEL resolves field
   // access on a protobuf message through its registry, so validating one requires an env
@@ -90,7 +91,7 @@ export class CelValidator implements ValidationRuleExecutor {
       // on: the value bound to `this` may be a field's message type, a map value or a
       // list element, and its own fields have to resolve too.
       protoEnv = {
-        env: celEnv({ funcs: [...strings, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS], registry: createRegistry(...filesReachableFrom(file)) }),
+        env: celEnv({ funcs: [...strings, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS, ...VARIANT_FUNCS], registry: createRegistry(...filesReachableFrom(file)) }),
         id: String(this.nextProtoEnvId++),
       }
       this.protoEnvs.set(file, protoEnv)
