@@ -1,4 +1,6 @@
 export * from './confluent/types/decimal_pb'
+export * from './confluent/types/variant_pb'
+export * from './confluent/types/variant-utils'
 export * from './confluent/meta_pb'
 export * from './rules/cel/cel-executor'
 export * from './rules/cel/cel-field-executor'

@@ -48,6 +48,7 @@ import { LRUCache } from "lru-cache";
 import {field_meta, file_confluent_meta, Meta, message_meta, Rule as MetaRule} from "../confluent/meta_pb";
 import {RuleRegistry} from "./rule-registry";
 import {file_confluent_types_decimal} from "../confluent/types/decimal_pb";
+import {file_confluent_types_variant} from "../confluent/types/variant_pb";
 import {file_google_type_calendar_period} from "../google/type/calendar_period_pb";
 import {file_google_type_color} from "../google/type/color_pb";
 import {file_google_type_date} from "../google/type/date_pb";
@@ -68,6 +69,7 @@ export const PROTOBUF_TYPE = "PROTOBUF"
 const builtinDeps = new Map<string, DescFile>([
   ['confluent/meta.proto',                 file_confluent_meta],
   ['confluent/type/decimal.proto',         file_confluent_types_decimal],
+  ['confluent/type/variant.proto',         file_confluent_types_variant],
   ['google/type/calendar_period.proto',    file_google_type_calendar_period],
   ['google/type/color.proto',              file_google_type_color],
   ['google/type/date.proto',               file_google_type_date],
