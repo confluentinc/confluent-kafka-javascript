@@ -91,6 +91,8 @@ function coerceBytes(v: unknown, field: string): Uint8Array {
 /** A reader over a CEL value that is a confluent.type.Variant, or null if it is not one. */
 function tryReader(v: unknown): Variant | null {
   if (v === null || v === undefined) return null;
+  // Already a Variant (e.g. produced by the Avro variant logical type).
+  if (v instanceof Variant) return v;
   if (isReflectMessage(v, VariantSchema)) {
     const m = v.message as ProtoVariant;
     return new Variant(m.value, m.metadata);
@@ -118,10 +120,21 @@ function wrapReader(r: Variant): ReflectMessage {
   return reflect(VariantSchema, create(VariantSchema, { metadata: r.metadata, value }));
 }
 
+/**
+ * Convert a {@link Variant} (e.g. produced by the Avro variant logical type) into the CEL
+ * value form - a `ReflectMessage` of confluent.type.Variant - so it can be bound to `this`.
+ * cel-es cannot bind a bare Variant object directly.
+ */
+export function variantToCel(v: Variant): ReflectMessage {
+  return wrapReader(v);
+}
+
 function toVariantMessage(v: unknown): ReflectMessage {
   if (v === null || v === undefined) {
     throw new Error("variant: cannot convert null to Variant");
   }
+  // Already a Variant (e.g. produced by the Avro variant logical type).
+  if (v instanceof Variant) return wrapReader(v);
   if (isReflectMessage(v, VariantSchema)) return v;
   const any = v as { $typeName?: string; value?: unknown; metadata?: unknown };
   if (typeof v === "object" && any.$typeName === VARIANT_PROTO_NAME) {

@@ -24,8 +24,43 @@ import { LRUCache } from 'lru-cache'
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
+import { Variant } from "../confluent/types/variant-utils";
 
 export const AVRO_TYPE = "AVRO"
+
+/**
+ * The Avro `variant` logical type: a record of two bytes fields (metadata, value) carrying
+ * a Spark/Parquet Variant. Decodes to / encodes from a Variant, so serde consumers and CEL
+ * rules see a first-class Variant. Counterpart of Java's io.confluent.avro.type
+ * .VariantConversion; registered via the `logicalTypes` forSchema option (see below).
+ */
+export class VariantLogicalType extends types.LogicalType {
+  override _fromValue(val: { metadata: Uint8Array; value: Uint8Array }): Variant {
+    return new Variant(val.value, val.metadata)
+  }
+
+  override _toValue(any: unknown): unknown {
+    if (any instanceof Variant) {
+      return { metadata: Buffer.from(any.metadata), value: Buffer.from(any.value) }
+    }
+    return any
+  }
+
+  override _resolve(type: Type): ((val: unknown) => unknown) | undefined {
+    if (Type.isType(type, 'logical:variant')) {
+      return (val: unknown) => this._fromValue(val as { metadata: Uint8Array; value: Uint8Array })
+    }
+    return undefined
+  }
+}
+
+/** Merge the built-in `variant` logical type into forSchema options, preserving user ones. */
+function withVariantLogicalType(opts: AvroSerdeConfig): AvroSerdeConfig {
+  return {
+    ...opts,
+    logicalTypes: { ...opts?.logicalTypes, variant: VariantLogicalType },
+  }
+}
 
 type TypeHook = (schema: avro.Schema, opts: ForSchemaOptions) => Type | undefined
 
@@ -327,7 +362,7 @@ async function toType(
     const avroOpts = opts as AvroSerdeConfig
     deps.forEach((schema, _name) => {
       avroOpts.typeHook = userHook
-      avro.Type.forSchema(JSON.parse(schema), avroOpts)
+      avro.Type.forSchema(JSON.parse(schema), withVariantLogicalType(avroOpts))
     })
     if (userHook) {
       return userHook(schema, opts)
@@ -336,10 +371,10 @@ async function toType(
   }
 
   const avroOpts = conf
-  let type = avro.Type.forSchema(JSON.parse(info.schema), {
+  let type = avro.Type.forSchema(JSON.parse(info.schema), withVariantLogicalType({
     ...avroOpts,
     typeHook: addReferencedSchemas(avroOpts?.typeHook),
-  })
+  }))
   serde.schemaToTypeCache.set(schemaCacheKey(info), [type, deps])
   return [type, deps]
 }

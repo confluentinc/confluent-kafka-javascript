@@ -8,7 +8,8 @@ import { RuleError, ValidationRule, ValidationRuleExecutor } from "../../serde/s
 import { DECIMAL_FUNCS } from "./decimal-funcs"
 import { TIMESTAMP_FUNCS } from "./timestamp-funcs"
 import { IS_FUNCS } from "./is-funcs"
-import { VARIANT_FUNCS } from "./variant-funcs"
+import { VARIANT_FUNCS, variantToCel } from "./variant-funcs"
+import { Variant } from "../../confluent/types/variant-utils"
 
 /**
  * CelValidator is a validation-rule executor backed by CEL. Each rule expression is
@@ -111,6 +112,11 @@ export class CelValidator implements ValidationRuleExecutor {
  * protobuf-es's own bridge for exactly this, and is what protovalidate-es uses.
  */
 function celValue(schema: any, msg: any): any {
+  // A Variant (e.g. from the Avro variant logical type) can't be bound to `this` directly;
+  // bind it as its confluent.type.Variant CEL value.
+  if (msg instanceof Variant) {
+    return variantToCel(msg)
+  }
   if (schema == null || typeof schema !== 'object' || !('fieldKind' in schema)) {
     // A message-level rule: the schema is a DescMessage, and the fields inside resolve
     // through the registry, which already knows their types.
