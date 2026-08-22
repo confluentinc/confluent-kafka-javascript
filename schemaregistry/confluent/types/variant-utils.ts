@@ -207,21 +207,39 @@ function floorDivMod(n: bigint, d: bigint): [bigint, bigint] {
   return [q, r];
 }
 
-function ymd(date: Date): string {
-  return `${pad(date.getUTCFullYear(), 4)}-${pad(date.getUTCMonth() + 1, 2)}-${pad(date.getUTCDate(), 2)}`;
+// Year with a mandatory 4-digit minimum EXCLUDING the sign and a leading '+' for years beyond
+// 9999 - matching Java Instant.toString() / LocalDate.toString() (SignStyle.EXCEEDS_PAD). Used
+// for the TZ timestamp and DATE forms.
+function formatYearIso(year: number): string {
+  if (year > 9999) return "+" + year;
+  if (year < 0) return "-" + pad(-year, 4);
+  return pad(year, 4);
+}
+
+// Year with a 4-character minimum INCLUDING the sign and no '+' for large years - matching
+// Java's String.format("%04d"). Used for the NTZ timestamp form. (Java is intentionally
+// inconsistent here: the TZ/DATE forms use EXCEEDS_PAD, the NTZ form uses %04d.)
+function formatYear04(year: number): string {
+  if (year < 0) return "-" + pad(-year, 3);
+  return pad(year, 4);
+}
+
+function ymd(date: Date, formatYear: (year: number) => string): string {
+  return `${formatYear(date.getUTCFullYear())}-${pad(date.getUTCMonth() + 1, 2)}-` +
+    `${pad(date.getUTCDate(), 2)}`;
 }
 
 function formatInstant(totalNanos: bigint): string {
   const [sec, nano] = floorDivMod(totalNanos, 1_000_000_000n);
   const date = new Date(Number(sec) * 1000);
-  return `${ymd(date)}T${pad(date.getUTCHours(), 2)}:${pad(date.getUTCMinutes(), 2)}:` +
+  return `${ymd(date, formatYearIso)}T${pad(date.getUTCHours(), 2)}:${pad(date.getUTCMinutes(), 2)}:` +
     `${pad(date.getUTCSeconds(), 2)}${fracNanos(nano)}Z`;
 }
 
 function formatLocalDateTime(totalNanos: bigint): string {
   const [sec, nano] = floorDivMod(totalNanos, 1_000_000_000n);
   const date = new Date(Number(sec) * 1000);
-  return `${ymd(date)}T${pad(date.getUTCHours(), 2)}:${pad(date.getUTCMinutes(), 2)}:` +
+  return `${ymd(date, formatYear04)}T${pad(date.getUTCHours(), 2)}:${pad(date.getUTCMinutes(), 2)}:` +
     `${pad(date.getUTCSeconds(), 2)}${fracNanos(nano)}`;
 }
 
@@ -233,7 +251,7 @@ function formatLocalTime(micros: bigint): string {
 }
 
 function formatDate(days: number): string {
-  return ymd(new Date(days * 86_400_000));
+  return ymd(new Date(days * 86_400_000), formatYearIso);
 }
 
 /** Exact fixed-point string for unscaled*10^-scale (never scientific), matching toPlainString. */
