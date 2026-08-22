@@ -261,6 +261,23 @@ function doubleToJson(d: number): string {
   return String(d);
 }
 
+/** A JSON number rendering of a 32-bit float: the shortest decimal that round-trips to the
+ * SAME float32 (via `Math.fround`), matching Java `Float.toString` / Apache Arrow rather than
+ * the f64-shortest string produced by widening then formatting as a double. */
+function floatToJson(f: number): string {
+  if (!Number.isFinite(f)) {
+    throw new VariantError("cannot render non-finite float as JSON");
+  }
+  if (Number.isInteger(f) && Math.abs(f) < 1e16) {
+    return `${f}.0`;
+  }
+  for (let p = 1; p <= 9; p++) {
+    const s = f.toPrecision(p);
+    if (Math.fround(Number(s)) === f) return String(Number(s));
+  }
+  return String(f);
+}
+
 function formatUuid(bytes: Uint8Array): string {
   const hex: string[] = [];
   for (const b of bytes) hex.push(b.toString(16).padStart(2, "0"));
@@ -616,7 +633,7 @@ export class Variant {
       case VariantType.LONG:
         return this.getLong().toString();
       case VariantType.FLOAT:
-        return doubleToJson(this.getFloat());
+        return floatToJson(this.getFloat());
       case VariantType.DOUBLE:
         return doubleToJson(this.getDouble());
       case VariantType.DECIMAL4:
@@ -799,7 +816,11 @@ export class VariantBuilder {
         throw new VariantError("scale must not be given with a Decimal value");
       }
       const s = unscaled.decimalPlaces();
-      const unscaledInt = BigInt(unscaled.times(new Decimal(10).pow(s)).toFixed(0));
+      // toFixed(s) is exact (precision-independent) since the value has exactly s decimal places;
+      // strip the point (and keep the sign) to get the unscaled integer with no rounding.
+      // Arithmetic ops (times/pow) would round to decimal.js's global precision and corrupt
+      // values with more than ~20 significant digits.
+      const unscaledInt = BigInt(unscaled.toFixed(s).replace(".", ""));
       this.writeDecimalUnscaled(unscaledInt, s);
     }
   }
