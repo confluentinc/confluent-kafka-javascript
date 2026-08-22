@@ -72,6 +72,7 @@ export const VERSION_MASK = 0x0f;
 const U8_MAX = 0xff;
 const U16_MAX = 0xffff;
 const U24_SIZE = 3;
+const U24_MAX = 0xffffff;
 const U32_SIZE = 4;
 
 const I8_MIN = -0x80n;
@@ -545,14 +546,17 @@ export class Variant {
       }
       return null;
     }
+    // Encode the lookup key once, outside the loop, rather than on every comparison.
+    const keyBytes = TEXT_ENCODER.encode(key);
     let low = 0;
     let high = info.numFields - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
       const midId = readUnsignedLE(this.value, info.idStart + info.idSize * mid, info.idSize);
       const midKey = getMetadataKey(this.metadata, midId);
-      if (midKey < key) low = mid + 1;
-      else if (midKey > key) high = mid - 1;
+      const cmp = compareKeysBytes(TEXT_ENCODER.encode(midKey), keyBytes);
+      if (cmp < 0) low = mid + 1;
+      else if (cmp > 0) high = mid - 1;
       else {
         const offset = readUnsignedLE(
           this.value, info.offsetStart + info.offsetSize * mid, info.offsetSize);
@@ -980,7 +984,10 @@ export class VariantBuilder {
       this.writeBoolean(parsed);
     } else if (typeof parsed === "number") {
       if (Number.isInteger(parsed)) {
-        this.writeSmallestInt(BigInt(parsed));
+        const asInt = BigInt(parsed);
+        if (!this.writeSmallestInt(asInt)) {
+          this.writeDecimalUnscaled(asInt, 0);
+        }
       } else {
         this.writeDouble(parsed);
       }
@@ -1109,7 +1116,9 @@ export class VariantBuilder {
 
   private finishWritingObject(start: number, fields: FieldEntry[]): void {
     const numFields = fields.length;
-    fields.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    // Compare the already-encoded dictionary key bytes rather than re-encoding on each comparison.
+    fields.sort((a, b) =>
+      compareKeysBytes(this.dictionaryKeys[a.id], this.dictionaryKeys[b.id]));
     const maxId = fields.reduce((m, f) => Math.max(m, f.id), 0);
     const dataSize = this.value.length - start;
     const largeSize = numFields > U8_MAX;
@@ -1132,10 +1141,25 @@ function primitiveHeader(typeCode: number): number {
   return (typeCode << 2) | PRIMITIVE;
 }
 
+/**
+ * Compares two object field keys by UTF-8 byte order, as required by the Variant spec. This
+ * differs from JS string comparison (UTF-16 code unit order) for supplementary characters
+ * (U+10000 and above), whose surrogate code units sort before U+E000-U+FFFF in UTF-16 but
+ * after them in UTF-8.
+ */
+function compareKeysBytes(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return a.length - b.length;
+}
+
 function integerSize(value: number): number {
   if (value <= U8_MAX) return 1;
   if (value <= U16_MAX) return 2;
-  return U24_SIZE;
+  if (value <= U24_MAX) return U24_SIZE;
+  return U32_SIZE;
 }
 
 function pushUintLE(out: number[], value: number, numBytes: number): void {
