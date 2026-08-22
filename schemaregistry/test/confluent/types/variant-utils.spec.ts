@@ -64,7 +64,7 @@ describe("Variant reader - navigation", () => {
     const v = parseJson(
       '{"name":"alice","age":30,"scores":[10,20,30],"nested":{"x":1},"explicit":null}');
     expect(v.getType()).toBe(VariantType.OBJECT);
-    expect(v.numObjectElements()).toBe(5);
+    expect(v.numObjectFields()).toBe(5);
     expect(v.getFieldByKey("name")!.getString()).toBe("alice");
     expect(v.getFieldByKey("age")!.getLong()).toBe(30n);
     expect(v.getFieldByKey("scores")!.getElementAtIndex(2)!.getLong()).toBe(30n);
@@ -134,7 +134,33 @@ describe("Variant reader - scalar getters", () => {
 
   it("reads float and double", () => {
     expect(prim(DOUBLE, f64(2.5)).getDouble()).toBe(2.5);
-    expect(prim(FLOAT, f32(1.5)).getDouble()).toBe(1.5);
+    expect(prim(FLOAT, f32(1.5)).getFloat()).toBe(1.5);
+  });
+
+  it("reads narrowed integer getters with widening", () => {
+    // getByte accepts only INT1.
+    expect(prim(INT1, le(-5n, 1)).getByte()).toBe(-5);
+    // getShort widens INT1 -> INT2.
+    expect(prim(INT1, le(-5n, 1)).getShort()).toBe(-5);
+    expect(prim(INT2, le(-300n, 2)).getShort()).toBe(-300);
+    // getInt widens INT1/INT2 -> INT4.
+    expect(prim(INT1, le(-5n, 1)).getInt()).toBe(-5);
+    expect(prim(INT2, le(-300n, 2)).getInt()).toBe(-300);
+    expect(prim(INT4, le(100000n, 4)).getInt()).toBe(100000);
+  });
+
+  it("narrowed integer getters reject wider widths", () => {
+    expect(() => prim(INT2, le(1n, 2)).getByte()).toThrow(VariantError);
+    expect(() => prim(INT4, le(1n, 4)).getShort()).toThrow(VariantError);
+    expect(() => prim(INT8, le(1n, 8)).getInt()).toThrow(VariantError);
+  });
+
+  it("getDouble rejects a FLOAT (exact double only)", () => {
+    expect(() => prim(FLOAT, f32(1.5)).getDouble()).toThrow(VariantError);
+  });
+
+  it("getFloat rejects a DOUBLE (exact float only)", () => {
+    expect(() => prim(DOUBLE, f64(2.5)).getFloat()).toThrow(VariantError);
   });
 
   it("reads boolean, binary, uuid", () => {
@@ -208,8 +234,115 @@ describe("Variant reader - malformed input", () => {
   });
 
   it("round-trips via fromBytes / toJsonString", () => {
-    const { value, metadata } = new VariantBuilder().build('{"k":true}');
+    const { value, metadata } = parseJson('{"k":true}');
     const v = fromBytes(value, metadata);
     expect(toJsonString(v)).toBe('{"k":true}');
   });
+
+  // --- VariantBuilder (flat streaming writer) ---
+
+  it("builds byte-for-byte identically to parseJson", () => {
+    // Note: no decimal field here. In JS, JSON.parse yields a `number` for every JSON
+    // number, so parseJson never emits a decimal - byte-identity with a decimal field is
+    // impossible via parseJson. The decimal builder is covered by the overload test below.
+    const src =
+      '{"id":42,"name":"hello","active":true,"score":3.5,' +
+      '"missing":null,"nums":[1,2,3],"nested":{"a":1}}';
+
+    const b = new VariantBuilder();
+    b.startObject();
+    b.appendKey("id");
+    b.appendByte(42);            // parseJson encodes 42 as INT1
+    b.appendKey("name");
+    b.appendString("hello");
+    b.appendKey("active");
+    b.appendBoolean(true);
+    b.appendKey("score");
+    b.appendDouble(3.5);
+    b.appendKey("missing");
+    b.appendNull();
+    b.appendKey("nums");
+    b.startArray();
+    b.appendByte(1);
+    b.appendByte(2);
+    b.appendByte(3);
+    b.endArray();
+    b.appendKey("nested");
+    b.startObject();
+    b.appendKey("a");
+    b.appendByte(1);
+    b.endObject();
+    b.endObject();
+    const built = b.build();
+
+    const parsed = parseJson(src);
+
+    // Canonical-equivalence via JSON.
+    expect(built.toJson()).toBe(parsed.toJson());
+    // Byte-identical value + metadata.
+    expect(Array.from(built.value)).toEqual(Array.from(parsed.value));
+    expect(Array.from(built.metadata)).toEqual(Array.from(parsed.metadata));
+  });
+
+  it("supports the native decimal.js overload", () => {
+    // decimal.js normalizes "1.50" to 1.5 (scale 1), so the equivalent bytes overload is
+    // unscaled 15 at scale 1.
+    const b1 = new VariantBuilder();
+    b1.appendDecimal(new Decimal("1.50"));
+    const b2 = new VariantBuilder();
+    b2.appendDecimal(bigEndian(15n), 1);
+    expect(Array.from(b1.build().value)).toEqual(Array.from(b2.build().value));
+    expect(b1.build().toJson()).toBe("1.5");
+  });
+
+  it("builds a root scalar", () => {
+    const b = new VariantBuilder();
+    b.appendLong(1234567890123n);
+    const v = b.build();
+    expect(v.getType()).toBe(VariantType.LONG);
+    expect(v.getLong()).toBe(1234567890123n);
+    expect(v.toJson()).toBe("1234567890123");
+  });
+
+  it("throws on appendKey outside an object", () => {
+    const b = new VariantBuilder();
+    expect(() => b.appendKey("x")).toThrow(VariantError);
+  });
+
+  it("throws on a value with no preceding appendKey in an object", () => {
+    const b = new VariantBuilder();
+    b.startObject();
+    expect(() => b.appendLong(1n)).toThrow(VariantError);
+  });
+
+  it("throws on build with an open container", () => {
+    const b = new VariantBuilder();
+    b.startArray();
+    b.appendLong(1n);
+    expect(() => b.build()).toThrow(VariantError);
+  });
+
+  it("throws on an unbalanced end", () => {
+    const b = new VariantBuilder();
+    b.startObject();
+    expect(() => b.endArray()).toThrow(VariantError);
+  });
 });
+
+/** Minimal-length big-endian two's-complement bytes for a bigint. */
+function bigEndian(value: bigint): Uint8Array {
+  const negative = value < 0n;
+  const out: number[] = [];
+  let v = value;
+  if (v === 0n) return new Uint8Array([0]);
+  while (v !== 0n && v !== -1n) {
+    out.push(Number(v & 0xffn));
+    v >>= 8n;
+  }
+  // Ensure the sign bit is correct.
+  const top = out.length > 0 ? out[out.length - 1] : 0;
+  if (!negative && (top & 0x80) !== 0) out.push(0x00);
+  if (negative && (top & 0x80) === 0) out.push(0xff);
+  out.reverse();
+  return new Uint8Array(out);
+}
