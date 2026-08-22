@@ -440,6 +440,37 @@ describe("Variant builder - regression", () => {
     expect(render(0.3)).toBe("0.3");
     expect(render(2.0)).toBe("2.0"); // integer ".0" preserved
   });
+
+  it("temporal years outside 1..9999 use Java-compatible sign/pad formatting", () => {
+    // Bug #16: padStart is sign-unaware, so negative years rendered malformed ("0-44") and
+    // years >9999 dropped the leading '+'. Match Java exactly: DATE and TZ use EXCEEDS_PAD
+    // (min 4 digits EXCLUDING the sign, '+' beyond 9999); NTZ uses %04d (min 4 INCLUDING the
+    // sign, no '+'). Years -44/-1/10000/12345 are all outside 0..99, so Date.UTC does not
+    // apply its two-digit-year remap.
+    const days = (year: number): number => Date.UTC(year, 0, 1) / 86_400_000;
+    const micros = (year: number): bigint => BigInt(Date.UTC(year, 0, 1)) * 1000n;
+    const date = (year: number): string => {
+      const b = new VariantBuilder(); b.appendDate(days(year)); return b.build().toJson();
+    };
+    const tz = (year: number): string => {
+      const b = new VariantBuilder(); b.appendTimestampTz(micros(year)); return b.build().toJson();
+    };
+    const ntz = (year: number): string => {
+      const b = new VariantBuilder(); b.appendTimestampNtz(micros(year)); return b.build().toJson();
+    };
+
+    // toJson renders a scalar as a quoted JSON string, so the expected values include quotes.
+    // DATE + TZ: EXCEEDS_PAD (Instant/LocalDate.toString).
+    expect(date(-44)).toBe('"-0044-01-01"');
+    expect(date(-1)).toBe('"-0001-01-01"');
+    expect(date(10000)).toBe('"+10000-01-01"');
+    expect(tz(-44)).toBe('"-0044-01-01T00:00:00Z"');
+    expect(tz(12345)).toBe('"+12345-01-01T00:00:00Z"');
+    // NTZ: %04d (sign counts toward the width, no '+').
+    expect(ntz(-44)).toBe('"-044-01-01T00:00:00"');
+    expect(ntz(-1)).toBe('"-001-01-01T00:00:00"');
+    expect(ntz(10000)).toBe('"10000-01-01T00:00:00"');
+  });
 });
 
 /** Minimal-length big-endian two's-complement bytes for a bigint. */
