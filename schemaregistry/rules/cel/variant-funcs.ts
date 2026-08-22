@@ -197,7 +197,8 @@ function variantAs(v: unknown, typeStr: string, nullOnError: boolean): CelValueO
       if (INT_TYPES.has(t)) return r.getLong();
       break;
     case "double":
-      if (t === VariantType.FLOAT || t === VariantType.DOUBLE) return r.getDouble();
+      if (t === VariantType.FLOAT) return r.getFloat();
+      if (t === VariantType.DOUBLE) return r.getDouble();
       break;
     case "boolean":
       if (t === VariantType.BOOLEAN) return r.getBoolean();
