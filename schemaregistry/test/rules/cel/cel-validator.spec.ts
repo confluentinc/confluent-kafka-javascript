@@ -9,7 +9,7 @@ import {
 import avro from 'avsc';
 import { CelValidator } from '../../../rules/cel/cel-validator';
 import { VariantLogicalType } from '../../../serde/avro';
-import { Variant, VariantBuilder } from '../../../confluent/types/variant-utils';
+import { Variant, parseJson } from '../../../confluent/types/variant-utils';
 import { VariantSchema } from '../../../confluent/types/variant_pb';
 import { RuleError, ValidationRule } from '../../../serde/serde';
 import {
@@ -298,7 +298,7 @@ describe('CelValidator variant serde into CEL', () => {
       } as avro.Schema,
       { logicalTypes: { variant: VariantLogicalType } },
     )
-    const { value, metadata } = new VariantBuilder().build('{"name":"alice","age":30}')
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
     const decoded = type.fromBuffer(type.toBuffer(new Variant(value, metadata)))
     expect(decoded).toBeInstanceOf(Variant)
     const validator = new CelValidator()
@@ -307,7 +307,7 @@ describe('CelValidator variant serde into CEL', () => {
 
   // A confluent.type.Variant proto message flows into CEL through variant(this).
   it('passes a Protobuf variant message into CEL', async () => {
-    const { value, metadata } = new VariantBuilder().build('{"name":"alice","age":30}')
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
     const msg = create(VariantSchema, { value, metadata })
     const validator = new CelValidator()
     expect(await validator.execute(rule(expr), VariantSchema, msg)).toBe(true)

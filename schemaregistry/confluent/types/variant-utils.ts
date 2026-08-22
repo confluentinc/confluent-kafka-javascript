@@ -352,6 +352,49 @@ export class Variant {
     return ti === TRUE;
   }
 
+  /** 8-bit integer (`INT1` only) - mirrors Java `getByte`. Wider integer widths throw;
+   * use `getShort`/`getInt`/`getLong` for those. */
+  getByte(): number {
+    const ti = this.primitiveInfo();
+    if (ti === INT1) {
+      checkIndex(this.pos + 1, this.value.length);
+      return this.view.getInt8(this.pos + 1);
+    }
+    throw new VariantError("variant is not a byte-width integer");
+  }
+
+  /** 16-bit integer, widening from `INT1` (byte) - mirrors Java `getShort`. */
+  getShort(): number {
+    const ti = this.primitiveInfo();
+    if (ti === INT1) {
+      checkIndex(this.pos + 1, this.value.length);
+      return this.view.getInt8(this.pos + 1);
+    }
+    if (ti === INT2) {
+      checkIndex(this.pos + 2, this.value.length);
+      return this.view.getInt16(this.pos + 1, true);
+    }
+    throw new VariantError("variant is not a short-width integer");
+  }
+
+  /** 32-bit integer, widening from `INT1`/`INT2` - mirrors Java `getInt`. */
+  getInt(): number {
+    const ti = this.primitiveInfo();
+    if (ti === INT1) {
+      checkIndex(this.pos + 1, this.value.length);
+      return this.view.getInt8(this.pos + 1);
+    }
+    if (ti === INT2) {
+      checkIndex(this.pos + 2, this.value.length);
+      return this.view.getInt16(this.pos + 1, true);
+    }
+    if (ti === INT4) {
+      checkIndex(this.pos + 4, this.value.length);
+      return this.view.getInt32(this.pos + 1, true);
+    }
+    throw new VariantError("variant is not an int-width integer");
+  }
+
   /** Raw integer for any integer-backed type (byte/short/int/long, date days, timestamp
    * micros, time micros, timestamp-nanos) - mirrors Java `getLong`. */
   getLong(): bigint {
@@ -376,17 +419,25 @@ export class Variant {
     throw new VariantError("variant is not an integer-backed type");
   }
 
-  getDouble(): number {
+  /** 32-bit float (`FLOAT` only, exact) - mirrors Java `getFloat`. */
+  getFloat(): number {
     const ti = this.primitiveInfo();
     if (ti === FLOAT) {
       checkIndex(this.pos + 4, this.value.length);
       return this.view.getFloat32(this.pos + 1, true);
     }
+    throw new VariantError("variant is not a float");
+  }
+
+  /** 64-bit double (`DOUBLE` only, exact) - mirrors Java `getDouble`. Does not widen a
+   * `FLOAT`; use `getFloat` for that. */
+  getDouble(): number {
+    const ti = this.primitiveInfo();
     if (ti === DOUBLE) {
       checkIndex(this.pos + 8, this.value.length);
       return this.view.getFloat64(this.pos + 1, true);
     }
-    throw new VariantError("variant is not a float/double");
+    throw new VariantError("variant is not a double");
   }
 
   /** The unscaled integer and scale of a decimal value (scale preserved). */
@@ -473,7 +524,7 @@ export class Variant {
     return { numFields, offsetSize, offsetStart, dataStart };
   }
 
-  numObjectElements(): number {
+  numObjectFields(): number {
     return this.objectInfo().numFields;
   }
 
@@ -534,7 +585,7 @@ export class Variant {
     switch (t) {
       case VariantType.OBJECT: {
         const parts: string[] = [];
-        const n = this.numObjectElements();
+        const n = this.numObjectFields();
         for (let i = 0; i < n; i++) {
           const [key, child] = this.getFieldAtIndex(i);
           parts.push(JSON.stringify(key) + ":" + child.toJson());
@@ -561,6 +612,7 @@ export class Variant {
       case VariantType.LONG:
         return this.getLong().toString();
       case VariantType.FLOAT:
+        return doubleToJson(this.getFloat());
       case VariantType.DOUBLE:
         return doubleToJson(this.getDouble());
       case VariantType.DECIMAL4:
@@ -606,13 +658,22 @@ export function toJsonString(variant: Variant): string {
 }
 
 export function parseJson(jsonStr: string): Variant {
-  const { value, metadata } = new VariantBuilder().build(jsonStr);
-  return new Variant(value, metadata);
+  return new VariantBuilder().buildFromJson(jsonStr);
 }
 
-// --- Variant builder (JSON -> Variant) ---
+// --- Variant builder ---
 //
-// Number handling follows Java VariantUtils.fromJsonNode: a fractional number becomes a
+// A flat streaming writer (arrow-dotnet `VariantValueWriter` shape): a single object with an
+// internal nesting stack. Each scalar/container append fills the "current slot" - the root,
+// the next array element, or the current object field's value (after `appendKey`). Object
+// fields are sorted by key on `endObject` (canonical form); the metadata dictionary
+// accumulates every key seen.
+//
+// The same internal machinery drives `parseJson`: `processParsedJson` walks a parsed JSON
+// tree with the same low-level writers and object/array finishers, so a programmatic build is
+// byte-identical to `parseJson` of an equivalent value.
+//
+// JSON number handling follows Java VariantUtils.fromJsonNode: a fractional number becomes a
 // DOUBLE. Because JS JSON.parse yields a `number` for every JSON number, an integer-valued
 // literal (including `1.0`) encodes as an int, and integer literals larger than 2^53 lose
 // precision - both inherent JS limitations documented on this module.
@@ -623,6 +684,22 @@ interface FieldEntry {
   offset: number;
 }
 
+interface ObjectContext {
+  kind: "object";
+  start: number;
+  fields: FieldEntry[];
+  pendingKey: string | null;
+  pendingId: number;
+}
+
+interface ArrayContext {
+  kind: "array";
+  start: number;
+  offsets: number[];
+}
+
+type Context = ObjectContext | ArrayContext;
+
 export class VariantBuilder {
   static readonly DEFAULT_SIZE_LIMIT = 16 * 1024 * 1024;
 
@@ -630,14 +707,227 @@ export class VariantBuilder {
   private dictionary = new Map<string, number>();
   private dictionaryKeys: Uint8Array[] = [];
   private sizeLimit: number;
+  private stack: Context[] = [];
+  private rootWritten = false;
 
   constructor(sizeLimit = VariantBuilder.DEFAULT_SIZE_LIMIT) {
     this.sizeLimit = sizeLimit;
   }
 
-  build(jsonStr: string): { value: Uint8Array; metadata: Uint8Array } {
-    this.processParsedJson(JSON.parse(jsonStr));
+  // --- public streaming API ---
 
+  /** Finalize and return the built `Variant`. Throws if a container is still open or
+   * nothing has been written. */
+  build(): Variant {
+    if (this.stack.length > 0) throw new VariantError("cannot build with an open container");
+    if (!this.rootWritten) throw new VariantError("cannot build an empty variant");
+    const { value, metadata } = this.finalize();
+    return new Variant(value, metadata);
+  }
+
+  appendNull(): void {
+    this.beforeAppend();
+    this.writeNull();
+  }
+
+  appendBoolean(b: boolean): void {
+    this.beforeAppend();
+    this.writeBoolean(b);
+  }
+
+  /** Append an 8-bit integer (`INT1`). */
+  appendByte(value: number): void {
+    this.beforeAppend();
+    this.writeFixedInt(INT1, BigInt(value), 1);
+  }
+
+  /** Append a 16-bit integer (`INT2`). */
+  appendShort(value: number): void {
+    this.beforeAppend();
+    this.writeFixedInt(INT2, BigInt(value), 2);
+  }
+
+  /** Append a 32-bit integer (`INT4`). */
+  appendInt(value: number): void {
+    this.beforeAppend();
+    this.writeFixedInt(INT4, BigInt(value), 4);
+  }
+
+  /** Append a 64-bit integer (`INT8`). */
+  appendLong(value: bigint): void {
+    this.beforeAppend();
+    this.writeFixedInt(INT8, value, 8);
+  }
+
+  /** Append a 32-bit float (`FLOAT`). */
+  appendFloat(value: number): void {
+    this.beforeAppend();
+    this.checkCapacity(1 + 4);
+    this.value.push(primitiveHeader(FLOAT));
+    const buf = new DataView(new ArrayBuffer(4));
+    buf.setFloat32(0, value, true);
+    for (let i = 0; i < 4; i++) this.value.push(buf.getUint8(i));
+  }
+
+  /** Append a 64-bit double (`DOUBLE`). */
+  appendDouble(value: number): void {
+    this.beforeAppend();
+    this.writeDouble(value);
+  }
+
+  /** Append a decimal. Either `appendDecimal(unscaledBigEndian, scale)` with a big-endian
+   * two's-complement unscaled value (`Uint8Array`) or an unscaled `bigint`, or the native
+   * overload `appendDecimal(Decimal)` (scale taken from the value). */
+  appendDecimal(unscaled: Uint8Array | bigint | Decimal, scale?: number): void {
+    this.beforeAppend();
+    if (unscaled instanceof Uint8Array) {
+      if (scale === undefined) {
+        throw new VariantError("scale is required when appending a decimal from bytes");
+      }
+      this.writeDecimalUnscaled(bigEndianSigned(unscaled), scale);
+    } else if (typeof unscaled === "bigint") {
+      if (scale === undefined) {
+        throw new VariantError("scale is required when appending an unscaled integer");
+      }
+      this.writeDecimalUnscaled(unscaled, scale);
+    } else {
+      if (scale !== undefined) {
+        throw new VariantError("scale must not be given with a Decimal value");
+      }
+      const s = unscaled.decimalPlaces();
+      const unscaledInt = BigInt(unscaled.times(new Decimal(10).pow(s)).toFixed(0));
+      this.writeDecimalUnscaled(unscaledInt, s);
+    }
+  }
+
+  appendString(s: string): void {
+    this.beforeAppend();
+    this.writeString(s);
+  }
+
+  appendBinary(data: Uint8Array): void {
+    this.beforeAppend();
+    this.checkCapacity(1 + U32_SIZE + data.length);
+    this.value.push(primitiveHeader(BINARY));
+    pushUintLE(this.value, data.length, U32_SIZE);
+    for (const b of data) this.value.push(b);
+  }
+
+  /** Append a UUID from 16 big-endian bytes. */
+  appendUuid(uuid16: Uint8Array): void {
+    this.beforeAppend();
+    if (uuid16.length !== 16) throw new VariantError("uuid must be 16 bytes");
+    this.checkCapacity(1 + 16);
+    this.value.push(primitiveHeader(UUID));
+    for (const b of uuid16) this.value.push(b);
+  }
+
+  appendDate(daysSinceEpoch: number): void {
+    this.beforeAppend();
+    this.writeFixedInt(DATE, BigInt(daysSinceEpoch), 4);
+  }
+
+  /** Append a `TIME` (TIME_NTZ) as microseconds since midnight. */
+  appendTime(microsSinceMidnight: bigint): void {
+    this.beforeAppend();
+    this.writeFixedInt(TIME, microsSinceMidnight, 8);
+  }
+
+  appendTimestampTz(micros: bigint): void {
+    this.beforeAppend();
+    this.writeFixedInt(TIMESTAMP, micros, 8);
+  }
+
+  appendTimestampNtz(micros: bigint): void {
+    this.beforeAppend();
+    this.writeFixedInt(TIMESTAMP_NTZ, micros, 8);
+  }
+
+  appendTimestampNanosTz(nanos: bigint): void {
+    this.beforeAppend();
+    this.writeFixedInt(TIMESTAMP_NANOS, nanos, 8);
+  }
+
+  appendTimestampNanosNtz(nanos: bigint): void {
+    this.beforeAppend();
+    this.writeFixedInt(TIMESTAMP_NANOS_NTZ, nanos, 8);
+  }
+
+  startObject(): void {
+    this.beforeAppend();
+    this.stack.push({ kind: "object", start: this.value.length, fields: [], pendingKey: null, pendingId: 0 });
+  }
+
+  appendKey(key: string): void {
+    const ctx = this.stack[this.stack.length - 1];
+    if (!ctx || ctx.kind !== "object") {
+      throw new VariantError("appendKey called outside of an object");
+    }
+    if (ctx.pendingKey !== null) {
+      throw new VariantError("appendKey called twice without an intervening value");
+    }
+    ctx.pendingKey = key;
+    ctx.pendingId = this.addKey(key);
+  }
+
+  endObject(): void {
+    const ctx = this.stack[this.stack.length - 1];
+    if (!ctx || ctx.kind !== "object") {
+      throw new VariantError("endObject without a matching startObject");
+    }
+    if (ctx.pendingKey !== null) {
+      throw new VariantError("endObject with a dangling appendKey (no value)");
+    }
+    this.stack.pop();
+    this.finishWritingObject(ctx.start, ctx.fields);
+  }
+
+  startArray(): void {
+    this.beforeAppend();
+    this.stack.push({ kind: "array", start: this.value.length, offsets: [] });
+  }
+
+  endArray(): void {
+    const ctx = this.stack[this.stack.length - 1];
+    if (!ctx || ctx.kind !== "array") {
+      throw new VariantError("endArray without a matching startArray");
+    }
+    this.stack.pop();
+    this.finishWritingArray(ctx.start, ctx.offsets);
+  }
+
+  // --- current-slot bookkeeping ---
+
+  /** Register the slot the value about to be written will occupy, recording its offset in the
+   * enclosing container (or marking the root as written). */
+  private beforeAppend(): void {
+    const ctx = this.stack[this.stack.length - 1];
+    if (!ctx) {
+      if (this.rootWritten) throw new VariantError("cannot append multiple root values");
+      this.rootWritten = true;
+      return;
+    }
+    if (ctx.kind === "object") {
+      if (ctx.pendingKey === null) {
+        throw new VariantError("a value in an object must follow appendKey");
+      }
+      ctx.fields.push({ key: ctx.pendingKey, id: ctx.pendingId, offset: this.value.length - ctx.start });
+      ctx.pendingKey = null;
+    } else {
+      ctx.offsets.push(this.value.length - ctx.start);
+    }
+  }
+
+  // --- internal JSON-tree driver (used by parseJson) ---
+
+  /** Build a Variant directly from a JSON string (drives the same internal machinery). */
+  buildFromJson(jsonStr: string): Variant {
+    this.processParsedJson(JSON.parse(jsonStr));
+    const { value, metadata } = this.finalize();
+    return new Variant(value, metadata);
+  }
+
+  private finalize(): { value: Uint8Array; metadata: Uint8Array } {
     const numKeys = this.dictionaryKeys.length;
     const dictStringSize = this.dictionaryKeys.reduce((a, k) => a + k.length, 0);
     const maxSize = Math.max(dictStringSize, numKeys);
@@ -666,7 +956,7 @@ export class VariantBuilder {
 
   private processParsedJson(parsed: unknown): void {
     if (parsed === null) {
-      this.appendNull();
+      this.writeNull();
     } else if (Array.isArray(parsed)) {
       const offsets: number[] = [];
       const start = this.value.length;
@@ -685,18 +975,18 @@ export class VariantBuilder {
       }
       this.finishWritingObject(start, fields);
     } else if (typeof parsed === "string") {
-      this.appendString(parsed);
+      this.writeString(parsed);
     } else if (typeof parsed === "boolean") {
-      this.appendBoolean(parsed);
+      this.writeBoolean(parsed);
     } else if (typeof parsed === "number") {
       if (Number.isInteger(parsed)) {
-        this.appendInt(BigInt(parsed));
+        this.writeSmallestInt(BigInt(parsed));
       } else {
-        this.appendDouble(parsed);
+        this.writeDouble(parsed);
       }
     } else if (typeof parsed === "bigint") {
-      if (!this.appendInt(parsed)) {
-        this.appendDecimalUnscaled(parsed, 0);
+      if (!this.writeSmallestInt(parsed)) {
+        this.writeDecimalUnscaled(parsed, 0);
       }
     } else {
       throw new VariantError(`unsupported JSON value: ${typeof parsed}`);
@@ -718,17 +1008,17 @@ export class VariantBuilder {
     return id;
   }
 
-  private appendBoolean(b: boolean): void {
+  private writeBoolean(b: boolean): void {
     this.checkCapacity(1);
     this.value.push(primitiveHeader(b ? TRUE : FALSE));
   }
 
-  private appendNull(): void {
+  private writeNull(): void {
     this.checkCapacity(1);
     this.value.push(primitiveHeader(NULL));
   }
 
-  private appendString(s: string): void {
+  private writeString(s: string): void {
     const text = TEXT_ENCODER.encode(s);
     const longStr = text.length > MAX_SHORT_STR_SIZE;
     this.checkCapacity((longStr ? 1 + U32_SIZE : 1) + text.length);
@@ -741,8 +1031,20 @@ export class VariantBuilder {
     for (const b of text) this.value.push(b);
   }
 
+  /** Writes a fixed-width signed little-endian integer primitive. */
+  private writeFixedInt(typeCode: number, value: bigint, width: number): void {
+    const max = (1n << BigInt(width * 8 - 1)) - 1n;
+    const min = -(1n << BigInt(width * 8 - 1));
+    if (value < min || value > max) {
+      throw new VariantError(`integer value out of range for a ${width}-byte width`);
+    }
+    this.checkCapacity(1 + width);
+    this.value.push(primitiveHeader(typeCode));
+    pushSignedLE(this.value, value, width);
+  }
+
   /** Writes the smallest int1/2/4/8 that fits; returns false if wider than int64. */
-  private appendInt(i: bigint): boolean {
+  private writeSmallestInt(i: bigint): boolean {
     this.checkCapacity(1 + 8);
     if (i >= I8_MIN && i <= I8_MAX) {
       this.value.push(primitiveHeader(INT1));
@@ -762,7 +1064,8 @@ export class VariantBuilder {
     return true;
   }
 
-  private appendDecimalUnscaled(unscaled: bigint, scale: number): void {
+  private writeDecimalUnscaled(unscaled: bigint, scale: number): void {
+    if (scale < 0) throw new VariantError("cannot encode decimal with negative scale");
     const digits = (unscaled < 0n ? -unscaled : unscaled).toString().length;
     this.checkCapacity(2 + 16);
     let code: number;
@@ -781,7 +1084,7 @@ export class VariantBuilder {
     pushSignedLE(this.value, unscaled, width);
   }
 
-  private appendDouble(f: number): void {
+  private writeDouble(f: number): void {
     this.checkCapacity(1 + 8);
     this.value.push(primitiveHeader(DOUBLE));
     const buf = new DataView(new ArrayBuffer(8));
@@ -847,4 +1150,14 @@ function pushSignedLE(out: number[], value: bigint, width: number): void {
     out.push(Number(v & 0xffn));
     v >>= 8n;
   }
+}
+
+/** Interpret big-endian two's-complement bytes as a signed bigint. */
+function bigEndianSigned(bytes: Uint8Array): bigint {
+  let result = 0n;
+  for (const b of bytes) result = (result << 8n) | BigInt(b);
+  if (bytes.length > 0 && (bytes[0] & 0x80) !== 0) {
+    result -= 1n << BigInt(bytes.length * 8);
+  }
+  return result;
 }
