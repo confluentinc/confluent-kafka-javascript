@@ -411,6 +411,35 @@ describe("Variant builder - regression", () => {
     expect(v.getFieldByKey(supplementaryKey)!.getLong()).toBe(999n);
     expect(v.getFieldByKey("a037")!.getLong()).toBe(37n);
   });
+
+  it("appendDecimal(Decimal) preserves >20 significant digits without rounding", () => {
+    // decimal.js arithmetic (times/pow) rounds to the global precision (default 20
+    // significant digits), which silently zeroed the low-order digits of any value with
+    // more than 20 sig digits. Deriving the unscaled integer from the exact string form
+    // (toFixed) instead must preserve all 28 digits here (fits DECIMAL16's 38).
+    const b = new VariantBuilder();
+    b.appendDecimal(new Decimal("1234567890123456789012345678"));
+    const v = b.build();
+
+    const { unscaled, scale } = v.getDecimalParts();
+    expect(unscaled).toBe(1234567890123456789012345678n);
+    expect(scale).toBe(0);
+    expect(v.getDecimal().toFixed()).toBe("1234567890123456789012345678");
+  });
+
+  it("FLOAT renders float32-shortest, not f64-precision noise", () => {
+    // Bug #7: the FLOAT case widened the f64 through the double formatter, emitting the
+    // f64-shortest string (e.g. "0.10000000149011612") instead of the float32-shortest
+    // string ("0.1") that Java Float.toString / Apache Arrow produce.
+    const render = (f: number): string => {
+      const b = new VariantBuilder();
+      b.appendFloat(f);
+      return b.build().toJson();
+    };
+    expect(render(0.1)).toBe("0.1");
+    expect(render(0.3)).toBe("0.3");
+    expect(render(2.0)).toBe("2.0"); // integer ".0" preserved
+  });
 });
 
 /** Minimal-length big-endian two's-complement bytes for a bigint. */
