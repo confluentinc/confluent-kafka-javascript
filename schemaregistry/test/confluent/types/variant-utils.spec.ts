@@ -329,6 +329,90 @@ describe("Variant reader - malformed input", () => {
   });
 });
 
+describe("Variant builder - regression", () => {
+  it("4-byte offsets for data region larger than 16 MiB", () => {
+    // A single string element whose UTF-8 length is just over 0xFFFFFF (16777215)
+    // forces the array's offset region to need 4-byte offsets. Previously integerSize
+    // capped at 3 bytes and produced a corrupt Variant.
+    const len = 16777216; // > 0xFFFFFF
+    const big = "a".repeat(len);
+    const b = new VariantBuilder(64 * 1024 * 1024);
+    b.startArray();
+    b.appendString(big);
+    b.endArray();
+    const v = b.build();
+    expect(v.getType()).toBe(VariantType.ARRAY);
+    expect(v.numArrayElements()).toBe(1);
+    const elem = v.getElementAtIndex(0)!;
+    expect(elem.getType()).toBe(VariantType.STRING);
+    expect(elem.getString().length).toBe(len);
+  });
+
+  it("parseJson of an integer literal larger than int64 does not corrupt", () => {
+    // 29 digits, > 2^63. writeSmallestInt returns false, so the number branch must fall
+    // back to a DECIMAL (scale 0) rather than silently writing nothing.
+    let v!: Variant;
+    expect(() => { v = parseJson("12345678901234567890123456789"); }).not.toThrow();
+    // A valid decimal variant (exact numeric value is lost by JSON.parse - inherent limit).
+    expect([VariantType.DECIMAL4, VariantType.DECIMAL8, VariantType.DECIMAL16])
+      .toContain(v.getType());
+    expect(v.getDecimalParts().scale).toBe(0);
+  });
+
+  it("object keys are sorted by UTF-8 byte order", () => {
+    // U+FFFF encodes to UTF-8 EF BF BF; U+10000 (𐀀) to F0 90 80 80, so U+FFFF must
+    // sort FIRST by unsigned byte order. In UTF-16 the high surrogate 0xD800 of
+    // U+10000 sorts before 0xFFFF, so a UTF-16 comparison would order them the other
+    // way. Keys are appended in the wrong (UTF-16) order on purpose.
+    const bmpKey = "￿";              // U+FFFF
+    const supplementaryKey = "\u{10000}"; // U+10000
+
+    const b = new VariantBuilder();
+    b.startObject();
+    b.appendKey(supplementaryKey);
+    b.appendLong(2n);
+    b.appendKey(bmpKey);
+    b.appendLong(1n);
+    b.endObject();
+    const v = b.build();
+
+    expect(v.getType()).toBe(VariantType.OBJECT);
+    expect(v.numObjectFields()).toBe(2);
+    expect(v.getFieldAtIndex(0)[0]).toBe(bmpKey);
+    expect(v.getFieldAtIndex(1)[0]).toBe(supplementaryKey);
+    expect(v.getFieldByKey(bmpKey)!.getLong()).toBe(1n);
+    expect(v.getFieldByKey(supplementaryKey)!.getLong()).toBe(2n);
+  });
+
+  it("large object binary search resolves a supplementary-plane key", () => {
+    // 42 fields exceeds the binary-search threshold (32), so getFieldByKey uses the
+    // byte-order binary search. The supplementary-plane key must be found despite
+    // UTF-16 vs UTF-8 ordering disagreement.
+    const bmpKey = "￿";              // U+FFFF
+    const supplementaryKey = "\u{10000}"; // U+10000
+
+    const b = new VariantBuilder();
+    b.startObject();
+    for (let i = 0; i < 40; i++) {
+      b.appendKey(`a${String(i).padStart(3, "0")}`);
+      b.appendLong(BigInt(i));
+    }
+    b.appendKey(bmpKey);
+    b.appendLong(998n);
+    b.appendKey(supplementaryKey);
+    b.appendLong(999n);
+    b.endObject();
+    const v = b.build();
+
+    expect(v.numObjectFields()).toBe(42);
+    expect(v.getFieldByKey(bmpKey)).not.toBeNull();
+    expect(v.getFieldByKey(bmpKey)!.getLong()).toBe(998n);
+    expect(v.getFieldByKey(supplementaryKey)).not.toBeNull();
+    expect(v.getFieldByKey(supplementaryKey)!.getLong()).toBe(999n);
+    expect(v.getFieldByKey("a037")!.getLong()).toBe(37n);
+  });
+});
+
 /** Minimal-length big-endian two's-complement bytes for a bigint. */
 function bigEndian(value: bigint): Uint8Array {
   const negative = value < 0n;
