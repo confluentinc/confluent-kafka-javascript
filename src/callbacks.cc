@@ -323,8 +323,8 @@ void DeliveryReportDispatcher::Flush() {
 
     if (event.key) {
       Napi::Buffer<char> buff = Napi::Buffer<char>::New(env,
-      static_cast<char*>(event.key),
-        event.key_len);
+          static_cast<char*>(event.key), event.key_len,
+          [](Napi::Env, char* data) { free(data); });
 
       (jsobj).Set(Napi::String::New(env, "key"), buff);
     } else {
@@ -351,8 +351,8 @@ void DeliveryReportDispatcher::Flush() {
     if (event.m_include_payload) {
       if (event.payload) {
         Napi::Buffer<char> buff = Napi::Buffer<char>::New(env,
-        static_cast<char*>(event.payload),
-          event.len);
+            static_cast<char*>(event.payload), event.len,
+            [](Napi::Env, char* data) { free(data); });
 
         (jsobj).Set(Napi::String::New(env, "value"), buff);
       } else {

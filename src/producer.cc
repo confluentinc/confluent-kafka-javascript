@@ -730,6 +730,7 @@ Napi::Value Producer::NodeSetPollInBackground(const Napi::CallbackInfo &info) {
     // Just throw an exception
     Napi::Error::New(env, "Need to specify a boolean for setting or unsetting")
       .ThrowAsJavaScriptException();
+    return env.Null();
   }
   bool set = info[0].As<Napi::Boolean>().Value();
 

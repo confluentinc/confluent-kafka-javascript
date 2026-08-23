@@ -82,7 +82,7 @@ void OffsetsForTimes<T>::OnOK() {
 }
 
 template<class T>
-void OffsetsForTimes<T>::OnError() {
+void OffsetsForTimes<T>::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -138,7 +138,7 @@ void ConnectionMetadata<T>::OnOK() {
 }
 
 template<class T>
-void ConnectionMetadata<T>::OnError() {
+void ConnectionMetadata<T>::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -201,7 +201,7 @@ void ConnectionQueryWatermarkOffsets<T>::OnOK() {
 }
 
 template<class T>
-void ConnectionQueryWatermarkOffsets<T>::OnError() {
+void ConnectionQueryWatermarkOffsets<T>::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -250,7 +250,7 @@ void ProducerConnect::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void ProducerConnect::OnError() {
+void ProducerConnect::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -292,7 +292,7 @@ void ProducerDisconnect::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void ProducerDisconnect::OnError() {
+void ProducerDisconnect::HandleErrorCallback() {
   // This should never run
   assert(0);
 }
@@ -372,7 +372,7 @@ void ProducerInitTransactions::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void ProducerInitTransactions::OnError() {
+void ProducerInitTransactions::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -420,7 +420,7 @@ void ProducerBeginTransaction::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void ProducerBeginTransaction::OnError() {
+void ProducerBeginTransaction::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -469,7 +469,7 @@ void ProducerCommitTransaction::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void ProducerCommitTransaction::OnError() {
+void ProducerCommitTransaction::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -518,7 +518,7 @@ void ProducerAbortTransaction::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void ProducerAbortTransaction::OnError() {
+void ProducerAbortTransaction::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -573,7 +573,7 @@ void ProducerSendOffsetsToTransaction::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void ProducerSendOffsetsToTransaction::OnError() {
+void ProducerSendOffsetsToTransaction::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -624,7 +624,7 @@ void KafkaConsumerConnect::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void KafkaConsumerConnect::OnError() {
+void KafkaConsumerConnect::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -673,7 +673,7 @@ void KafkaConsumerDisconnect::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void KafkaConsumerDisconnect::OnError() {
+void KafkaConsumerDisconnect::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -830,7 +830,10 @@ void KafkaConsumerConsumeLoop::OnOK() {
   Napi::HandleScope scope(env);
 }
 
-void KafkaConsumerConsumeLoop::OnError() {
+// TODO: this handler is currently unreachable: Execute() is empty and the
+// completion path that used to fire it on disconnect is disabled in
+// KafkaConsumer::Disconnect, so loop-termination errors never reach JS.
+void KafkaConsumerConsumeLoop::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -982,7 +985,7 @@ void KafkaConsumerConsumeNum::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void KafkaConsumerConsumeNum::OnError() {
+void KafkaConsumerConsumeNum::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1051,7 +1054,7 @@ void KafkaConsumerConsume::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void KafkaConsumerConsume::OnError() {
+void KafkaConsumerConsume::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1106,7 +1109,7 @@ void KafkaConsumerCommitted::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void KafkaConsumerCommitted::OnError() {
+void KafkaConsumerCommitted::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1160,7 +1163,7 @@ void KafkaConsumerCommitCb::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void KafkaConsumerCommitCb::OnError() {
+void KafkaConsumerCommitCb::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1225,7 +1228,7 @@ void KafkaConsumerSeek::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void KafkaConsumerSeek::OnError() {
+void KafkaConsumerSeek::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1275,7 +1278,7 @@ void AdminClientCreateTopic::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientCreateTopic::OnError() {
+void AdminClientCreateTopic::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1325,7 +1328,7 @@ void AdminClientDeleteTopic::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientDeleteTopic::OnError() {
+void AdminClientDeleteTopic::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1375,7 +1378,7 @@ void AdminClientCreatePartitions::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientCreatePartitions::OnError() {
+void AdminClientCreatePartitions::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1438,7 +1441,7 @@ void AdminClientListGroups::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientListGroups::OnError() {
+void AdminClientListGroups::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1492,7 +1495,7 @@ void AdminClientDescribeGroups::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientDescribeGroups::OnError() {
+void AdminClientDescribeGroups::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1552,7 +1555,7 @@ void AdminClientDeleteGroups::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientDeleteGroups::OnError() {
+void AdminClientDeleteGroups::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1615,7 +1618,7 @@ void AdminClientListConsumerGroupOffsets::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientListConsumerGroupOffsets::OnError() {
+void AdminClientListConsumerGroupOffsets::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1679,7 +1682,7 @@ void AdminClientDeleteRecords::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientDeleteRecords::OnError() {
+void AdminClientDeleteRecords::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1736,7 +1739,7 @@ void AdminClientDescribeTopics::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientDescribeTopics::OnError() {
+void AdminClientDescribeTopics::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
@@ -1792,7 +1795,7 @@ void AdminClientListOffsets::OnOK() {
   Callback().Value().Call(argc, argv);
 }
 
-void AdminClientListOffsets::OnError() {
+void AdminClientListOffsets::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);
 
