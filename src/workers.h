@@ -50,8 +50,6 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
     Napi::Env env = Env();
     Napi::HandleScope scope(env);
 
-    // Workers that report a failure through SetError() alone leave m_baton
-    // empty, so prefer the message the worker set.
     Napi::Error error = Napi::Error::New(env,
         m_errmsg.empty() ? m_baton.errstr() : m_errmsg);
     error.Value().As<Napi::Object>().Set(
