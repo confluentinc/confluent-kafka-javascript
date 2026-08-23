@@ -13,15 +13,18 @@
 // limitations under the License.
 
 /**
- * CEL binding for the {@code timestamp.of} constructor.
+ * CEL bindings for {@code timestamp(int)} and the {@code timestamp.of} constructor.
  *
  * @bufbuild/cel already provides a stdlib {@code timestamp(string)} (RFC 3339
- * parsing) plus standard timestamp operators. The extension we add here is
- * the namespaced {@code timestamp.of(...)} constructor:
+ * parsing) plus standard timestamp operators. Two things are added here:
  *
- *   - {@code timestamp.of(dyn)} — runtime-dispatches on the value's JS type
- *     (Date, ReflectMessage of Timestamp, bigint with hint about the 2-arg form, etc.).
- *   - {@code timestamp.of(int, string)} — epoch numeric + unit string.
+ *   - {@code timestamp(int)} — replaces the stdlib overload, which reads the int
+ *     as epoch millis, with the spec (and cross-client) reading of epoch SECONDS.
+ *     See the comment on the registration below.
+ *   - the namespaced {@code timestamp.of(...)} constructor:
+ *       - {@code timestamp.of(dyn)} — runtime-dispatches on the value's JS type
+ *         (Date, ReflectMessage of Timestamp, bigint with hint about the 2-arg form, etc.).
+ *       - {@code timestamp.of(int, string)} — epoch numeric + unit string.
  *
  * Singular namespace mirrors CEL stdlib's {@code optional.of(x)} pattern.
  */
@@ -36,7 +39,7 @@ import {
   timestampFromMs,
 } from "@bufbuild/protobuf/wkt";
 
-const { DYN, STRING } = CelScalar;
+const { DYN, INT, STRING } = CelScalar;
 const TIMESTAMP = objectType(TimestampSchema);
 
 function fromEpoch(value: bigint | number, unit: string): Timestamp {
@@ -113,6 +116,24 @@ function fromEpochAny(value: unknown, unit: unknown): Timestamp {
 }
 
 export const TIMESTAMP_FUNCS: CelFunc[] = [
+  // ---- timestamp(int): epoch SECONDS ----
+  // @bufbuild/cel's stdlib reads the bare `timestamp(int)` argument as epoch MILLIS
+  // (`timestampFromMs`, packages/cel/src/std/cast.ts). The CEL specification and every other
+  // Schema Registry client (Java, Go, C++, C#, Python) read it as epoch SECONDS, so a rule like
+  // `timestamp(this.epoch) < now` was off by a factor of 1000 in JS only. Registering the same
+  // name with the same [INT] parameter list makes @bufbuild/cel's func-group dedup (exact match on
+  // the func id `timestamp(int)`) REPLACE the stdlib overload with this one; user funcs are
+  // appended after the stdlib groups, so this one wins.
+  //
+  // BREAKING CHANGE for any JS user who relied on the millis reading. That is deliberate: it
+  // aligns this client with the CEL spec and the other Schema Registry clients. Callers who
+  // really do have millis should say so explicitly with `timestamp.of(v, "millis")`.
+  //
+  // Only the [INT] overload is displaced — the stdlib `timestamp(string)` (RFC 3339) and
+  // `timestamp(timestamp)` (identity) overloads keep their ids and stay in the group, and
+  // `timestamp.of(...)` below is untouched.
+  celFunc("timestamp", [INT], TIMESTAMP, (v) => fromEpoch(v, "seconds")),
+
   celFunc("timestamp.of", [DYN], TIMESTAMP, (v) => timestampOf(v)),
   // Accept DYN for the epoch value so number, bigint, or other numeric
   // types are accepted (avsc returns plain Number for timestamp-millis).
