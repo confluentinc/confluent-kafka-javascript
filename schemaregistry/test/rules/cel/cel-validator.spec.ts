@@ -322,6 +322,158 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
       'decimals.eq(decimal(18446744073709551615u), decimal("18446744073709551615")) ? "ok" : "wrong"'
     )).toBe('ok')
   })
+
+  // FIX 1: decimal.js's global precision is 20 significant digits and its arithmetic rounds to it,
+  // so the old `new Decimal(unscaled).mul(10^-scale)` construction silently truncated unscaled
+  // values above 20 digits (Java BigDecimal is exact to 38). These reach the constructor,
+  // decimal(bytes, scale), and the fromProtoDecimal reader with a 23-digit unscaled value.
+  describe('exact above 20 significant digits (no precision rounding)', () => {
+    // unscaled 12345678901234567890123 (23 digits), scale 5 -> 123456789012345678.90123.
+    const bytes = 'b"\\x02\\x9d\\x42\\xb6\\x4e\\x76\\x71\\x42\\x44\\xcb"'
+    it('decimal(bytes, scale) preserves all 23 digits', async () => {
+      expect(await evalStr(`string(decimal(${bytes}, 5))`)).toBe('123456789012345678.90123')
+    })
+    it('string(decimal("<23 digits>")) is exact', async () => {
+      expect(await evalStr('string(decimal("123456789012345678.90123"))'))
+        .toBe('123456789012345678.90123')
+    })
+    it('decimals.eq distinguishes values differing beyond the 20th digit', async () => {
+      // If construction rounded to 20 sig digits both would collapse to the same value.
+      expect(await evalStr(
+        'decimals.eq(decimal("123456789012345678.90123"), decimal("123456789012345678.90124")) ? "eq" : "ne"'
+      )).toBe('ne')
+    })
+    it('decimals.eq matches bytes-read and string-parsed 23-digit values', async () => {
+      expect(await evalStr(
+        `decimals.eq(decimal(${bytes}, 5), decimal("123456789012345678.90123")) ? "eq" : "ne"`
+      )).toBe('eq')
+    })
+  })
+
+  // FIX 2: `==` on two Decimals is numeric (value-equal, scale-insensitive), matching decimals.eq,
+  // rather than cel-es's field-by-field message equality (which would treat a scale-1 2.0 and a
+  // scale-0 2.0 as unequal). `!=` negates.
+  describe('== is numeric for Decimals', () => {
+    const eqCases: [string, boolean][] = [
+      ['decimal("2.0") == decimal("2.00")', true],
+      ['decimal("2.0") == decimal("2.0")', true],
+      ['decimal("2.0") == decimal("2.1")', false],
+      ['decimal("2.0") != decimal("2.1")', true],
+      ['decimal("2.0") != decimal("2.00")', false],
+      // Differing stored scale: decimal(bytes=0x14=20, scale=1) = 2.0 vs the normalized literal.
+      ['decimal(b"\\x14", 1) == decimal("2.0")', true],
+      ['decimal(b"\\x14", 1) == decimal("2")', true],
+      ['decimal(b"\\x14", 1) != decimal("2.1")', true],
+      // Both scale-preserving via bytes: unscaled 200 scale 2 (2.00) vs unscaled 20 scale 1 (2.0).
+      ['decimal(b"\\x00\\xc8", 2) == decimal(b"\\x14", 1)', true],
+    ]
+    it.each(eqCases)('%s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+
+    // Non-Decimal == must still behave exactly as the stdlib (the override falls through to a
+    // faithful port of cel-es equality for every other operand pair).
+    const stdlibCases: [string, boolean][] = [
+      ['1 == 1', true],
+      ['1 == 2', false],
+      ['1 == 1u', true],
+      ['1.0 == 1', true],
+      ["'a' == 'a'", true],
+      ["'a' == 'b'", false],
+      ['[1, 2] == [1, 2]', true],
+      ['[1, 2] == [1, 3]', false],
+      ['{"a": 1} == {"a": 1}', true],
+      ['type(1) == int', true],
+      ['1 != 2', true],
+    ]
+    it.each(stdlibCases)('stdlib: %s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+
+    // Numeric Decimal `==` must also apply to Decimals nested in a container: the list/map
+    // recursion inside the equality port routes back through the Decimal-aware entry point rather
+    // than cel-es's field-by-field message equality.
+    //
+    // These MUST use the bytes constructor to discriminate scale: decimal("2.0") and
+    // decimal("2.00") both normalize to scale 0 in decimal.js (string(...) == "2" for both), so a
+    // string-literal version of these cases would pass vacuously. decimal(b"\x14", 1) is 2.0
+    // (unscaled 20, scale 1) and decimal(b"\x00\xc8", 2) is 2.00 (unscaled 200, scale 2) — equal in
+    // value, different in stored scale.
+    describe('== is numeric for Decimals nested in containers', () => {
+      const D20_S1 = 'decimal(b"\\x14", 1)'        // 2.0
+      const D200_S2 = 'decimal(b"\\x00\\xc8", 2)'  // 2.00
+      const D21_S1 = 'decimal(b"\\x15", 1)'        // 2.1
+
+      const nestedCases: [string, boolean][] = [
+        // Top-level control (already covered above; repeated as the baseline for the nested cases).
+        [`${D20_S1} == ${D200_S2}`, true],
+        // List elements.
+        [`[${D20_S1}] == [${D200_S2}]`, true],
+        [`[${D20_S1}] != [${D200_S2}]`, false],
+        [`[${D20_S1}, ${D21_S1}] == [${D200_S2}, ${D21_S1}]`, true],
+        // Map values.
+        [`{"k": ${D20_S1}} == {"k": ${D200_S2}}`, true],
+        [`{"k": ${D20_S1}} != {"k": ${D200_S2}}`, false],
+        [`{"a": ${D20_S1}, "b": ${D21_S1}} == {"a": ${D200_S2}, "b": ${D21_S1}}`, true],
+        // Nested containers: list in list, map in list, list in map.
+        [`[[${D20_S1}]] == [[${D200_S2}]]`, true],
+        [`[[${D20_S1}]] != [[${D200_S2}]]`, false],
+        [`[{"k": ${D20_S1}}] == [{"k": ${D200_S2}}]`, true],
+        [`{"k": [${D20_S1}]} == {"k": [${D200_S2}]}`, true],
+        [`{"k": [${D20_S1}]} != {"k": [${D200_S2}]}`, false],
+        [`[[[${D20_S1}]]] == [[[${D200_S2}]]]`, true],
+        // Non-equal controls: numerically different Decimals stay unequal at every nesting level.
+        [`[decimal("2.0")] == [decimal("2.1")]`, false],
+        [`[decimal("2.0")] != [decimal("2.1")]`, true],
+        [`[${D20_S1}] == [${D21_S1}]`, false],
+        [`{"k": ${D20_S1}} == {"k": ${D21_S1}}`, false],
+        [`[[${D20_S1}]] == [[${D21_S1}]]`, false],
+        // Structural inequality still short-circuits (size / key mismatch).
+        [`[${D20_S1}] == [${D200_S2}, ${D200_S2}]`, false],
+        [`{"a": ${D20_S1}} == {"b": ${D200_S2}}`, false],
+      ]
+      it.each(nestedCases)('%s -> %s', async (expr, expected) => {
+        expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+      })
+
+      // Container equality for every non-Decimal element type must be byte-for-byte unchanged by
+      // the recursion re-point (it only adds a Decimal-pair short-circuit ahead of the fall-through
+      // to the cel-es equality port).
+      const nonDecimalContainerCases: [string, boolean][] = [
+        ['[1, 2, 3] == [1, 2, 3]', true],
+        ['[1, 2, 3] == [1, 2, 4]', false],
+        ['[1] == [1u]', true],              // cross-type numeric equality inside a list
+        ['[1] == [1.0]', true],
+        ['["a", "b"] == ["a", "b"]', true],
+        ['["a", "b"] == ["a", "c"]', false],
+        ['[true, false] == [true, false]', true],
+        ['[true] == [false]', false],
+        ['[b"\\x01\\x02"] == [b"\\x01\\x02"]', true],
+        ['[b"\\x01\\x02"] == [b"\\x01\\x03"]', false],
+        ['[[1, 2], [3]] == [[1, 2], [3]]', true],
+        ['[[1, 2], [3]] == [[1, 2], [4]]', false],
+        ['[] == []', true],
+        ['[1] == ["1"]', false],            // no cross-kind coercion
+        ['{"a": 1, "b": 2} == {"a": 1, "b": 2}', true],
+        ['{"a": 1} == {"a": 2}', false],
+        ['{"a": "x"} == {"a": "x"}', true],
+        ['{"a": true} == {"a": true}', true],
+        ['{"a": b"\\x01"} == {"a": b"\\x01"}', true],
+        ['{"a": [1, 2]} == {"a": [1, 2]}', true],
+        ['{"a": [1, 2]} == {"a": [1, 3]}', false],
+        ['{"a": {"b": 1}} == {"a": {"b": 1}}', true],
+        ['{"a": {"b": 1}} == {"a": {"b": 2}}', false],
+        ['{} == {}', true],
+        ['{1: "a"} == {1: "a"}', true],     // non-string map keys
+        ['[type(1)] == [int]', true],
+        ['[1, 2] != [1, 3]', true],
+        ['{"a": 1} != {"a": 2}', true],
+      ]
+      it.each(nonDecimalContainerCases)('non-Decimal container: %s -> %s', async (expr, expected) => {
+        expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+      })
+    })
+  })
 })
 
 describe('CelValidator variant functions', () => {
