@@ -42,6 +42,7 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
   void OnError(const Napi::Error &e) override {
     Napi::Env env = e.Env();
     Napi::HandleScope scope(env);
+    m_errmsg = e.Message();
     HandleErrorCallback();
   }
 
@@ -49,7 +50,10 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
     Napi::Env env = Env();
     Napi::HandleScope scope(env);
 
-    Napi::Error error = Napi::Error::New(env, m_baton.errstr());
+    // Workers that report a failure through SetError() alone leave m_baton
+    // empty, so prefer the message the worker set.
+    Napi::Error error = Napi::Error::New(env,
+        m_errmsg.empty() ? m_baton.errstr() : m_errmsg);
     error.Value().As<Napi::Object>().Set(
         Napi::String::New(env, "code"),
         Napi::Number::New(env, GetErrorCode()));
@@ -81,6 +85,7 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
   }
 
   Baton m_baton;
+  std::string m_errmsg;
 };
 
 class MessageWorker : public ErrorAwareWorker {
