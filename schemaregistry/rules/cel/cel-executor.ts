@@ -49,7 +49,7 @@ export class CelExecutor implements RuleExecutor {
    * Presents the message the way CEL should see it. Avro decimals are unscaled bytes and Avro
    * timestamps a bare epoch int, so they are converted to self-describing Decimal/Timestamp
    * values (scale/unit from the schema) - letting a rule read `decimal(message.f)` /
-   * `timestamp.of(message.f)` without a scale/unit literal, the cross-language canonical form.
+   * `timestamp(message.f)` without a scale/unit literal, the cross-language canonical form.
    * Protobuf messages are passed through unchanged; their fields resolve through the
    * registry-carrying env built in {@link envFor}.
    */

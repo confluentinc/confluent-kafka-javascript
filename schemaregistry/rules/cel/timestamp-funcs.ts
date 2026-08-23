@@ -13,20 +13,22 @@
 // limitations under the License.
 
 /**
- * CEL bindings for {@code timestamp(int)} and the {@code timestamp.of} constructor.
+ * CEL bindings for the {@code timestamp} constructor.
  *
- * @bufbuild/cel already provides a stdlib {@code timestamp(string)} (RFC 3339
- * parsing) plus standard timestamp operators. Two things are added here:
+ * @bufbuild/cel already provides a stdlib {@code timestamp(string)} (RFC 3339 parsing),
+ * {@code timestamp(timestamp)} (identity) and the standard timestamp operators. Two overloads
+ * are added here, both on the standard name — there is no {@code timestamp.of} namespace:
  *
- *   - {@code timestamp(int)} — replaces the stdlib overload, which reads the int
- *     as epoch millis, with the spec (and cross-client) reading of epoch SECONDS.
- *     See the comment on the registration below.
- *   - the namespaced {@code timestamp.of(...)} constructor:
- *       - {@code timestamp.of(dyn)} — runtime-dispatches on the value's JS type
- *         (Date, ReflectMessage of Timestamp, bigint with hint about the 2-arg form, etc.).
- *       - {@code timestamp.of(int, string)} — epoch numeric + unit string.
+ *   - {@code timestamp(int)} — replaces the stdlib overload, which reads the int as epoch
+ *     millis, with the spec (and cross-client) reading of epoch SECONDS.
+ *   - {@code timestamp(dyn, int)} — an epoch value at a Flink-style decimal precision:
+ *     0 seconds, 3 millis, 6 micros, 9 nanos.
  *
- * Singular namespace mirrors CEL stdlib's {@code optional.of(x)} pattern.
+ * Nothing extra is needed for the one-argument non-int cases: this client's in-CEL timestamp
+ * representation *is* {@code google.protobuf.Timestamp}, which stdlib's identity overload
+ * already accepts, so an Avro or Protobuf timestamp field needs no wrapper at all. (The Java
+ * client has to add an overload there only because its runtime values are {@code java.time}
+ * objects that stdlib binds narrowly.)
  */
 
 import { celFunc, CelScalar, objectType, type CelFunc } from "@bufbuild/cel";
@@ -36,39 +38,78 @@ import {
   TimestampSchema,
   type Timestamp,
   timestampFromDate,
-  timestampFromMs,
 } from "@bufbuild/protobuf/wkt";
 
-const { DYN, INT, STRING } = CelScalar;
+const { DYN, INT } = CelScalar;
 const TIMESTAMP = objectType(TimestampSchema);
+
+/**
+ * Splits an epoch value in `unit` into seconds + nanos, flooring toward negative infinity so a
+ * pre-epoch value yields a non-negative nano-of-second (BigInt `/` and `%` truncate toward
+ * zero, which would produce a negative `nanos` that no proto Timestamp may carry). Matches
+ * Java's Math.floorDiv/floorMod and Python's `//`.
+ */
+function splitEpoch(v: bigint, perSecond: bigint, nanosPerUnit: bigint): Timestamp {
+  let seconds = v / perSecond;
+  let remainder = v % perSecond;
+  if (remainder < 0n) {
+    seconds -= 1n;
+    remainder += perSecond;
+  }
+  return create(TimestampSchema, { seconds, nanos: Number(remainder * nanosPerUnit) });
+}
 
 function fromEpoch(value: bigint | number, unit: string): Timestamp {
   const v = typeof value === "bigint" ? value : BigInt(Math.trunc(value));
   switch (unit) {
     case "millis":
-      return timestampFromMs(Number(v));
-    case "micros": {
-      const seconds = v / 1_000_000n;
-      const nanos = Number((v % 1_000_000n) * 1_000n);
-      return create(TimestampSchema, { seconds, nanos });
-    }
-    case "nanos": {
-      const seconds = v / 1_000_000_000n;
-      const nanos = Number(v % 1_000_000_000n);
-      return create(TimestampSchema, { seconds, nanos });
-    }
+      return splitEpoch(v, 1_000n, 1_000_000n);
+    case "micros":
+      return splitEpoch(v, 1_000_000n, 1_000n);
+    case "nanos":
+      return splitEpoch(v, 1_000_000_000n, 1n);
     case "seconds":
       return create(TimestampSchema, { seconds: v, nanos: 0 });
     default:
       throw new Error(
-        `timestamp.of: unknown unit '${unit}'; expected one of millis, micros, nanos, seconds`,
+        `timestamp: unknown unit '${unit}'; expected one of millis, micros, nanos, seconds`,
+      );
+  }
+}
+
+/**
+ * The `timestamp(dyn, int)` precision form. Precisions outside {0, 3, 6, 9} are rejected rather
+ * than generalized to "any p means 10^-p": with the unit a number rather than a name, that check
+ * is the only thing between a typo and a silently wrong instant.
+ */
+function fromEpochPrecision(value: unknown, precision: unknown): Timestamp {
+  if (typeof value !== "bigint" && typeof value !== "number") {
+    throw new Error(`timestamp: epoch value must be int, got ${typeof value}`);
+  }
+  const p = typeof precision === "bigint" ? Number(precision) : precision;
+  if (typeof p !== "number") {
+    throw new Error(`timestamp: precision must be int, got ${typeof precision}`);
+  }
+  switch (p) {
+    case 0:
+      return fromEpoch(value, "seconds");
+    case 3:
+      return fromEpoch(value, "millis");
+    case 6:
+      return fromEpoch(value, "micros");
+    case 9:
+      return fromEpoch(value, "nanos");
+    default:
+      throw new Error(
+        `timestamp: unknown precision ${p}; expected 0 (seconds), 3 (millis), ` +
+          "6 (micros) or 9 (nanos)",
       );
   }
 }
 
 function timestampOf(v: unknown): Timestamp {
   if (v === null || v === undefined) {
-    throw new Error("timestamp.of: cannot convert null to Timestamp");
+    throw new Error("timestamp: cannot convert null to Timestamp");
   }
   // celpy/celpy-equivalent: already a Timestamp ReflectMessage — pass through.
   if (isReflectMessage(v, TimestampSchema)) {
@@ -89,30 +130,20 @@ function timestampOf(v: unknown): Timestamp {
     // Parse RFC 3339 via the Date constructor.
     const d = new Date(v);
     if (Number.isNaN(d.getTime())) {
-      throw new Error(`timestamp.of: invalid RFC 3339 string '${v}'`);
+      throw new Error(`timestamp: invalid RFC 3339 string '${v}'`);
     }
     return timestampFromDate(d);
   }
   if (typeof v === "boolean") {
-    throw new Error("timestamp.of: cannot convert bool to Timestamp");
+    throw new Error("timestamp: cannot convert bool to Timestamp");
   }
   if (typeof v === "bigint" || typeof v === "number") {
     throw new Error(
-      "timestamp.of: raw int has no unit; use timestamp.of(value, " +
-        '"millis"|"micros"|"nanos"|"seconds")',
+      "timestamp: a bare number has no unit here; use timestamp(value, precision) " +
+        "with a precision of 0, 3, 6 or 9",
     );
   }
-  throw new Error(`timestamp.of: cannot convert ${typeof v} to Timestamp`);
-}
-
-function fromEpochAny(value: unknown, unit: unknown): Timestamp {
-  if (typeof value !== "bigint" && typeof value !== "number") {
-    throw new Error(`timestamp.of: epoch value must be int or double, got ${typeof value}`);
-  }
-  if (typeof unit !== "string") {
-    throw new Error(`timestamp.of: unit must be string, got ${typeof unit}`);
-  }
-  return fromEpoch(value as bigint | number, unit as string);
+  throw new Error(`timestamp: cannot convert ${typeof v} to Timestamp`);
 }
 
 export const TIMESTAMP_FUNCS: CelFunc[] = [
@@ -127,23 +158,25 @@ export const TIMESTAMP_FUNCS: CelFunc[] = [
   //
   // BREAKING CHANGE for any JS user who relied on the millis reading. That is deliberate: it
   // aligns this client with the CEL spec and the other Schema Registry clients. Callers who
-  // really do have millis should say so explicitly with `timestamp.of(v, "millis")`.
+  // really do have millis should say so explicitly with `timestamp(v, 3)`.
   //
   // Only the [INT] overload is displaced — the stdlib `timestamp(string)` (RFC 3339) and
-  // `timestamp(timestamp)` (identity) overloads keep their ids and stay in the group, and
-  // `timestamp.of(...)` below is untouched.
+  // `timestamp(timestamp)` (identity) overloads keep their ids and stay in the group. The
+  // identity one is what makes an Avro or Protobuf timestamp field usable directly, since this
+  // client's in-CEL timestamp representation is google.protobuf.Timestamp itself.
   celFunc("timestamp", [INT], TIMESTAMP, (v) => fromEpoch(v, "seconds")),
 
-  celFunc("timestamp.of", [DYN], TIMESTAMP, (v) => timestampOf(v)),
-  // Accept DYN for the epoch value so number, bigint, or other numeric
-  // types are accepted (avsc returns plain Number for timestamp-millis).
-  celFunc("timestamp.of", [DYN, STRING], TIMESTAMP, (v, unit) => fromEpochAny(v, unit)),
+  // ---- timestamp(dyn, int): epoch value at a decimal precision ----
+  // The epoch value is DYN rather than INT because a plain JS number is CEL `double`, and avsc
+  // hands out a Number for a timestamp-millis field; requiring INT would reject it.
+  celFunc("timestamp", [DYN, INT], TIMESTAMP, (v, p) => fromEpochPrecision(v, p)),
 ];
 
 /**
  * Presents an Avro logical timestamp (epoch value in `unit`) to CEL as a self-describing
- * Timestamp, so a rule reads `timestamp.of(message.tsField)` without a unit literal. Returned as
- * a ReflectMessage so `@bufbuild/cel`'s `toCel` recognizes it as a timestamp inside the message.
+ * Timestamp, so a rule reads `message.tsField` as a timestamp with no wrapper and no unit
+ * literal. Returned as a ReflectMessage so `@bufbuild/cel`'s `toCel` recognizes it as a
+ * timestamp inside the message.
  */
 export function avroTimestampToCel(value: number, unit: string): ReflectMessage {
   return reflect(TimestampSchema, fromEpoch(value, unit));
