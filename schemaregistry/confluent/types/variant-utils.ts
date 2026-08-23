@@ -268,10 +268,13 @@ function decimalPlainString(unscaled: bigint, scale: number): string {
 }
 
 /** A JSON number rendering of a double: integral values as `N.0`, else JS shortest repr.
+ * Non-finite doubles render as the bareword `NaN`/`Infinity`/`-Infinity` (matching the Java
+ * reference, which diverges from Spark's quoted strings). `String(NaN)`/`String(Infinity)`/
+ * `String(-Infinity)` already spell these exactly.
  * (Java Float/Double.toString scientific-notation edge cases are a known minor divergence.) */
 function doubleToJson(d: number): string {
   if (!Number.isFinite(d)) {
-    throw new VariantError("cannot render non-finite double as JSON");
+    return String(d);
   }
   if (Number.isInteger(d) && Math.abs(d) < 1e16) {
     return `${d}.0`;
@@ -281,10 +284,12 @@ function doubleToJson(d: number): string {
 
 /** A JSON number rendering of a 32-bit float: the shortest decimal that round-trips to the
  * SAME float32 (via `Math.fround`), matching Java `Float.toString` / Apache Arrow rather than
- * the f64-shortest string produced by widening then formatting as a double. */
+ * the f64-shortest string produced by widening then formatting as a double. Non-finite floats
+ * render as the bareword `NaN`/`Infinity`/`-Infinity` (matching the Java reference, which
+ * diverges from Spark's quoted strings). */
 function floatToJson(f: number): string {
   if (!Number.isFinite(f)) {
-    throw new VariantError("cannot render non-finite float as JSON");
+    return String(f);
   }
   if (Number.isInteger(f) && Math.abs(f) < 1e16) {
     return `${f}.0`;

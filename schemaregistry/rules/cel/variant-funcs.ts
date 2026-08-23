@@ -234,7 +234,10 @@ function variantAs(v: unknown, typeStr: string, nullOnError: boolean): CelValueO
 
 export const VARIANT_FUNCS: CelFunc[] = [
   // ---- constructor ----
-  celFunc("variant", [DYN], VARIANT, (v) => toVariantMessage(v)),
+  // variant(null) -> CEL null (matching the Java reference); other non-Variant inputs error.
+  // DYN result (like the navigation accessors) so a CEL-null result is representable.
+  celFunc("variant", [DYN], DYN, (v) =>
+    v === null || v === undefined ? null : toVariantMessage(v)),
   // variant(value, metadata) - value first, matching the Java/Spark convention.
   celFunc("variant", [BYTES, BYTES], VARIANT, (value, metadata) =>
     reflect(VariantSchema, create(VariantSchema, {
