@@ -1306,6 +1306,68 @@ describe('AvroSerializer', () => {
     }
   })
 
+  it('cel condition that errors fails closed', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // CEL hands evaluation errors back as values rather than throwing them. An error is not
+    // `false`, so an unwrapped one would sail past the CONDITION check and the rule would
+    // pass vacuously - a rule that cannot be evaluated must fail, as it does on the JVM.
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'message.noSuchField == "x"'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    await expect(ser.serialize(topic, obj)).rejects.toThrow(SerializationError)
+  })
+
+  it('cel condition that divides by zero fails closed', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // A function that raises, rather than a missing binding: same fail-closed requirement.
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'decimals.eq(decimals.div(decimal(message.decField), decimal("0")), decimal("1"))'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    await expect(ser.serialize(topic, obj)).rejects.toThrow(SerializationError)
+  })
+
+  it('cel transform that errors fails closed', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // An unwrapped error would be assigned as the message itself.
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'TRANSFORM', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'message.noSuchField'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    await expect(ser.serialize(topic, obj)).rejects.toThrow(SerializationError)
+  })
+
+  it('cel guard that errors skips the body', async () => {
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    // The guard decides applicability, so an erroring one means "not applicable" and the
+    // body - which would fail - is never evaluated. Matches the JVM client.
+    let encRule: Rule = {
+      name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
+      expr: 'message.noSuchField == "x" ; false'
+    }
+    let info: SchemaInfo = { schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] } }
+    await client.register(subject, info, false)
+    let obj = { decField: Buffer.from([0x04, 0xD2]) }
+    let bytes = await ser.serialize(topic, obj)
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.decField).toEqual(obj.decField)
+  })
+
   it('cel decimal arithmetic', async () => {
     let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
     let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })

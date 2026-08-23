@@ -1,9 +1,9 @@
 import {RuleRegistry} from "../../serde/rule-registry";
-import {RuleContext, RuleExecutor} from "../../serde/serde";
+import {RuleContext, RuleError, RuleExecutor} from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
 import stringify from "json-stringify-deterministic";
 import {LRUCache} from "lru-cache";
-import {CelEnv, celEnv, parse, plan} from "@bufbuild/cel";
+import {CelEnv, celEnv, isCelError, parse, plan} from "@bufbuild/cel";
 import { strings as STRINGS_EXT_FUNCS } from "@bufbuild/cel/ext";
 import { Registry } from "@bufbuild/protobuf";
 import { timestampNow } from "@bufbuild/protobuf/wkt";
@@ -72,8 +72,17 @@ export class CelExecutor implements RuleExecutor {
     if (index >= 0) {
       const guard = expr.substring(0, index)
       if (guard.trim().length != 0) {
-        const guardResult = await this.executeRule(ctx, guard, msg, args)
-        if (guardResult === false) {
+        // A guard decides applicability, and one that errors - typically by probing a field
+        // some messages don't carry - is treated as not applicable rather than as a failure.
+        // Matches the JVM client (CelExecutor.evaluateWithGuard), which swallows the guard's
+        // exception and requires an explicit `true` to go on to the body.
+        let guardResult: any = false
+        try {
+          guardResult = await this.executeRule(ctx, guard, msg, args)
+        } catch (e) {
+          // ignore — an error in the guard is treated as false (skip the body).
+        }
+        if (guardResult !== true) {
           // skip the expr
           if (ctx.rule.kind === 'CONDITION') {
             return true
@@ -114,7 +123,18 @@ export class CelExecutor implements RuleExecutor {
     if (expr.includes("now") && args["now"] === undefined) {
       args["now"] = timestampNow()
     }
-    return program(args)
+    // CEL returns evaluation errors as values rather than throwing them, so unwrap the
+    // result explicitly - the same as CelValidator.execute. Letting one flow out fails
+    // open: an error is not `false`, so a CONDITION rule would pass vacuously, and a
+    // TRANSFORM rule would assign the error object as the message. Throwing puts an
+    // erroring rule on the framework's failure path (onFailure / ERROR), which is where
+    // the JVM client's CelExecutor puts it - its CEL library throws where this one does not.
+    const result = program(args)
+    if (isCelError(result)) {
+      const name = ctx.rule.name ? ctx.rule.name : 'unnamed'
+      throw new RuleError(`Could not execute rule '${name}': ${result.message}`)
+    }
+    return result
   }
 
   /**
