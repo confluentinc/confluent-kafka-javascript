@@ -1306,6 +1306,42 @@ describe('AvroSerializer', () => {
     }
   })
 
+  it('cel decimal needs no constructor', async () => {
+    // Cross-client parity: an Avro `decimal` logical type is usable as a Decimal with no
+    // decimal(...) call, and the wrapped form keeps working alongside it. wrapAvroForCel applies
+    // the schema's scale and produces a confluent.type.Decimal, which is this client's in-CEL
+    // decimal representation, so decimals.* accept it directly.
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    // 12.34 = unscaled 1234 = 0x04D2 at the schema's scale of 2.
+    const obj = { decField: Buffer.from([0x04, 0xD2]) }
+    const check = async (expr: string) => {
+      let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+      let encRule: Rule = {
+        name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL', expr
+      }
+      let info: SchemaInfo = {
+        schemaType: 'AVRO', schema: decimalSchema, ruleSet: { domainRules: [encRule] }
+      }
+      await client.register(subject, info, false)
+      let bytes = await ser.serialize(topic, obj)
+      expect((await deser.deserialize(topic, bytes)).decField).toEqual(obj.decField)
+    }
+
+    // Bare: no constructor call on the field.
+    await check('decimals.eq(message.decField, decimal("12.34"))')
+    await check('decimals.gt(message.decField, decimal("10.00"))')
+    // The wrapped form must keep working (decimal(...) re-entry).
+    await check('decimals.eq(decimal(message.decField), decimal("12.34"))')
+    // `==` is numeric on it: 12.34 equals 12.340 despite the differing scale.
+    await check('message.decField == decimal("12.340")')
+    // The schema's scale is applied, not guessed: as scale 0 this would be 1234.
+    await check('decimals.lt(message.decField, decimal("100"))')
+    // Negative control: a false comparison must fail.
+    await expect(check('decimals.gt(message.decField, decimal("100"))'))
+      .rejects.toThrow(SerializationError)
+  })
+
   it('cel condition that errors fails closed', async () => {
     let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
     let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
@@ -1441,7 +1477,7 @@ describe('AvroSerializer', () => {
     let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
     let encRule: Rule = {
       name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
-      expr: 'timestamp.of(message.tsField) < now'
+      expr: 'timestamp(message.tsField) < now'
     }
     let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
     await client.register(subject, info, false)
@@ -1452,12 +1488,42 @@ describe('AvroSerializer', () => {
     expect(obj2.tsField).toEqual(obj.tsField)
   })
 
+  it('cel timestamp millis needs no constructor', async () => {
+    // Cross-client parity: an Avro timestamp logical type is usable as a timestamp with no
+    // constructor call at all. wrapAvroForCel converts it to a google.protobuf.Timestamp, which
+    // is this client's in-CEL timestamp representation, so it is comparable against `now` and
+    // carries the timestamp accessors. Every one of the seven clients has this test; the
+    // constructor is only needed for a plain numeric field whose unit the schema can't supply.
+    let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
+    let deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+    const check = async (expr: string, tsField: number) => {
+      let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+      let encRule: Rule = {
+        name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL', expr
+      }
+      let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
+      await client.register(subject, info, false)
+      let bytes = await ser.serialize(topic, { tsField })
+      let obj2 = await deser.deserialize(topic, bytes)
+      expect(obj2.tsField).toEqual(tsField)
+    }
+
+    // Bare comparison against `now`.
+    await check('message.tsField < now', 1577836800000) // 2020-01-01 UTC
+    // The schema's millis unit is applied, not guessed, and the accessors work directly.
+    await check('message.tsField == timestamp("2023-11-14T22:13:20.123Z")', 1700000000123)
+    await check('message.tsField.getFullYear() == 2023', 1700000000123)
+    // Negative control: a future value must fail, so the comparison really happens.
+    await expect(check('message.tsField < now', 4102444800000)) // 2100-01-01 UTC
+      .rejects.toThrow(SerializationError)
+  })
+
   it('cel timestamp millis fails', async () => {
     let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
     let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
     let encRule: Rule = {
       name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
-      expr: 'timestamp.of(message.tsField) > now'
+      expr: 'timestamp(message.tsField) > now'
     }
     let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
     await client.register(subject, info, false)
@@ -1474,10 +1540,10 @@ describe('AvroSerializer', () => {
     let client = SchemaRegistryClient.newClient({ baseURLs: [baseURL], cacheCapacity: 1000 })
     let ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
     // The field rule's `value` binding must be a self-describing timestamp, so the 1-arg
-    // timestamp.of(value) works (no unit literal).
+    // timestamp(value) works (no unit literal).
     let encRule: Rule = {
       name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL_FIELD',
-      expr: 'name == "tsField" ; timestamp.of(value) < now'
+      expr: 'name == "tsField" ; timestamp(value) < now'
     }
     let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
     await client.register(subject, info, false)
@@ -1494,7 +1560,7 @@ describe('AvroSerializer', () => {
     // A field rule returning a Timestamp must re-encode to the field's epoch unit (millis).
     let encRule: Rule = {
       name: 'test-cel', kind: 'TRANSFORM', mode: RuleMode.WRITE, type: 'CEL_FIELD',
-      expr: 'name == "tsField" ; timestamp.of(value)'
+      expr: 'name == "tsField" ; timestamp(value)'
     }
     let info: SchemaInfo = { schemaType: 'AVRO', schema: tsSchema, ruleSet: { domainRules: [encRule] } }
     await client.register(subject, info, false)

@@ -610,27 +610,33 @@ describe('CelValidator timestamp(int) is epoch seconds', () => {
     ['timestamp(timestamp("2026-01-01T00:00:00Z")) == timestamp("2026-01-01T00:00:00Z")', true],
     ['timestamp(timestamp(1700000000)) == timestamp(1700000000)', true],
 
-    // ---- MUST NOT REGRESS: timestamp.of(...) is untouched, both arities ----
-    // The explicit-unit form keeps every unit, including millis.
-    ['timestamp.of(1700000000000, "millis") == timestamp(1700000000)', true],
-    ['timestamp.of(1700000000, "seconds") == timestamp(1700000000)', true],
-    ['timestamp.of(1700000000000000, "micros") == timestamp(1700000000)', true],
-    ['timestamp.of(1700000000000000000, "nanos") == timestamp(1700000000)', true],
-    ['timestamp.of(1700000000000, "millis") == timestamp("2023-11-14T22:13:20Z")', true],
-    // The 1-arg form still dispatches on the runtime type (string / timestamp).
-    ['timestamp.of("2026-01-01T00:00:00Z") == timestamp("2026-01-01T00:00:00Z")', true],
-    ['timestamp.of(timestamp(1700000000)) == timestamp(1700000000)', true],
+    // ---- timestamp(value, precision): 0 seconds, 3 millis, 6 micros, 9 nanos ----
+    ['timestamp(1700000000, 0) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000, 3) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000000, 6) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000000000, 9) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000, 3) == timestamp("2023-11-14T22:13:20Z")', true],
+    // Sub-second precision survives.
+    ['timestamp(1700000000123, 3) == timestamp("2023-11-14T22:13:20.123Z")', true],
+    ['timestamp(1700000000123456, 6) == timestamp("2023-11-14T22:13:20.123456Z")', true],
+    // The same integer means different instants across the two arities.
+    ['timestamp(1700000000, 3) == timestamp(1700000000)', false],
+    // Pre-epoch values floor toward negative infinity rather than truncating toward zero,
+    // which would leave a proto Timestamp with a negative nanos field.
+    ['timestamp(-500, 3) == timestamp("1969-12-31T23:59:59.500Z")', true],
+    ['timestamp(-1, 9) == timestamp("1969-12-31T23:59:59.999999999Z")', true],
   ]
   it.each(boolCases)('%s -> %s', async (expr, expected) => {
     expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
   })
 
-  // timestamp.of(int) with no unit still refuses to guess — the 1-arg form is unaffected by the
-  // bare `timestamp(int)` change.
-  it('timestamp.of(int) still requires an explicit unit', async () => {
+  // With the unit a number rather than a name, rejecting anything outside {0, 3, 6, 9} is the
+  // only thing between a typo and a silently wrong instant.
+  it.each([1, 2, 4, 5, 7, 8, 10, -3])('rejects precision %s', async (precision) => {
     const validator = new CelValidator()
-    await expect(validator.execute(rule('timestamp.of(1700000000) == now'), null, 0))
-      .rejects.toThrow(/raw int has no unit/)
+    await expect(
+      validator.execute(rule(`timestamp(1700000000, ${precision}) == now`), null, 0))
+      .rejects.toThrow(/unknown precision/)
   })
 })
 
