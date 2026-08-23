@@ -648,7 +648,7 @@ describe('ProtobufSerializer', () => {
     ser.registry.add(NestedMessageSchema)
     const encRule: Rule = {
       name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
-      expr: 'timestamp.of(message.updated_at) < now'
+      expr: 'timestamp(message.updated_at) < now'
     }
     const info: SchemaInfo = {
       schemaType: 'PROTOBUF',
@@ -672,7 +672,7 @@ describe('ProtobufSerializer', () => {
     ser.registry.add(NestedMessageSchema)
     const encRule: Rule = {
       name: 'test-cel', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL',
-      expr: 'timestamp.of(message.updated_at) > now'
+      expr: 'timestamp(message.updated_at) > now'
     }
     const info: SchemaInfo = {
       schemaType: 'PROTOBUF',
