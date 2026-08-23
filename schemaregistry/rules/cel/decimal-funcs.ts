@@ -34,6 +34,7 @@ import {
   isCelMap,
   isCelType,
   isCelUint,
+  listType,
   objectType,
   type CelFunc,
 } from "@bufbuild/cel";
@@ -300,6 +301,21 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   // stdlib [DYN, DYN] matches first). See celEqualsWithDecimal.
   celFunc("_==_", [DYN, DYN], BOOL, (a, b) => celEqualsWithDecimal(a, b)),
   celFunc("_!=_", [DYN, DYN], BOOL, (a, b) => !celEqualsWithDecimal(a, b)),
+
+  // `in` over a list is a SEPARATE stdlib overload (`@in(dyn,list)`), whose impl calls cel-es's
+  // internal `equals` directly — it never consults the `_==_` override above, so
+  // `decimal(b"\x14", 1) in [decimal(b"\x00\xc8", 2)]` (2.0 in [2.00]) was false while `==` on the
+  // same pair was true. Re-implement it over celEqualsWithDecimal so membership is numeric for
+  // Decimals (including Decimals nested inside the list's elements) and byte-for-byte stdlib
+  // semantics for everything else. The [DYN, list(dyn)] signature reproduces the stdlib id exactly,
+  // so the func-group dedup replaces that overload. The `@in(<scalar>,map)` overloads are
+  // deliberately left alone — a Decimal is not a valid CEL map key.
+  celFunc("@in", [DYN, listType(DYN)], BOOL, (value, list) => {
+    for (const v of list) {
+      if (celEqualsWithDecimal(v, value)) return true;
+    }
+    return false;
+  }),
 
   // ---- constructor ----
   celFunc("decimal", [DYN], DECIMAL_TYPE, (v) => fromConstructorArg(v)),
