@@ -441,6 +441,64 @@ describe("Variant builder - regression", () => {
     expect(render(2.0)).toBe("2.0"); // integer ".0" preserved
   });
 
+  it("non-finite doubles/floats render as bareword NaN/Infinity/-Infinity", () => {
+    // Java contract (diverging from Spark, which quotes them): the binary stores the
+    // non-finite double/float and toJson emits the bareword (capitalized, unquoted).
+    const renderDouble = (d: number): string => {
+      const b = new VariantBuilder();
+      b.appendDouble(d);
+      return b.build().toJson();
+    };
+    const renderFloat = (f: number): string => {
+      const b = new VariantBuilder();
+      b.appendFloat(f);
+      return b.build().toJson();
+    };
+    expect(renderDouble(NaN)).toBe("NaN");
+    expect(renderDouble(Infinity)).toBe("Infinity");
+    expect(renderDouble(-Infinity)).toBe("-Infinity");
+    expect(renderFloat(NaN)).toBe("NaN");
+    expect(renderFloat(Infinity)).toBe("Infinity");
+    expect(renderFloat(-Infinity)).toBe("-Infinity");
+  });
+
+  it("round-trips a stored non-finite double through the reader/toJson", () => {
+    // A binary variant holding a non-finite double reads back the same value and toJson
+    // yields the bareword.
+    expect(prim(DOUBLE, f64(NaN)).getDouble()).toBeNaN();
+    expect(prim(DOUBLE, f64(Infinity)).toJson()).toBe("Infinity");
+    expect(prim(DOUBLE, f64(-Infinity)).toJson()).toBe("-Infinity");
+    expect(prim(FLOAT, f32(Infinity)).toJson()).toBe("Infinity");
+    expect(prim(FLOAT, f32(-Infinity)).toJson()).toBe("-Infinity");
+  });
+
+  it("parseJson stores an out-of-range magnitude (1e400) as Infinity", () => {
+    // JSON.parse('1e400') === Infinity in JS; it must be stored as a DOUBLE and toJson
+    // back to the bareword "Infinity" (matching the Java reference).
+    const v = parseJson("1e400");
+    expect(v.getType()).toBe(VariantType.DOUBLE);
+    expect(v.getDouble()).toBe(Infinity);
+    expect(v.toJson()).toBe("Infinity");
+    expect(parseJson("1e400").toJson()).toBe("Infinity");
+  });
+
+  it("parseJson soft-fails on empty / whitespace-only input", () => {
+    // JSON.parse('') throws SyntaxError; parseJson must surface that (variants.tryParseJson
+    // catches it and maps to CEL null - covered in the CEL suite).
+    expect(() => parseJson("")).toThrow();
+    expect(() => parseJson("   ")).toThrow();
+    expect(() => parseJson("\n\t ")).toThrow();
+  });
+
+  it("does not natively parse bareword NaN/Infinity literals (known JS gap)", () => {
+    // Input-parity gap vs Java: JSON.parse rejects the bareword literals NaN/Infinity, so
+    // parseJson cannot accept them as input. This is an accepted limitation (no custom
+    // bareword pre-parser); only the toJson OUTPUT side emits barewords.
+    expect(() => parseJson("NaN")).toThrow();
+    expect(() => parseJson("Infinity")).toThrow();
+    expect(() => parseJson("-Infinity")).toThrow();
+  });
+
   it("temporal years outside 1..9999 use Java-compatible sign/pad formatting", () => {
     // Bug #16: padStart is sign-unaware, so negative years rendered malformed ("0-44") and
     // years >9999 dropped the leading '+'. Match Java exactly: DATE and TZ use EXCEEDS_PAD

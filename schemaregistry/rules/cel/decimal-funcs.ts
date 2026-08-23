@@ -27,7 +27,7 @@
  */
 
 import { Decimal } from "decimal.js";
-import { celFunc, CelScalar, objectType, type CelFunc } from "@bufbuild/cel";
+import { celFunc, CelScalar, isCelUint, objectType, type CelFunc } from "@bufbuild/cel";
 import { isReflectMessage, reflect, type ReflectMessage } from "@bufbuild/protobuf/reflect";
 import {
   DecimalSchema as ProtoDecimalSchema,
@@ -38,6 +38,7 @@ import {
   bytesToBigIntSigned,
   fromProtoDecimal,
   toProtoDecimal,
+  toProtoDecimalWithScale,
 } from "../../confluent/types/decimal-utils";
 
 const { DYN, INT, BOOL, STRING, BYTES, DOUBLE } = CelScalar;
@@ -48,6 +49,16 @@ const DivDecimal = Decimal.clone({ precision: 38, rounding: Decimal.ROUND_HALF_U
 
 function decimalToCel(d: Decimal): ReflectMessage {
   return reflect(ProtoDecimalSchema, toProtoDecimal(d));
+}
+
+/**
+ * Encodes a decimal.js value at an explicit `scale` (matching Java `BigDecimal.setScale`), rather
+ * than the value's normalized `decimalPlaces()`. Used by `decimals.round`/`decimals.trunc` — where
+ * the requested scale is the contract (including negative scales, which decimal.js's `toDP` rejects
+ * and which round left of the decimal point) — and by the `decimal(bytes, scale)` constructor.
+ */
+function decimalToCelScaled(d: Decimal, scale: number): ReflectMessage {
+  return reflect(ProtoDecimalSchema, toProtoDecimalWithScale(d, scale));
 }
 
 function toDecimal(v: unknown): Decimal {
@@ -61,6 +72,13 @@ function toDecimal(v: unknown): Decimal {
   if (v instanceof Decimal) return v;
   if (typeof v === "boolean") {
     throw new Error("decimal: cannot convert bool to Decimal");
+  }
+  // CEL surfaces `uint` (proto uint32/uint64 fields, uint literals) as a CelUint wrapper
+  // carrying an unsigned bigint on `.value` — distinct from `int`, which arrives as a bare
+  // bigint. Unwrap to that bigint so the full unsigned range converts exactly (a uint64 above
+  // 2^63 must not wrap negative). Mirrors Java's UnsignedLong -> BigInteger -> BigDecimal arm.
+  if (isCelUint(v)) {
+    return new Decimal(v.value.toString());
   }
   if (typeof v === "bigint" || typeof v === "number" || typeof v === "string") {
     try {
@@ -91,13 +109,17 @@ export function decimalFromBytesScale(value: unknown, scale: unknown): ReflectMe
     );
   }
   const s = typeof scale === "bigint" ? Number(scale) : (scale as number);
+  // Preserve the requested scale (matching Java `new BigDecimal(unscaled, scale)`): decimal.js
+  // normalizes trailing zeros, so encoding via decimalPlaces() would drop a trailing-zero scale
+  // (e.g. unscaled 1990 at scale 2 = 19.90, not 19.9). See decimalToCelScaled.
   if (value.length === 0) {
-    return decimalToCel(new Decimal(0).mul(new Decimal(10).pow(-s)));
+    return decimalToCelScaled(new Decimal(0), s);
   }
-  return decimalToCel(
+  return decimalToCelScaled(
     new Decimal(bytesToBigIntSigned(value).toString()).mul(
       new Decimal(10).pow(-s),
     ),
+    s,
   );
 }
 
@@ -131,7 +153,12 @@ function fromConstructorArg(v: unknown): ReflectMessage {
  */
 function stringExt(v: unknown): string {
   if (isReflectMessage(v, ProtoDecimalSchema)) {
-    return fromProtoDecimal(v.message as ProtoDecimal).toFixed();
+    // Render at the proto's stored scale so a Java-style trailing-zero scale survives (e.g.
+    // scale 2 -> "12.30", not "12.3"), matching BigDecimal.toPlainString. A negative scale
+    // means an integer value, so render with no fractional digits.
+    const p = v.message as ProtoDecimal;
+    const scale = p.scale ?? 0;
+    return fromProtoDecimal(p).toFixed(scale > 0 ? scale : 0);
   }
   if (v instanceof Decimal) return v.toFixed();
   // Fall through to stdlib semantics for the non-Decimal case.
@@ -222,10 +249,21 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   }),
 
   // ---- rounding family ----
-  celFunc("decimals.round", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_HALF_UP))),
-  celFunc("decimals.round", [DYN, INT], DECIMAL_TYPE, (a, scale) =>
-    decimalToCel(toDecimal(a).toDP(Number(scale), Decimal.ROUND_HALF_UP)),
+  // round matches Java BigDecimal.setScale(scale, HALF_UP): the result always carries exactly the
+  // requested scale (so round(2.5, 2) -> "2.50"). A negative scale rounds left of the decimal
+  // point (round(1234.5, -2) -> 1200). decimal.js's toDP rejects a negative scale, so route those
+  // through toNearest(10^-scale), which rounds to the nearest multiple.
+  celFunc("decimals.round", [DYN], DECIMAL_TYPE, (a) =>
+    decimalToCelScaled(toDecimal(a).toDP(0, Decimal.ROUND_HALF_UP), 0),
   ),
+  celFunc("decimals.round", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
+    const d = toDecimal(a);
+    const n = Number(scale);
+    const rounded = n >= 0
+      ? d.toDP(n, Decimal.ROUND_HALF_UP)
+      : d.toNearest(new Decimal(10).pow(-n), Decimal.ROUND_HALF_UP);
+    return decimalToCelScaled(rounded, n);
+  }),
   // Flink's TRUNCATE early-returns when the target scale is at-or-finer than
   // the current scale — it's a no-op there, so the result keeps the input's
   // representation. Without this guard, toDP(n>=cur, DOWN) would zero-pad and
@@ -237,6 +275,11 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   celFunc("decimals.trunc", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
     const d = toDecimal(a);
     const target = Number(scale);
+    // Negative scale truncates left of the decimal point toward zero (trunc(1234.5, -2) -> 1200),
+    // matching Java setScale(target, DOWN); toDP rejects it, so use toNearest with ROUND_DOWN.
+    if (target < 0) {
+      return decimalToCelScaled(d.toNearest(new Decimal(10).pow(-target), Decimal.ROUND_DOWN), target);
+    }
     return decimalToCel(target >= d.decimalPlaces() ? d : d.toDP(target, Decimal.ROUND_DOWN));
   }),
   celFunc("decimals.floor", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_FLOOR))),

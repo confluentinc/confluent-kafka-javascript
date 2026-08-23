@@ -252,6 +252,78 @@ describe('CelValidator is* format validators', () => {
   })
 })
 
+// Rounding/scale parity with Java BigDecimal (schema-rules BuiltinOverload/DecimalUtils).
+// `string(...)` renders a Decimal at its stored scale (BigDecimal.toPlainString), so these
+// assert both the rounded value and its resulting scale in one shot.
+describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () => {
+  // expr must return a string; `this` is unused so any scalar works.
+  const evalStr = async (expr: string): Promise<any> => {
+    const validator = new CelValidator()
+    return validator.execute(rule(expr), null, 0)
+  }
+
+  // ITEM B: negative scale rounds/truncates left of the decimal point. decimal.js toDP throws
+  // on a negative scale; these exercise the toNearest fallback. Java: setScale(-n, HALF_UP/DOWN).
+  const negativeScaleCases: [string, string][] = [
+    ['string(decimals.round(decimal("1234.5"), -2))', '1200'],
+    ['string(decimals.round(decimal("1250"), -2))', '1300'],   // HALF_UP rounds the tie away from 0
+    ['string(decimals.round(decimal("-1234.5"), -2))', '-1200'],
+    ['string(decimals.round(decimal("-1250"), -2))', '-1300'],
+    ['string(decimals.round(decimal("1234.5"), -1))', '1230'],
+    ['string(decimals.round(decimal("5678"), -4))', '10000'],  // ties up to the nearest 10000
+    ['string(decimals.trunc(decimal("1234.5"), -2))', '1200'],
+    ['string(decimals.trunc(decimal("1299"), -2))', '1200'],   // DOWN = toward zero
+    ['string(decimals.trunc(decimal("-1234.5"), -2))', '-1200'],
+    ['string(decimals.trunc(decimal("-1299"), -2))', '-1200'],
+    ['string(decimals.trunc(decimal("1234.5"), -1))', '1230'],
+  ]
+  it.each(negativeScaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // ITEM B / round: a positive scale keeps exactly that scale (setScale pads trailing zeros).
+  const positiveScaleCases: [string, string][] = [
+    ['string(decimals.round(decimal("2.5"), 2))', '2.50'],
+    ['string(decimals.round(decimal("2.567"), 2))', '2.57'],
+    ['string(decimals.round(decimal("2.4"), 0))', '2'],
+    ['string(decimals.round(decimal("2.5"), 0))', '3'],
+  ]
+  it.each(positiveScaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // ITEM E (localized): decimal(bytes, scale) preserves the given scale, and string() renders it,
+  // so a trailing-zero scale survives (Java new BigDecimal(unscaled, scale).toPlainString()).
+  const bytesScaleCases: [string, string][] = [
+    ['string(decimal(b"\\x07\\xc6", 2))', '19.90'],  // unscaled 1990, scale 2
+    ['string(decimal(b"\\x04\\xd2", 2))', '12.34'],  // unscaled 1234, scale 2
+    ['string(decimal(b"\\x0c", -2))', '1200'],       // unscaled 12, scale -2
+  ]
+  it.each(bytesScaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // decimal(<uint>) must convert exactly across the whole unsigned range. CEL surfaces uint
+  // (proto uint32/uint64 fields and uint literals) as a CelUint wrapper, not a bare bigint, so
+  // this exercises the CelUint arm of toDecimal. The uint64 max is above the signed int64 max,
+  // which a naive int64 cast would wrap to a negative — Java handles it via UnsignedLong.
+  const uintCases: [string, string][] = [
+    ['string(decimal(5u))', '5'],
+    ['string(decimal(4294967295u))', '4294967295'],              // uint32 max
+    ['string(decimal(9223372036854775808u))', '9223372036854775808'],   // 2^63, just past int64 max
+    ['string(decimal(18446744073709551615u))', '18446744073709551615'], // uint64 max
+  ]
+  it.each(uintCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  it('decimal(uint64 max) is exact (no wrap to negative)', async () => {
+    expect(await evalStr(
+      'decimals.eq(decimal(18446744073709551615u), decimal("18446744073709551615")) ? "ok" : "wrong"'
+    )).toBe('ok')
+  })
+})
+
 describe('CelValidator variant functions', () => {
   // `this` is a JSON string; variants.parseJson(this) turns it into a Variant, then the
   // variants.* accessors navigate and extract. Covers the null model (absent vs
@@ -282,6 +354,33 @@ describe('CelValidator variant functions', () => {
     const validator = new CelValidator()
     await expect(validator.execute(rule("variants.type(variant(this)) == 'object'"), null, 'x'))
       .rejects.toThrow(/Could not execute/)
+  })
+
+  // variant(null) yields CEL null instead of erroring (matching the Java reference), and it
+  // composes: a null flows through the accessors as absent.
+  const nullCases: string[] = [
+    'variant(null) == null',
+    "variants.field(variant(null), 'k') == null",
+    // An absent field is null, and variant(null) of it is still null.
+    `variant(variants.field(${V}, 'missing')) == null`,
+  ]
+
+  it.each(nullCases)('variant(null) yields CEL null: %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
+  })
+
+  // variants.tryParseJson soft-fails to CEL null on unparseable input, including empty and
+  // whitespace-only strings (JSON.parse throws SyntaxError, which tryParseJson catches).
+  const tryParseNullCases: string[] = [
+    "variants.tryParseJson('') == null",
+    "variants.tryParseJson('   ') == null",
+    "variants.tryParseJson('{not json') == null",
+  ]
+
+  it.each(tryParseNullCases)('tryParseJson soft-fails to null: %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
   })
 })
 

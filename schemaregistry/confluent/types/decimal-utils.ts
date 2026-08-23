@@ -85,3 +85,25 @@ export function toProtoDecimal(d: Decimal): ProtoDecimal {
     precision: 0,
   });
 }
+
+/**
+ * Converts a decimal.js `Decimal` to a `confluent.type.Decimal` message at an explicit `scale`,
+ * the JS counterpart of Java `BigDecimal.setScale`/`new BigDecimal(unscaled, scale)`. Unlike
+ * {@link toProtoDecimal}, this preserves a caller-chosen scale rather than deriving it from
+ * `decimalPlaces()`, so a Java-style trailing-zero scale (e.g. `12.34` at scale 2) or a negative
+ * scale (e.g. `1200` at scale -2, unscaled `12`) survives round-trip.
+ *
+ * The caller must have already rounded `d` so it has no more fractional digits than `scale`
+ * permits; `d * 10^scale` must be an integer. `decimals.round`/`decimals.trunc` and the
+ * `decimal(bytes, scale)` constructor satisfy this.
+ */
+export function toProtoDecimalWithScale(d: Decimal, scale: number): ProtoDecimal {
+  // Unscaled integer = d * 10^scale. For a negative scale this divides (e.g. 1200 * 10^-2 = 12),
+  // which is exact because the caller rounded d to a multiple of 10^-scale.
+  const unscaled = BigInt(d.times(new Decimal(10).pow(scale)).toFixed(0));
+  return create(ProtoDecimalSchema, {
+    value: bigIntToTwosComplementBytes(unscaled),
+    scale,
+    precision: 0,
+  });
+}
