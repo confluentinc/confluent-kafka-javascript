@@ -27,7 +27,17 @@
  */
 
 import { Decimal } from "decimal.js";
-import { celFunc, CelScalar, isCelUint, objectType, type CelFunc } from "@bufbuild/cel";
+import {
+  celFunc,
+  CelScalar,
+  isCelList,
+  isCelMap,
+  isCelType,
+  isCelUint,
+  objectType,
+  type CelFunc,
+} from "@bufbuild/cel";
+import { equals as equalsMessage } from "@bufbuild/protobuf";
 import { isReflectMessage, reflect, type ReflectMessage } from "@bufbuild/protobuf/reflect";
 import {
   DecimalSchema as ProtoDecimalSchema,
@@ -36,6 +46,7 @@ import {
 import {
   bigIntToTwosComplementBytes,
   bytesToBigIntSigned,
+  decimalPlainString,
   fromProtoDecimal,
   toProtoDecimal,
   toProtoDecimalWithScale,
@@ -112,15 +123,10 @@ export function decimalFromBytesScale(value: unknown, scale: unknown): ReflectMe
   // Preserve the requested scale (matching Java `new BigDecimal(unscaled, scale)`): decimal.js
   // normalizes trailing zeros, so encoding via decimalPlaces() would drop a trailing-zero scale
   // (e.g. unscaled 1990 at scale 2 = 19.90, not 19.9). See decimalToCelScaled.
-  if (value.length === 0) {
-    return decimalToCelScaled(new Decimal(0), s);
-  }
-  return decimalToCelScaled(
-    new Decimal(bytesToBigIntSigned(value).toString()).mul(
-      new Decimal(10).pow(-s),
-    ),
-    s,
-  );
+  // Build the decimal.js value exactly from the unscaled+scale plain string; `.mul(10^-s)` would
+  // round an unscaled value above 20 significant digits to decimal.js's global precision.
+  const unscaled = value.length === 0 ? 0n : bytesToBigIntSigned(value);
+  return decimalToCelScaled(new Decimal(decimalPlainString(unscaled, s)), s);
 }
 
 /** Whether a CEL value is a Decimal this module can encode back to Avro. */
@@ -190,7 +196,111 @@ function doubleExt(v: unknown): number {
   return Number(v as Decimal.Value);
 }
 
+function equalsBytes(lhs: Uint8Array, rhs: Uint8Array): boolean {
+  if (lhs.length !== rhs.length) return false;
+  for (let i = 0; i < lhs.length; i++) {
+    if (lhs[i] !== rhs[i]) return false;
+  }
+  return true;
+}
+
+// Both container helpers recurse through celEqualsWithDecimal, NOT celEquals, so a Decimal nested
+// in a list/map gets the same numeric (scale-insensitive) treatment as a top-level one. cel-es
+// recurses into its own `equals`, which would compare nested Decimals field-by-field (unscaled
+// bytes + scale) and call `[decimal(b"\x14", 1)] == [decimal(b"\x00\xc8", 2)]` (2.0 vs 2.00) false.
+//
+// The mutual recursion terminates: celEqualsWithDecimal short-circuits on a Decimal pair before
+// delegating to celEquals, and celEquals reaches these helpers only for list/map operands, so every
+// cycle descends one level into a (finite, acyclic) container. Non-Decimal pairs are unaffected —
+// celEqualsWithDecimal falls straight through to celEquals for them.
+function equalsCelList(lhs: any, rhs: any): boolean {
+  if (lhs.size !== rhs.size) return false;
+  for (let i = 0; i < lhs.size; i++) {
+    if (!celEqualsWithDecimal(lhs.get(i), rhs.get(i))) return false;
+  }
+  return true;
+}
+
+function equalsCelMap(lhs: any, rhs: any): boolean {
+  if (lhs.size !== rhs.size) return false;
+  for (const [k, v] of lhs) {
+    const rv = rhs.get(k);
+    if (rv === undefined || !celEqualsWithDecimal(v, rv)) return false;
+  }
+  return true;
+}
+
+/**
+ * Faithful port of @bufbuild/cel's internal `equals` (its `_==_` [dyn, dyn] impl), which is not
+ * exported. Numeric int/uint/double compare across types; bytes/list/map/type/message compare by
+ * value with matching types. Kept in sync so replacing the stdlib `_==_` overload (see
+ * {@link celEqualsWithDecimal}) does not change equality for any non-Decimal operand. The one
+ * deliberate divergence from cel-es: list/map recursion goes through
+ * {@link celEqualsWithDecimal} (see {@link equalsCelList}), so nested Decimals compare numerically.
+ */
+function celEquals(lhs: unknown, rhs: unknown): boolean {
+  if (lhs === rhs) return true;
+  let l: unknown = lhs;
+  let r: unknown = rhs;
+  if (isCelUint(l)) l = l.value;
+  if (isCelUint(r)) r = r.value;
+  if (
+    (typeof l === "number" || typeof l === "bigint") &&
+    (typeof r === "number" || typeof r === "bigint")
+  ) {
+    return l == r; // cross-type numeric equality (loose, so 1n == 1)
+  }
+  if (l instanceof Uint8Array) return r instanceof Uint8Array && equalsBytes(l, r);
+  if (isCelList(l)) return isCelList(r) && equalsCelList(l, r);
+  if (isCelMap(l)) return isCelMap(r) && equalsCelMap(l, r);
+  if (isCelType(l)) return isCelType(r) && l.kind === r.kind && l.name === r.name;
+  if (isReflectMessage(l)) {
+    if (!isReflectMessage(r)) return false;
+    if (l.desc.typeName !== r.desc.typeName) return false;
+    return equalsMessage(l.desc, l.message, r.message, {
+      unpackAny: true,
+      unknown: true,
+      extensions: true,
+    } as any);
+  }
+  return false;
+}
+
+/**
+ * Replacement for the CEL stdlib `_==_`/`_!=_` [dyn, dyn] overload that makes `==` on two Decimals
+ * NUMERIC (value-equal, scale-insensitive), matching `decimals.eq`. cel-es compares two
+ * confluent.type.Decimal messages field-by-field (unscaled bytes + scale), so a scale-preserving
+ * `decimal(bytes, 1)` for 2.0 (scale 1) would not equal `decimal("2.0")` (scale 0) despite being
+ * numerically equal. Registering this with the same [dyn, dyn] signature as the stdlib overload
+ * makes @bufbuild/cel's group dedup (by func id) replace the stdlib one with this. Every
+ * non-Decimal operand pair falls through to {@link celEquals}, preserving stdlib semantics
+ * (including message-identity `==` for Variant, which is intentionally unchanged).
+ *
+ * This is also the entry point for nested comparisons: {@link equalsCelList}/{@link equalsCelMap}
+ * recurse here, so Decimals inside lists/maps (at any depth) are numeric too.
+ */
+function celEqualsWithDecimal(lhs: unknown, rhs: unknown): boolean {
+  if (
+    isReflectMessage(lhs, ProtoDecimalSchema) &&
+    isReflectMessage(rhs, ProtoDecimalSchema)
+  ) {
+    return (
+      fromProtoDecimal(lhs.message as ProtoDecimal).cmp(
+        fromProtoDecimal(rhs.message as ProtoDecimal),
+      ) === 0
+    );
+  }
+  return celEquals(lhs, rhs);
+}
+
 export const DECIMAL_FUNCS: CelFunc[] = [
+  // ---- equality (numeric for Decimals; stdlib semantics otherwise) ----
+  // Same [DYN, DYN] signature as the stdlib `_==_`/`_!=_`, so @bufbuild/cel's func-group dedup
+  // replaces the stdlib overload with these (a Decimal-specific overload would not win: the
+  // stdlib [DYN, DYN] matches first). See celEqualsWithDecimal.
+  celFunc("_==_", [DYN, DYN], BOOL, (a, b) => celEqualsWithDecimal(a, b)),
+  celFunc("_!=_", [DYN, DYN], BOOL, (a, b) => !celEqualsWithDecimal(a, b)),
+
   // ---- constructor ----
   celFunc("decimal", [DYN], DECIMAL_TYPE, (v) => fromConstructorArg(v)),
   celFunc("decimal", [BYTES, INT], DECIMAL_TYPE, (bytes, scale) =>
