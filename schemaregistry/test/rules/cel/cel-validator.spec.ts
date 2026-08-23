@@ -474,6 +474,164 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
       })
     })
   })
+
+  // FIX 3: `in` over a list is numeric for Decimals too. `@in` is a separate stdlib overload whose
+  // impl calls cel-es's internal `equals` directly, so it never consulted the `_==_` override
+  // above: before the DECIMAL_FUNCS `@in(dyn,list)` registration,
+  // `decimal(b"\x14", 1) in [decimal(b"\x00\xc8", 2)]` was FALSE while `==` on the same pair was
+  // already TRUE.
+  //
+  // Same trap as the nested-`==` cases above: these MUST use the bytes constructor to discriminate
+  // scale. decimal("2.0") and decimal("2.00") both normalize to scale 0 (string(...) == "2" for
+  // both), so a string-literal version of these cases would pass vacuously.
+  describe('in is numeric for Decimals', () => {
+    const D20_S1 = 'decimal(b"\\x14", 1)'        // 2.0  (unscaled 20,  scale 1)
+    const D200_S2 = 'decimal(b"\\x00\\xc8", 2)'  // 2.00 (unscaled 200, scale 2)
+    const D21_S1 = 'decimal(b"\\x15", 1)'        // 2.1  (unscaled 21,  scale 1)
+
+    const inCases: [string, boolean][] = [
+      // The regression itself: differing stored scale, equal value.
+      [`${D20_S1} in [${D200_S2}]`, true],
+      [`${D200_S2} in [${D20_S1}]`, true],
+      // Baseline: `==` on the same pair (was already true; asserted here so the two agree).
+      [`${D20_S1} == ${D200_S2}`, true],
+      // Same scale, equal value.
+      [`${D20_S1} in [${D20_S1}]`, true],
+      // Unequal values stay out, at either scale.
+      [`${D20_S1} in [${D21_S1}]`, false],
+      [`${D20_S1} in [${D21_S1}, decimal(b"\\x16", 1)]`, false],
+      // Found among several candidates, only one of which matches.
+      [`${D20_S1} in [${D21_S1}, ${D200_S2}]`, true],
+      // Empty list.
+      [`${D20_S1} in []`, false],
+      // Negation / `!=` forms.
+      [`!(${D20_S1} in [${D21_S1}])`, true],
+      [`!(${D20_S1} in [${D200_S2}])`, false],
+      [`(${D20_S1} in [${D200_S2}]) != false`, true],
+      // Decimals nested one level down: the membership test recurses through the same
+      // Decimal-aware equality, so a list-of-lists matches on value rather than on scale.
+      [`[${D20_S1}] in [[${D200_S2}]]`, true],
+      [`[${D20_S1}] in [[${D21_S1}]]`, false],
+      [`[${D20_S1}] in [[${D21_S1}], [${D200_S2}]]`, true],
+      [`{"k": ${D20_S1}} in [{"k": ${D200_S2}}]`, true],
+      [`{"k": ${D20_S1}} in [{"k": ${D21_S1}}]`, false],
+    ]
+    it.each(inCases)('%s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+
+    // Non-Decimal `in` must be byte-for-byte unchanged: the list form falls through to the
+    // cel-es equality port, and the `@in(<scalar>, map)` overloads are not registered over at all.
+    const stdlibInCases: [string, boolean][] = [
+      ['1 in [1, 2]', true],
+      ['3 in [1, 2]', false],
+      ['1 in []', false],
+      ['1 in [1u]', true],              // cross-type numeric membership
+      ['1 in [1.0]', true],
+      ["'a' in ['a']", true],
+      ["'a' in ['b', 'c']", false],
+      ['true in [true, false]', true],
+      ['false in [true]', false],
+      ['1.5 in [1.5]', true],
+      ['1u in [1u]', true],
+      ['b"\\x01" in [b"\\x01"]', true],
+      ['b"\\x01" in [b"\\x02"]', false],
+      ['[1] in [[1], [2]]', true],
+      ['[1] in [[2], [3]]', false],
+      ['{"a": 1} in [{"a": 1}]', true],
+      ['1 in ["1"]', false],            // no cross-kind coercion
+      // The map overloads (`@in(string,map)` etc.) are untouched.
+      ["'a' in {'a': 1}", true],
+      ["'b' in {'a': 1}", false],
+      ['1 in {1: "a"}', true],
+      ['2 in {1: "a"}', false],
+      ['true in {true: "a"}', true],
+      ['1.0 in {1.0: "a"}', true],
+      ['1u in {1u: "a"}', true],
+    ]
+    it.each(stdlibInCases)('stdlib: %s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+  })
+})
+
+// FIX 4: the bare `timestamp(int)` argument is epoch SECONDS, not millis. @bufbuild/cel's stdlib
+// reads it as millis (`timestampFromMs`); the CEL spec and every other Schema Registry client read
+// it as seconds, so `timestamp(this.epoch) < now` used to be 1000x wrong in JS. TIMESTAMP_FUNCS
+// registers a same-id `timestamp(int)` overload that displaces the stdlib one.
+//
+// Before the fix: `int(timestamp(1700000000))` was 1700000 and
+// `timestamp(1700000000) == timestamp("2023-11-14T22:13:20Z")` was false (it equalled
+// "1970-01-20T16:13:20Z" instead).
+describe('CelValidator timestamp(int) is epoch seconds', () => {
+  const evalStr = async (expr: string): Promise<any> => {
+    const validator = new CelValidator()
+    return validator.execute(rule(expr), null, 0)
+  }
+
+  // `string(timestamp)` renders RFC 3339 and `int(timestamp)` yields the epoch seconds, so these
+  // pin the reading directly rather than only via a comparison.
+  const renderCases: [string, string][] = [
+    ['string(timestamp(1700000000))', '2023-11-14T22:13:20Z'],
+    ['string(int(timestamp(1700000000)))', '1700000000'],
+    ['string(timestamp(0))', '1970-01-01T00:00:00Z'],
+    ['string(timestamp(1))', '1970-01-01T00:00:01Z'],
+    // Negative epoch seconds (pre-1970).
+    ['string(timestamp(-1))', '1969-12-31T23:59:59Z'],
+    // The old millis reading would have rendered 1970-01-20T16:13:20Z here.
+    ['string(timestamp(1700000))', '1970-01-20T16:13:20Z'],
+  ]
+  it.each(renderCases)('%s -> %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  const boolCases: [string, boolean][] = [
+    ['timestamp(1700000000) == timestamp("2023-11-14T22:13:20Z")', true],
+    // The old millis reading; must NOT match any more.
+    ['timestamp(1700000000) == timestamp("1970-01-20T16:13:20Z")', false],
+    ['timestamp(1700000000) != timestamp("1970-01-20T16:13:20Z")', true],
+    ['timestamp(0) == timestamp("1970-01-01T00:00:00Z")', true],
+    ['timestamp(-1) == timestamp("1969-12-31T23:59:59Z")', true],
+    // Ordering, the shape a real rule uses.
+    ['timestamp(1700000000) < timestamp(1700000001)', true],
+    ['timestamp(1700000000) > timestamp("2000-01-01T00:00:00Z")', true],
+    ['now > timestamp(0)', true],
+    // Timestamp accessors see the seconds-based instant.
+    ['timestamp(1700000000).getFullYear() == 2023', true],
+    ['timestamp(1700000000).getHours() == 22', true],
+
+    // ---- MUST NOT REGRESS: the other stdlib `timestamp` overloads ----
+    // timestamp(string): RFC 3339 parsing.
+    ['timestamp("2026-01-01T00:00:00Z") == timestamp("2026-01-01T00:00:00Z")', true],
+    ['timestamp("2026-01-01T00:00:00Z") != timestamp("2026-01-02T00:00:00Z")', true],
+    ['timestamp("2026-01-01T00:00:00Z").getFullYear() == 2026', true],
+    ['timestamp("2023-11-14T22:13:20Z") == timestamp(1700000000)', true],
+    // timestamp(timestamp): identity.
+    ['timestamp(timestamp("2026-01-01T00:00:00Z")) == timestamp("2026-01-01T00:00:00Z")', true],
+    ['timestamp(timestamp(1700000000)) == timestamp(1700000000)', true],
+
+    // ---- MUST NOT REGRESS: timestamp.of(...) is untouched, both arities ----
+    // The explicit-unit form keeps every unit, including millis.
+    ['timestamp.of(1700000000000, "millis") == timestamp(1700000000)', true],
+    ['timestamp.of(1700000000, "seconds") == timestamp(1700000000)', true],
+    ['timestamp.of(1700000000000000, "micros") == timestamp(1700000000)', true],
+    ['timestamp.of(1700000000000000000, "nanos") == timestamp(1700000000)', true],
+    ['timestamp.of(1700000000000, "millis") == timestamp("2023-11-14T22:13:20Z")', true],
+    // The 1-arg form still dispatches on the runtime type (string / timestamp).
+    ['timestamp.of("2026-01-01T00:00:00Z") == timestamp("2026-01-01T00:00:00Z")', true],
+    ['timestamp.of(timestamp(1700000000)) == timestamp(1700000000)', true],
+  ]
+  it.each(boolCases)('%s -> %s', async (expr, expected) => {
+    expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+  })
+
+  // timestamp.of(int) with no unit still refuses to guess — the 1-arg form is unaffected by the
+  // bare `timestamp(int)` change.
+  it('timestamp.of(int) still requires an explicit unit', async () => {
+    const validator = new CelValidator()
+    await expect(validator.execute(rule('timestamp.of(1700000000) == now'), null, 0))
+      .rejects.toThrow(/raw int has no unit/)
+  })
 })
 
 describe('CelValidator variant functions', () => {
