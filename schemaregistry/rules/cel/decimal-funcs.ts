@@ -59,6 +59,23 @@ const DECIMAL_TYPE = objectType(ProtoDecimalSchema);
 // 38-digit HALF_UP context for division, matching Flink / Java BigDecimal.
 const DivDecimal = Decimal.clone({ precision: 38, rounding: Decimal.ROUND_HALF_UP });
 
+// Unbounded context for the operations Java computes exactly: add, sub, mul and mod all use
+// java.math.BigDecimal's exact arithmetic, with no precision cap. decimal.js's *global* precision
+// is 20 significant digits and it rounds every operation to it, so without this the arithmetic
+// silently lost digits above 20 - `decimal("1E38") + decimal("1")` came back as 1E38, and
+// multiplying two 20-digit values dropped the low half of the product. 1e9 is decimal.js's maximum
+// precision, so this is "effectively unbounded" in the same way BigDecimal is; it carries the same
+// exposure to a pathological expression, which is precisely the Java behaviour being matched.
+//
+// Division and sqrt deliberately keep DivDecimal: Java caps those at 38 digits (see DIV_MC in the
+// JVM client), so an unbounded context there would diverge in the other direction.
+const ExactDecimal = Decimal.clone({ precision: 1e9 });
+
+/** An operand in the exact (uncapped) context, so the operation below is not rounded. */
+function exact(v: unknown): Decimal {
+  return new ExactDecimal(toDecimal(v).toString());
+}
+
 function decimalToCel(d: Decimal): ReflectMessage {
   return reflect(ProtoDecimalSchema, toProtoDecimal(d));
 }
@@ -71,6 +88,50 @@ function decimalToCel(d: Decimal): ReflectMessage {
  */
 function decimalToCelScaled(d: Decimal, scale: number): ReflectMessage {
   return reflect(ProtoDecimalSchema, toProtoDecimalWithScale(d, scale));
+}
+
+/**
+ * The BigDecimal *scale* an operand carries, which decimal.js cannot represent.
+ *
+ * decimal.js normalizes on construction - `new Decimal("2.00")` is indistinguishable from
+ * `new Decimal("2")` - so every result encoded through `decimalPlaces()` lost its trailing zeros
+ * and `string(decimal("2.00"))` came back as "2" where Java gives "2.00". Scale therefore has to
+ * be recovered from the *input* and carried through each operation explicitly (see the scale rules
+ * on the `decimals.*` bindings below), then encoded with {@link decimalToCelScaled}.
+ *
+ * A CEL Decimal already stores its scale on the proto, so a chained expression composes: the
+ * result of one operation is read back at the scale that operation assigned it.
+ */
+function scaleOf(v: unknown): number {
+  if (isReflectMessage(v, ProtoDecimalSchema)) return (v.message as ProtoDecimal).scale ?? 0;
+  if (v instanceof Decimal) return v.decimalPlaces();
+  // uint and int are integral: Java's BigDecimal.valueOf(long) / new BigDecimal(BigInteger).
+  if (isCelUint(v) || typeof v === "bigint") return 0;
+  if (typeof v === "number") return literalScale(String(v), true);
+  if (typeof v === "string") return literalScale(v, false);
+  if (typeof v === "object" && v !== null) {
+    const anyV = v as any;
+    if (anyV.$typeName === "confluent.type.Decimal") return anyV.scale ?? 0;
+  }
+  return 0;
+}
+
+/**
+ * The scale of a numeric literal: fractional digits minus the exponent, so `"2.00"` is 2,
+ * `"1e-5"` is 5 and `"1E+3"` is -3 (all matching `new BigDecimal(String)`).
+ *
+ * `fromDouble` reproduces `BigDecimal.valueOf(double)`, which routes through `Double.toString` -
+ * and that always emits at least one fractional digit ("5.0", "1.0E30"). So `decimal(5.0)` is
+ * scale 1 in Java, where JS's own `String(5)` would suggest 0. A double literal therefore never
+ * has scale 0, while the string `decimal("5")` correctly does.
+ */
+function literalScale(text: string, fromDouble: boolean): number {
+  const m = /^[+-]?(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(text.trim());
+  if (m === null) return 0;
+  let fractionDigits = m[2] !== undefined ? m[2].length : 0;
+  if (fromDouble && fractionDigits === 0) fractionDigits = 1;
+  const exponent = m[3] !== undefined ? Number.parseInt(m[3], 10) : 0;
+  return fractionDigits - exponent;
 }
 
 function toDecimal(v: unknown): Decimal {
@@ -149,7 +210,20 @@ export function decimalToAvroBytes(value: unknown, scale: number): Uint8Array {
 }
 
 function fromConstructorArg(v: unknown): ReflectMessage {
-  return decimalToCel(toDecimal(v));
+  return decimalToCelScaled(toDecimal(v), scaleOf(v));
+}
+
+/**
+ * greatest/least return one of the *operands* rather than a recomputed value, so the result keeps
+ * that operand's scale - Java's `BigDecimal.max`/`min` return `this` or `val` unchanged. A tie
+ * returns the first argument, matching `compareTo(val) >= 0 ? this : val`, which is why
+ * `greatest(decimal("2.00"), decimal("2.0"))` is "2.00" but `greatest(decimal("2.0"),
+ * decimal("2.00"))` is "2.0".
+ */
+function selectDecimal(a: unknown, b: unknown, greatest: boolean): ReflectMessage {
+  const cmp = toDecimal(a).cmp(toDecimal(b));
+  const chosen = (greatest ? cmp >= 0 : cmp <= 0) ? a : b;
+  return decimalToCelScaled(toDecimal(chosen), scaleOf(chosen));
 }
 
 /**
@@ -331,9 +405,22 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   celFunc("decimals.ge", [DYN, DYN], BOOL, (a, b) => toDecimal(a).cmp(toDecimal(b)) >= 0),
 
   // ---- arithmetic ----
-  celFunc("decimals.add", [DYN, DYN], DECIMAL_TYPE, (a, b) => decimalToCel(toDecimal(a).plus(toDecimal(b)))),
-  celFunc("decimals.sub", [DYN, DYN], DECIMAL_TYPE, (a, b) => decimalToCel(toDecimal(a).minus(toDecimal(b)))),
-  celFunc("decimals.mul", [DYN, DYN], DECIMAL_TYPE, (a, b) => decimalToCel(toDecimal(a).times(toDecimal(b)))),
+  // Result scales follow java.math.BigDecimal exactly: add/sub take max(s1, s2), mul takes
+  // s1 + s2. The exact result never needs more fractional digits than that, so encoding at the
+  // derived scale only ever pads with the trailing zeros decimal.js dropped.
+  celFunc("decimals.add", [DYN, DYN], DECIMAL_TYPE, (a, b) =>
+    decimalToCelScaled(exact(a).plus(exact(b)), Math.max(scaleOf(a), scaleOf(b))),
+  ),
+  celFunc("decimals.sub", [DYN, DYN], DECIMAL_TYPE, (a, b) =>
+    decimalToCelScaled(exact(a).minus(exact(b)), Math.max(scaleOf(a), scaleOf(b))),
+  ),
+  celFunc("decimals.mul", [DYN, DYN], DECIMAL_TYPE, (a, b) =>
+    decimalToCelScaled(exact(a).times(exact(b)), scaleOf(a) + scaleOf(b)),
+  ),
+  // div is the one arithmetic operation with no derived scale: BigDecimal.divide(MathContext)
+  // yields the exact quotient's own scale, or 38 significant digits when it does not terminate
+  // (`10.0/2.0` is "5", not "5.0"). That is what decimal.js produces natively, so it stays on
+  // decimalToCel.
   celFunc("decimals.div", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
     const bd = toDecimal(b);
     if (bd.isZero()) throw new Error("decimals.div: division by zero");
@@ -345,15 +432,16 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   celFunc("decimals.mod", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
     const bd = toDecimal(b);
     if (bd.isZero()) throw new Error("decimals.mod: division by zero");
-    return decimalToCel(new DivDecimal(toDecimal(a).toString()).mod(bd.toString()));
+    // Exact, not DivDecimal: BigDecimal.remainder is exact. A remainder is smaller than the
+    // divisor so the 38-digit cap was almost always enough, but "almost" is not the contract.
+    // Scale is max(s1, s2), as for add/sub.
+    return decimalToCelScaled(exact(a).mod(exact(b)), Math.max(scaleOf(a), scaleOf(b)));
   }),
 
   // ---- selection ----
-  // greatest/least return the larger/smaller operand (no rounding).
-  celFunc("decimals.greatest", [DYN, DYN], DECIMAL_TYPE,
-    (a, b) => decimalToCel(Decimal.max(toDecimal(a), toDecimal(b)))),
-  celFunc("decimals.least", [DYN, DYN], DECIMAL_TYPE,
-    (a, b) => decimalToCel(Decimal.min(toDecimal(a), toDecimal(b)))),
+  // greatest/least return the larger/smaller operand (no rounding), keeping its scale.
+  celFunc("decimals.greatest", [DYN, DYN], DECIMAL_TYPE, (a, b) => selectDecimal(a, b, true)),
+  celFunc("decimals.least", [DYN, DYN], DECIMAL_TYPE, (a, b) => selectDecimal(a, b, false)),
 
   // ---- square root ----
   // 38-digit HALF_UP precision (same context as div). decimal.js's sqrt()
@@ -362,12 +450,25 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   celFunc("decimals.sqrt", [DYN], DECIMAL_TYPE, (a) => {
     const d = toDecimal(a);
     if (d.lt(0)) throw new Error("decimals.sqrt: square root of negative number");
-    return decimalToCel(new DivDecimal(d.toString()).sqrt());
+    const root = new DivDecimal(d.toString()).sqrt();
+    // BigDecimal.sqrt's preferred scale is scale/2, applied only when the root is exact:
+    // sqrt(9.0000) is "3.00" and sqrt(100.000) is "10.0", but sqrt(2) keeps all 38 digits. The
+    // squaring is done in the exact context so a rounded root cannot masquerade as exact.
+    const exactRoot = new ExactDecimal(root.toString()).pow(2).eq(d);
+    const scale = exactRoot
+      ? Math.max(Math.trunc(scaleOf(a) / 2), root.decimalPlaces())
+      : root.decimalPlaces();
+    return decimalToCelScaled(root, scale);
   }),
 
   // ---- unary ----
-  celFunc("decimals.neg", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).negated())),
-  celFunc("decimals.abs", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).abs())),
+  // Negation and absolute value leave the scale untouched (BigDecimal.negate/abs).
+  celFunc("decimals.neg", [DYN], DECIMAL_TYPE, (a) =>
+    decimalToCelScaled(toDecimal(a).negated(), scaleOf(a)),
+  ),
+  celFunc("decimals.abs", [DYN], DECIMAL_TYPE, (a) =>
+    decimalToCelScaled(toDecimal(a).abs(), scaleOf(a)),
+  ),
   celFunc("decimals.sign", [DYN], INT, (a) => {
     const d = toDecimal(a);
     if (d.isZero()) return 0n;
@@ -394,9 +495,14 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   // the current scale — it's a no-op there, so the result keeps the input's
   // representation. Without this guard, toDP(n>=cur, DOWN) would zero-pad and
   // string(trunc(x, n>=cur)) would diverge from Flink.
+  // The no-op comparison is against the operand's *scale*, not decimal.js's normalized
+  // decimalPlaces(): trunc(decimal("1.50"), 4) must stay "1.50", and reading 1 rather than 2
+  // there would have re-encoded it as "1.5".
   celFunc("decimals.trunc", [DYN], DECIMAL_TYPE, (a) => {
     const d = toDecimal(a);
-    return decimalToCel(d.decimalPlaces() <= 0 ? d : d.toDP(0, Decimal.ROUND_DOWN));
+    const current = scaleOf(a);
+    if (current <= 0) return decimalToCelScaled(d, current);
+    return decimalToCelScaled(d.toDP(0, Decimal.ROUND_DOWN), 0);
   }),
   celFunc("decimals.trunc", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
     const d = toDecimal(a);
@@ -406,7 +512,9 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     if (target < 0) {
       return decimalToCelScaled(d.toNearest(new Decimal(10).pow(-target), Decimal.ROUND_DOWN), target);
     }
-    return decimalToCel(target >= d.decimalPlaces() ? d : d.toDP(target, Decimal.ROUND_DOWN));
+    const current = scaleOf(a);
+    if (target >= current) return decimalToCelScaled(d, current);
+    return decimalToCelScaled(d.toDP(target, Decimal.ROUND_DOWN), target);
   }),
   celFunc("decimals.floor", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_FLOOR))),
   celFunc("decimals.ceil", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_CEIL))),

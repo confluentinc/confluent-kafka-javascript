@@ -44,6 +44,35 @@ const { DYN, INT } = CelScalar;
 const TIMESTAMP = objectType(TimestampSchema);
 
 /**
+ * CEL's timestamp range: `0001-01-01T00:00:00Z` through `9999-12-31T23:59:59.999999999Z`, which
+ * is the `google.protobuf.Timestamp` contract the CEL specification adopts wholesale.
+ *
+ * The other clients get this check for free from their timestamp type — Java and C# from
+ * protobuf's `Timestamps.checkValid`, Go from `time.Time` round-tripping through the proto
+ * wrapper, Python from `datetime`'s own year bounds. `@bufbuild/protobuf`'s `create()` performs
+ * no such validation, so without this JS silently built a Timestamp no other client would accept
+ * and `timestamp(253402300800)` returned a value that merely compared unequal, rather than
+ * failing the rule the way it does everywhere else.
+ */
+const MIN_TIMESTAMP_SECONDS = -62135596800n;
+const MAX_TIMESTAMP_SECONDS = 253402300799n;
+const MAX_TIMESTAMP_NANOS = 999999999;
+
+function checkRange(ts: Timestamp): Timestamp {
+  const nanos = ts.nanos ?? 0;
+  if (ts.seconds < MIN_TIMESTAMP_SECONDS || ts.seconds > MAX_TIMESTAMP_SECONDS) {
+    throw new Error(
+      `timestamp: seconds (${ts.seconds}) must be in range ` +
+        `[${MIN_TIMESTAMP_SECONDS}, ${MAX_TIMESTAMP_SECONDS}]`,
+    );
+  }
+  if (nanos < 0 || nanos > MAX_TIMESTAMP_NANOS) {
+    throw new Error(`timestamp: nanos (${nanos}) must be in range [0, ${MAX_TIMESTAMP_NANOS}]`);
+  }
+  return ts;
+}
+
+/**
  * Splits an epoch value in `unit` into seconds + nanos, flooring toward negative infinity so a
  * pre-epoch value yields a non-negative nano-of-second (BigInt `/` and `%` truncate toward
  * zero, which would produce a negative `nanos` that no proto Timestamp may carry). Matches
@@ -63,13 +92,13 @@ function fromEpoch(value: bigint | number, unit: string): Timestamp {
   const v = typeof value === "bigint" ? value : BigInt(Math.trunc(value));
   switch (unit) {
     case "millis":
-      return splitEpoch(v, 1_000n, 1_000_000n);
+      return checkRange(splitEpoch(v, 1_000n, 1_000_000n));
     case "micros":
-      return splitEpoch(v, 1_000_000n, 1_000n);
+      return checkRange(splitEpoch(v, 1_000_000n, 1_000n));
     case "nanos":
-      return splitEpoch(v, 1_000_000_000n, 1n);
+      return checkRange(splitEpoch(v, 1_000_000_000n, 1n));
     case "seconds":
-      return create(TimestampSchema, { seconds: v, nanos: 0 });
+      return checkRange(create(TimestampSchema, { seconds: v, nanos: 0 }));
     default:
       throw new Error(
         `timestamp: unknown unit '${unit}'; expected one of millis, micros, nanos, seconds`,

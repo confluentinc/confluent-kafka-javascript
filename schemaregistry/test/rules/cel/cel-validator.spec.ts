@@ -639,6 +639,137 @@ describe('CelValidator timestamp(int) is epoch seconds', () => {
       validator.execute(rule(`timestamp(1700000000, ${precision}) == now`), null, 0))
       .rejects.toThrow(/unknown precision/)
   })
+
+  // CEL's timestamp range is google.protobuf.Timestamp's: 0001-01-01T00:00:00Z through
+  // 9999-12-31T23:59:59.999999999Z. @bufbuild/protobuf's create() performs no validation, so
+  // without an explicit check `timestamp(253402300800)` built a year-10000 instant that merely
+  // compared unequal — Java, Go, Python, C# and C++ all fail the rule here instead.
+  it.each([
+    'timestamp(253402300800)',
+    'timestamp(-62135596801)',
+    'timestamp(253402300800000, 3)',
+  ])('rejects out-of-range %s', async (expr) => {
+    const validator = new CelValidator()
+    await expect(validator.execute(rule(`${expr} == now`), null, 0))
+      .rejects.toThrow(/must be in range/)
+  })
+
+  // Both boundaries are themselves valid, and render as the same instants Java does.
+  // (Asserted on the rendered instant rather than .getFullYear(), which @bufbuild/cel reports as
+  // 1901 for year 1 — JS's two-digit-year mapping, where `new Date(1, ...)` means 1901.)
+  it.each([
+    "string(timestamp(253402300799)) == '9999-12-31T23:59:59Z'",
+    "string(timestamp(-62135596800)) == '0001-01-01T00:00:00Z'",
+  ])('accepts boundary %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, 0)).toBe(true)
+  })
+})
+
+// Scale preservation across every decimal-producing operation (Java BigDecimal parity).
+//
+// decimal.js has no scale concept - `new Decimal("2.00")` normalizes to 2 - so results encoded
+// from decimalPlaces() silently dropped trailing zeros, and `string(decimal("2.00"))` came back
+// as "2". Scale is now recovered from each operand and carried through explicitly, following
+// BigDecimal's rules: add/sub/mod take max(s1,s2), mul takes s1+s2, neg/abs keep the operand's,
+// greatest/least keep the *selected* operand's, sqrt uses the preferred scale/2 when the root is
+// exact, and div alone has no derived scale (MathContext gives the quotient its own).
+//
+// Every expectation below is the verbatim output of the Java reference for the same expression.
+describe('CelValidator decimal scale preservation (Java BigDecimal parity)', () => {
+  const evalStr = async (expr: string): Promise<any> => {
+    const validator = new CelValidator()
+    return validator.execute(rule(expr), null, 0)
+  }
+
+  const scaleCases: [string, string][] = [
+    ['string(decimal("2.00"))', '2.00'],
+    ['string(decimal("2.0"))', '2.0'],
+    ['string(decimal("2"))', '2'],
+    ['string(decimal("0.00"))', '0.00'],
+    ['string(decimal("-1.50"))', '-1.50'],
+    ['string(decimal("1E+3"))', '1000'],
+    ['string(decimal("2.00e1"))', '20.0'],
+    ['string(decimal("1e-5"))', '0.00001'],
+    ['string(decimal(5))', '5'],
+    ['string(decimal(5.25))', '5.25'],
+    ['string(decimal(decimal("3.400")))', '3.400'],
+    ['string(decimals.add(decimal("1.5"), decimal("1.50")))', '3.00'],
+    ['string(decimals.add(decimal("1.005"), decimal("2.1")))', '3.105'],
+    ['string(decimals.add(decimal("1"), decimal("2")))', '3'],
+    ['string(decimals.sub(decimal("1.5"), decimal("1.50")))', '0.00'],
+    ['string(decimals.sub(decimal("5.250"), decimal("1.1")))', '4.150'],
+    ['string(decimals.mul(decimal("2.0"), decimal("3.0")))', '6.00'],
+    ['string(decimals.mul(decimal("1.25"), decimal("4.000")))', '5.00000'],
+    ['string(decimals.mul(decimal("2"), decimal("3")))', '6'],
+    ['string(decimals.div(decimal("1.0"), decimal("4.0")))', '0.25'],
+    ['string(decimals.div(decimal("1.00"), decimal("4.0")))', '0.25'],
+    ['string(decimals.div(decimal("1"), decimal("4")))', '0.25'],
+    ['string(decimals.div(decimal("1"), decimal("3")))', '0.33333333333333333333333333333333333333'],
+    ['string(decimals.div(decimal("10.0"), decimal("2.0")))', '5'],
+    ['string(decimals.mod(decimal("5.50"), decimal("2.0")))', '1.50'],
+    ['string(decimals.mod(decimal("5.5"), decimal("2.00")))', '1.50'],
+    ['string(decimals.mod(decimal("7"), decimal("3")))', '1'],
+    ['string(decimals.greatest(decimal("2.0"), decimal("2.00")))', '2.0'],
+    ['string(decimals.greatest(decimal("3.00"), decimal("2.0")))', '3.00'],
+    ['string(decimals.least(decimal("2.0"), decimal("2.00")))', '2.0'],
+    ['string(decimals.least(decimal("3.00"), decimal("2.0")))', '2.0'],
+    ['string(decimals.sqrt(decimal("4.00")))', '2.0'],
+    ['string(decimals.sqrt(decimal("4")))', '2'],
+    ['string(decimals.sqrt(decimal("2")))', '1.4142135623730950488016887242096980786'],
+    ['string(decimals.sqrt(decimal("9.0000")))', '3.00'],
+    ['string(decimals.neg(decimal("1.50")))', '-1.50'],
+    ['string(decimals.abs(decimal("-1.50")))', '1.50'],
+    ['string(decimals.floor(decimal("1.50")))', '1'],
+    ['string(decimals.ceil(decimal("1.50")))', '2'],
+    ['string(decimals.trunc(decimal("1.50")))', '1'],
+    ['string(decimals.trunc(decimal("1.2999"), 2))', '1.29'],
+    ['string(decimals.trunc(decimal("1.5"), 4))', '1.5'],
+    ['string(decimals.round(decimal("2.5"), 2))', '2.50'],
+    ['string(decimals.round(decimal("1.50")))', '2'],
+    ['string(decimals.add(decimals.mul(decimal("2.0"), decimal("3.0")), decimal("1.000")))', '7.000'],
+    ['string(decimal(5.0))', '5.0'],
+    ['string(decimal(100.0))', '100.0'],
+    ['string(decimal(0.1))', '0.1'],
+    ['string(decimals.sqrt(decimal("1.0")))', '1'],
+    ['string(decimals.sqrt(decimal("0.0004")))', '0.02'],
+    ['string(decimals.sqrt(decimal("2.25")))', '1.5'],
+    ['string(decimals.sqrt(decimal("6.250000")))', '2.500'],
+    ['string(decimals.sqrt(decimal("100.000")))', '10.0'],
+    ['string(decimals.trunc(decimal("1.50"), 4))', '1.50'],
+    ['string(decimals.trunc(decimal("2.00")))', '2'],
+    ['string(decimals.floor(decimal("2.00")))', '2'],
+    ['string(decimals.ceil(decimal("2.00")))', '2'],
+    ['string(decimals.round(decimal("2.00")))', '2'],
+    ['string(decimals.add(decimal("1E+3"), decimal("1")))', '1001'],
+    ['string(decimals.mul(decimal("1E+3"), decimal("2")))', '2000'],
+    ['string(decimals.neg(decimal("1E+3")))', '-1000'],
+    ['string(decimals.greatest(decimal("2.00"), decimal("2.0")))', '2.00'],
+    ['string(decimals.least(decimal("2.00"), decimal("2.0")))', '2.00'],
+  ]
+  it.each(scaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // Equality stays numeric across differing scales. Preserving scale means two decimals that
+  // used to encode to byte-identical protos ("2.00" and "2.0" both normalized to 2) now differ
+  // structurally, so anything that fell back to a message comparison would start reporting them
+  // unequal - where Java compares by value. Lists are included because container equality is
+  // exactly where such a fallback would hide.
+  const equalityCases: [string, boolean][] = [
+    ['decimal("2.00") == decimal("2.0")', true],
+    ['decimal("2.00") == decimal("2")', true],
+    ['decimals.eq(decimal("2.00"), decimal("2.0"))', true],
+    ['decimal("2.00") != decimal("2.0")', false],
+    ['decimal("2.00") in [decimal("2.0"), decimal("9")]', true],
+    ['decimals.add(decimal("1.5"), decimal("1.50")) == decimal("3")', true],
+    ['decimal("0.00") == decimal("0")', true],
+    ['[decimal("2.00")] == [decimal("2.0")]', true],
+  ]
+  it.each(equalityCases)('%s is %s', async (expr, expected) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, 0)).toBe(expected)
+  })
 })
 
 describe('CelValidator variant functions', () => {
@@ -696,6 +827,33 @@ describe('CelValidator variant functions', () => {
   ]
 
   it.each(tryParseNullCases)('tryParseJson soft-fails to null: %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
+  })
+
+  // The non-finite bareword contract, end to end through the CEL layer. JSON.parse rejects the
+  // barewords, so parseJson rewrites them; Java (Jackson), Python, C#, Rust, Go and C++ all
+  // accept them, and every client's toJson writes them back out as barewords.
+  const nonFiniteCases: string[] = [
+    "variants.type(variants.parseJson('NaN')) == 'double'",
+    "variants.type(variants.parseJson('Infinity')) == 'double'",
+    "variants.type(variants.parseJson('-Infinity')) == 'double'",
+    "variants.toJson(variants.parseJson('NaN')) == 'NaN'",
+    "variants.toJson(variants.parseJson('Infinity')) == 'Infinity'",
+    "variants.toJson(variants.parseJson('-Infinity')) == '-Infinity'",
+    `variants.toJson(variants.parseJson('{"a":NaN}')) == '{"a":NaN}'`,
+    `variants.toJson(variants.parseJson('[NaN,Infinity,-Infinity]')) == '[NaN,Infinity,-Infinity]'`,
+    `variants.type(variants.field(variants.parseJson('{"a":NaN}'), 'a')) == 'double'`,
+    // Magnitude overflow, which JSON.parse already reads as Infinity.
+    "variants.toJson(variants.parseJson('1e400')) == 'Infinity'",
+    // A bareword is a successful parse, not a soft failure.
+    "variants.tryParseJson('NaN') != null",
+    // Spelling and case are exact, matching Jackson, so these stay soft failures.
+    "variants.tryParseJson('nan') == null",
+    "variants.tryParseJson('INFINITY') == null",
+  ]
+
+  it.each(nonFiniteCases)('non-finite through CEL: %s', async (expr) => {
     const validator = new CelValidator()
     expect(await validator.execute(rule(expr), null, json)).toBe(true)
   })
