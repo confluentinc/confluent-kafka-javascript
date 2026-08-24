@@ -482,21 +482,55 @@ describe("Variant builder - regression", () => {
     expect(parseJson("1e400").toJson()).toBe("Infinity");
   });
 
+  it("parseJson accepts the non-finite barewords", () => {
+    // JSON.parse rejects NaN / Infinity / -Infinity and takes no options, so parseJson rewrites
+    // them to a placeholder object and revives them. Java (Jackson), Python, C#, Rust, Go and
+    // C++ all accept them, and every client's toJson writes them back out as barewords.
+    expect(parseJson("NaN").getType()).toBe(VariantType.DOUBLE);
+    expect(parseJson("NaN").getDouble()).toBeNaN();
+    expect(parseJson("NaN").toJson()).toBe("NaN");
+    expect(parseJson("Infinity").toJson()).toBe("Infinity");
+    expect(parseJson("-Infinity").toJson()).toBe("-Infinity");
+    expect(parseJson('{"a":NaN}').toJson()).toBe('{"a":NaN}');
+    expect(parseJson("[NaN,Infinity,-Infinity]").toJson()).toBe("[NaN,Infinity,-Infinity]");
+    expect(parseJson('{"a":{"b":[Infinity]}}').toJson()).toBe('{"a":{"b":[Infinity]}}');
+    expect(parseJson("[ NaN , 1 ]").toJson()).toBe("[NaN,1]");
+  });
+
+  it("parseJson leaves a bareword that is string content or a key alone", () => {
+    // The rewrite is string-aware: none of these is a number.
+    expect(parseJson('"NaN"').toJson()).toBe('"NaN"');
+    expect(parseJson('{"a":"Infinity"}').toJson()).toBe('{"a":"Infinity"}');
+    expect(parseJson('{"NaN":1}').toJson()).toBe('{"NaN":1}');
+    expect(parseJson('"he said \\"NaN\\""').toJson()).toBe('"he said \\"NaN\\""');
+    expect(parseJson('["NaN",NaN]').toJson()).toBe('["NaN",NaN]');
+  });
+
+  it("parseJson revives a placeholder-shaped object the document really contained", () => {
+    // The placeholder key can be spelled by a real document, so parseJson counts what it
+    // revived against what it wrote and retries with a longer key on a mismatch. Both of these
+    // must survive intact - the second spells the key with \\u escapes, which the rewrite scan
+    // cannot see.
+    expect(parseJson('{"__nonFinite__":0}').toJson()).toBe('{"__nonFinite__":0}');
+    expect(parseJson('[{"__nonFinite__":0},NaN]').toJson()).toBe('[{"__nonFinite__":0},NaN]');
+    expect(parseJson('[{"\\u005f_nonFinite__":2},NaN]').toJson()).toBe(
+      '[{"__nonFinite__":2},NaN]',
+    );
+  });
+
+  it("parseJson rejects near-miss spellings of the barewords", () => {
+    // Spelling and case are exact, matching Jackson.
+    for (const bad of ["nan", "NAN", "INFINITY", "inf", "Inf", "NaNny", "Infinityx", "+Infinity"]) {
+      expect(() => parseJson(bad)).toThrow();
+    }
+  });
+
   it("parseJson soft-fails on empty / whitespace-only input", () => {
     // JSON.parse('') throws SyntaxError; parseJson must surface that (variants.tryParseJson
     // catches it and maps to CEL null - covered in the CEL suite).
     expect(() => parseJson("")).toThrow();
     expect(() => parseJson("   ")).toThrow();
     expect(() => parseJson("\n\t ")).toThrow();
-  });
-
-  it("does not natively parse bareword NaN/Infinity literals (known JS gap)", () => {
-    // Input-parity gap vs Java: JSON.parse rejects the bareword literals NaN/Infinity, so
-    // parseJson cannot accept them as input. This is an accepted limitation (no custom
-    // bareword pre-parser); only the toJson OUTPUT side emits barewords.
-    expect(() => parseJson("NaN")).toThrow();
-    expect(() => parseJson("Infinity")).toThrow();
-    expect(() => parseJson("-Infinity")).toThrow();
   });
 
   it("temporal years outside 1..9999 use Java-compatible sign/pad formatting", () => {
