@@ -705,6 +705,124 @@ export function parseJson(jsonStr: string): Variant {
   return new VariantBuilder().buildFromJson(jsonStr);
 }
 
+/**
+ * The bare non-finite tokens every other client's JSON parser accepts: Jackson (Java) under
+ * ALLOW_NON_NUMERIC_NUMBERS, Python's json module, System.Text.Json (C#) and serde_json (Rust)
+ * all read these, and every client's toJson writes them back out (see the `Number.isFinite`
+ * arms above). `JSON.parse` rejects them and takes no options, so they are rewritten to a
+ * placeholder object ahead of the parse and restored by a reviver.
+ *
+ * Matching is case-sensitive and whole-token, exactly as Jackson has it: `nan` and `INFINITY`
+ * are errors in Java, so they must stay errors here. A magnitude overflow such as `1e400` needs
+ * no help - `JSON.parse` already yields Infinity for it, as Java and Go do.
+ */
+const NON_FINITE_LITERALS: ReadonlyArray<readonly [string, number]> = [
+  ["-Infinity", -Infinity],
+  ["Infinity", Infinity],
+  ["NaN", NaN],
+];
+
+function isBarewordChar(c: string): boolean {
+  return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_";
+}
+
+/** The NON_FINITE_LITERALS entry starting at `i`, as a whole token, or null. */
+function matchNonFinite(s: string, i: number): { length: number; index: number } | null {
+  for (let k = 0; k < NON_FINITE_LITERALS.length; k++) {
+    const text = NON_FINITE_LITERALS[k][0];
+    if (!s.startsWith(text, i)) continue;
+    // A trailing letter or digit means some longer (and invalid) literal such as `NaNny`, which
+    // must be left for JSON.parse to reject rather than silently truncated.
+    const next = s[i + text.length];
+    if (next !== undefined && isBarewordChar(next)) continue;
+    return { length: text.length, index: k };
+  }
+  return null;
+}
+
+/**
+ * Rewrites each non-finite bareword appearing outside a string literal to `{"<key>":<index>}`,
+ * where `<index>` selects the NON_FINITE_LITERALS entry. Returns null when there is nothing to
+ * rewrite - the overwhelmingly common case, which leaves parsing completely unchanged.
+ */
+function rewriteNonFinite(jsonStr: string, key: string): { text: string; count: number } | null {
+  // Every one of the three barewords contains an 'N' or an 'I'; a document with neither cannot
+  // need rewriting.
+  if (!jsonStr.includes("N") && !jsonStr.includes("I")) return null;
+  let out = "";
+  let copiedFrom = 0;
+  let count = 0;
+  let inString = false;
+  let i = 0;
+  while (i < jsonStr.length) {
+    const c = jsonStr[i];
+    if (inString) {
+      // A backslash escape is skipped whole so an escaped quote does not read as the end of the
+      // string.
+      if (c === "\\" && i + 1 < jsonStr.length) {
+        i += 2;
+        continue;
+      }
+      if (c === '"') inString = false;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      i++;
+      continue;
+    }
+    const match = matchNonFinite(jsonStr, i);
+    if (match === null) {
+      i++;
+      continue;
+    }
+    out += jsonStr.slice(copiedFrom, i) + `{"${key}":${match.index}}`;
+    count++;
+    i += match.length;
+    copiedFrom = i;
+  }
+  if (count === 0) return null;
+  return { text: out + jsonStr.slice(copiedFrom), count };
+}
+
+/** The NON_FINITE_LITERALS index a `{"<key>":<index>}` placeholder selects, or null. */
+function nonFinitePlaceholderIndex(value: unknown, key: string): number | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const keys = Object.keys(value as object);
+  if (keys.length !== 1 || keys[0] !== key) return null;
+  const index = (value as Record<string, unknown>)[key];
+  if (typeof index !== "number" || !Number.isInteger(index)) return null;
+  if (index < 0 || index >= NON_FINITE_LITERALS.length) return null;
+  return index;
+}
+
+/**
+ * `JSON.parse`, extended to accept the non-finite barewords.
+ *
+ * A placeholder object is only known to be one of ours if the document could not already have
+ * contained it, so the number of placeholders revived is checked against the number written. A
+ * mismatch means the document genuinely held an identical object - possible, since a JSON string
+ * can spell any key with \\u escapes - and the parse is retried with a longer key. That
+ * terminates: a finite document can only contain finitely many distinct keys.
+ */
+function parseJsonAllowingNonFinite(jsonStr: string): unknown {
+  let key = "__nonFinite__";
+  for (;;) {
+    const rewritten = rewriteNonFinite(jsonStr, key);
+    if (rewritten === null) return JSON.parse(jsonStr);
+    let revived = 0;
+    const parsed = JSON.parse(rewritten.text, (_k, value) => {
+      const index = nonFinitePlaceholderIndex(value, key);
+      if (index === null) return value;
+      revived++;
+      return NON_FINITE_LITERALS[index][1];
+    });
+    if (revived === rewritten.count) return parsed;
+    key += "_";
+  }
+}
+
 // --- Variant builder ---
 //
 // A flat streaming writer (arrow-dotnet `VariantValueWriter` shape): a single object with an
@@ -970,7 +1088,7 @@ export class VariantBuilder {
 
   /** Build a Variant directly from a JSON string (drives the same internal machinery). */
   buildFromJson(jsonStr: string): Variant {
-    this.processParsedJson(JSON.parse(jsonStr));
+    this.processParsedJson(parseJsonAllowingNonFinite(jsonStr));
     const { value, metadata } = this.finalize();
     return new Variant(value, metadata);
   }
