@@ -11,6 +11,7 @@ import { CelValidator } from '../../../rules/cel/cel-validator';
 import { VariantLogicalType } from '../../../serde/avro';
 import { Variant, parseJson } from '../../../confluent/types/variant-utils';
 import { VariantSchema } from '../../../confluent/types/variant_pb';
+import { DecimalSchema } from '../../../confluent/types/decimal_pb';
 import { RuleError, ValidationRule } from '../../../serde/serde';
 import {
   ValidationInnerSchema,
@@ -726,5 +727,84 @@ describe('CelValidator variant serde into CEL', () => {
     const msg = create(VariantSchema, { value, metadata })
     const validator = new CelValidator()
     expect(await validator.execute(rule(expr), VariantSchema, msg)).toBe(true)
+  })
+
+  // Cross-client parity: a variant value is usable with the variants.* accessors with no
+  // variant(...) call, in both formats, and the wrapped form keeps working alongside it. The
+  // accessors are declared [DYN, ...] and coerce inside, so they take whatever the decoder
+  // produced.
+  const bareCases: [string, boolean][] = [
+    // Bare: no constructor call.
+    ["variants.type(this) == 'object'", true],
+    ["variants.as(variants.field(this, 'name'), 'string') == 'alice'", true],
+    ["variants.as(variants.path(this, '$.age'), 'int') == 30", true],
+    // The wrapped form must keep working (variant(...) re-entry).
+    ["variants.as(variants.field(variant(this), 'name'), 'string') == 'alice'", true],
+    // A missing key is CEL null, not an error.
+    ["variants.field(this, 'nope') == null", true],
+    // Negative control.
+    ["variants.as(variants.field(this, 'name'), 'string') == 'bob'", false],
+  ]
+
+  it.each(bareCases)('Avro variant needs no constructor: %s', async (e, expected) => {
+    const type = avro.Type.forSchema(
+      {
+        type: 'record', name: 'confluent.type.Variant', logicalType: 'variant',
+        fields: [{ name: 'metadata', type: 'bytes' }, { name: 'value', type: 'bytes' }],
+      } as avro.Schema,
+      { logicalTypes: { variant: VariantLogicalType } },
+    )
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
+    const decoded = type.fromBuffer(type.toBuffer(new Variant(value, metadata)))
+    expect(await new CelValidator().execute(rule(e), null, decoded)).toBe(expected)
+  })
+
+  // `variants.isNull` must coerce its receiver like every other accessor. It is declared [DYN],
+  // so a bare variant field reaches it. A bare *object* cannot catch a missing coercion - isNull
+  // on an object is false either way - so only a variant that is itself null discriminates.
+  it.each([['null', true], ['5', false]] as [string, boolean][])(
+    'variants.isNull coerces a bare receiver: %s', async (json, expected) => {
+      const { value, metadata } = parseJson(json)
+      const msg = create(VariantSchema, { value, metadata })
+      expect(await new CelValidator().execute(
+        rule('variants.isNull(this)'), VariantSchema, msg)).toBe(expected)
+      // The wrapped form has always worked and must keep working.
+      expect(await new CelValidator().execute(
+        rule('variants.isNull(variant(this))'), VariantSchema, msg)).toBe(expected)
+    })
+
+  it.each(bareCases)('Protobuf variant needs no constructor: %s', async (e, expected) => {
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
+    const msg = create(VariantSchema, { value, metadata })
+    expect(await new CelValidator().execute(rule(e), VariantSchema, msg)).toBe(expected)
+  })
+})
+
+// Cross-client parity: a bare confluent.type.Decimal field is usable with decimals.*, ==,
+// string() and double() with no decimal(...) call on it. The discriminating case is the
+// scale-differing equality: a client comparing decimals by their protobuf encoding (unscaled
+// bytes plus scale, field by field) answers false for decimal("12.340"), because 12.34 and
+// 12.340 are the same number in two different encodings.
+describe('CelValidator bare protobuf decimal', () => {
+  const bareDecimalCases: [string, boolean][] = [
+    // Bare: no constructor call on the field.
+    ['decimals.eq(this, decimal("12.34"))', true],
+    ['decimals.gt(this, decimal("10.00"))', true],
+    // The wrapped form must keep working (decimal(...) re-entry).
+    ['decimals.eq(decimal(this), decimal("12.34"))', true],
+    // `==` is numeric on it: 12.34 equals 12.340 despite the differing scale.
+    ['this == decimal("12.340")', true],
+    ['this != decimal("12.340")', false],
+    ['decimals.lt(this, decimal("100"))', true],
+    // Negative control: a false comparison must still be false.
+    ['decimals.gt(this, decimal("100"))', false],
+    ['string(this) == "12.34"', true],
+    ['double(this) == 12.34', true],
+  ]
+
+  it.each(bareDecimalCases)('Protobuf decimal needs no constructor: %s', async (e, expected) => {
+    // 12.34 = unscaled 1234 (0x04D2) at scale 2.
+    const msg = create(DecimalSchema, { value: new Uint8Array([0x04, 0xd2]), scale: 2 })
+    expect(await new CelValidator().execute(rule(e), DecimalSchema, msg)).toBe(expected)
   })
 })
