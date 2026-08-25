@@ -9,6 +9,7 @@
  */
 
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -701,11 +702,9 @@ Napi::Value KafkaConsumer::NodeSubscription(const Napi::CallbackInfo &info) {
     return Napi::Number::New(env, error_code);
   }
 
-  std::vector<std::string> * topics = b.data<std::vector<std::string>*>();
-
+  std::unique_ptr<std::vector<std::string>> topics(
+      b.data<std::vector<std::string>*>());
   return Conversion::Util::ToV8Array(env, *topics);
-
-  delete topics;
 }
 
 Napi::Value KafkaConsumer::NodePosition(const Napi::CallbackInfo &info) {
@@ -788,6 +787,8 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
     if (!partition_obj_value.IsObject()) {
       Napi::Error::New(env, "Must pass topic-partition objects")
           .ThrowAsJavaScriptException();
+      RdKafka::TopicPartition::destroy(topic_partitions);
+      return env.Null();
     }
 
     Napi::Object partition_obj = partition_obj_value.As<Napi::Object>();
@@ -823,6 +824,7 @@ Napi::Value KafkaConsumer::NodeAssign(const Napi::CallbackInfo& info) {
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     Napi::Error::New(env, RdKafka::err2str(b.err()).c_str())
         .ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   return Napi::Value::From(env, true);
@@ -843,6 +845,7 @@ Napi::Value KafkaConsumer::NodeUnassign(const Napi::CallbackInfo &info) {
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     Napi::Error::New(env, RdKafka::err2str(b.err()).c_str())
         .ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   return Napi::Value::From(env, true);
@@ -903,6 +906,7 @@ Napi::Value KafkaConsumer::NodeIncrementalAssign(
 
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     b.ToError(env).ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   return Napi::Value::From(env, true);
@@ -964,6 +968,7 @@ Napi::Value KafkaConsumer::NodeIncrementalUnassign(
   if (b.err() != RdKafka::ERR_NO_ERROR) {
     Napi::Error errorObject = b.ToError(env);
     errorObject.ThrowAsJavaScriptException();
+    return env.Null();
   }
 
   return Napi::Value::From(env, true);

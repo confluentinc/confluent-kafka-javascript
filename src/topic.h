@@ -43,7 +43,7 @@ class Topic : public Napi::ObjectWrap<Topic> {
   void Setup(std::string, RdKafka::Conf *);
 
   std::string m_topic_name;
-  RdKafka::Conf * m_config;
+  RdKafka::Conf * m_config = nullptr;
 
   Napi::Value NodeGetName(const Napi::CallbackInfo& info);
   Napi::Value NodePartitionAvailable(const Napi::CallbackInfo& info);

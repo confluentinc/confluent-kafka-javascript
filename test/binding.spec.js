@@ -35,10 +35,24 @@ module.exports = {
     'exports valid consumer': function() {
       t.equal(typeof(addon.KafkaConsumer), 'function');
       t.throws(addon.KafkaConsumer); // Requires constructor
-      t.equal(typeof(new addon.KafkaConsumer(consumerConfig, {})), 'object');
+      var consumer = new addon.KafkaConsumer(consumerConfig, {});
+      t.equal(typeof(consumer), 'object');
+      t.throws(function() {
+        consumer.assign([1]);
+      }, /Must pass topic-partition objects/);
     },
     'exports version': function() {
       t.ok(addon.librdkafkaVersion);
+    },
+    'exports builtin features repeatedly': function() {
+      for (var i = 0; i < 100; i++) {
+        t.equal(typeof(addon.features()), 'string');
+      }
+    },
+    'rejects invalid Topic construction': function() {
+      t.throws(function() {
+        return new addon.Topic();
+      }, /topic name is required/);
     },
     'Producer client': {
       'beforeEach': function() {

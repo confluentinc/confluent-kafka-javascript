@@ -8,6 +8,7 @@
  * of the MIT license.  See the LICENSE.txt file for details.
  */
 
+#include <memory>
 #include <string>
 #include "src/binding.h"
 
@@ -31,17 +32,16 @@ Napi::Value NodeRdKafkaErr2Str(const Napi::CallbackInfo& info) {
 
 Napi::Value NodeRdKafkaBuildInFeatures(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
-  RdKafka::Conf * config = RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL);
+  std::unique_ptr<RdKafka::Conf> config(
+      RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
 
   std::string features;
 
   if (RdKafka::Conf::CONF_OK == config->get("builtin.features", features)) {
     return Napi::String::New(env, features);
-  } else {
-    return env.Undefined();
   }
 
-  delete config;
+  return env.Undefined();
 }
 
 void defconst(Napi::Env env, Napi::Object target, const char *name,
