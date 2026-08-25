@@ -34,8 +34,11 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
  public:
   explicit ErrorAwareWorker(Napi::FunctionReference* callback_) :
     Napi::AsyncWorker(callback_->Value()),
-    m_baton(RdKafka::ERR_NO_ERROR) {}
-  virtual ~ErrorAwareWorker() {}
+    m_baton(RdKafka::ERR_NO_ERROR) {
+    // AsyncWorker keeps its own persistent reference to the callback.
+    delete callback_;
+  }
+  ~ErrorAwareWorker() override {}
 
   virtual void Execute() = 0;
   virtual void OnOK() = 0;
