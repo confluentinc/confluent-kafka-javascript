@@ -40,8 +40,8 @@ class ErrorAwareWorker : public Napi::AsyncWorker {
   }
   ~ErrorAwareWorker() override {}
 
-  virtual void Execute() = 0;
-  virtual void OnOK() = 0;
+  void Execute() override = 0;
+  void OnOK() override = 0;
   void OnError(const Napi::Error &e) override {
     Napi::Env env = e.Env();
     Napi::HandleScope scope(env);
@@ -103,7 +103,7 @@ class MessageWorker : public ErrorAwareWorker {
     uv_mutex_init(&m_async_lock);
   }
 
-  virtual ~MessageWorker() {
+  ~MessageWorker() override {
     uv_mutex_destroy(&m_async_lock);
   }
 
@@ -163,12 +163,12 @@ class MessageWorker : public ErrorAwareWorker {
   virtual void Execute(const ExecutionMessageBus&) = 0;
   virtual void HandleMessageCallback(RdKafka::Message*, RdKafka::ErrorCode) = 0;
 
-  virtual void Destroy() {
+  void Destroy() override {
     uv_close(reinterpret_cast<uv_handle_t*>(m_async), AsyncClose_);
   }
 
  private:
-  void Execute() {
+  void Execute() override {
     ExecutionMessageBus message_bus(this);
     Execute(message_bus);
   }
@@ -218,9 +218,9 @@ namespace Handle {
         const int &);
     ~OffsetsForTimes();
 
-    void Execute();
-    void OnOK();
-    void HandleErrorCallback();
+    void Execute() override;
+    void OnOK() override;
+    void HandleErrorCallback() override;
 
    private:
     Connection<T> * m_handle;
@@ -235,9 +235,9 @@ template <class T> class ConnectionMetadata : public ErrorAwareWorker {
          std::string, int, bool);
   ~ConnectionMetadata();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   Connection<T> * m_connection;
@@ -255,9 +255,9 @@ class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {
     std::string, int32_t, int);
   ~ConnectionQueryWatermarkOffsets();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   Connection<T> * m_connection;
@@ -274,9 +274,9 @@ class ProducerConnect : public ErrorAwareWorker {
   ProducerConnect(Napi::FunctionReference*, NodeKafka::Producer*);
   ~ProducerConnect();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -287,9 +287,9 @@ class ProducerDisconnect : public ErrorAwareWorker {
   ProducerDisconnect(Napi::FunctionReference*, NodeKafka::Producer*);
   ~ProducerDisconnect();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -300,8 +300,8 @@ class ProducerFlush : public ErrorAwareWorker {
   ProducerFlush(Napi::FunctionReference*, NodeKafka::Producer*, int);
   ~ProducerFlush();
 
-  void Execute();
-  void OnOK();
+  void Execute() override;
+  void OnOK() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -314,9 +314,9 @@ class ProducerInitTransactions : public ErrorAwareWorker {
       const int &);
   ~ProducerInitTransactions();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -328,9 +328,9 @@ class ProducerBeginTransaction : public ErrorAwareWorker {
   ProducerBeginTransaction(Napi::FunctionReference*, NodeKafka::Producer*);
   ~ProducerBeginTransaction();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -342,9 +342,9 @@ class ProducerCommitTransaction : public ErrorAwareWorker {
       const int &);
   ~ProducerCommitTransaction();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -357,9 +357,9 @@ class ProducerAbortTransaction : public ErrorAwareWorker {
       const int &);
   ~ProducerAbortTransaction();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -375,9 +375,9 @@ class ProducerSendOffsetsToTransaction : public ErrorAwareWorker {
     const int &);
   ~ProducerSendOffsetsToTransaction();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::Producer * producer;
@@ -391,9 +391,9 @@ class KafkaConsumerConnect : public ErrorAwareWorker {
   KafkaConsumerConnect(Napi::FunctionReference*, NodeKafka::KafkaConsumer*);
   ~KafkaConsumerConnect();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::KafkaConsumer * consumer;
@@ -404,9 +404,9 @@ class KafkaConsumerDisconnect : public ErrorAwareWorker {
   KafkaConsumerDisconnect(Napi::FunctionReference*, NodeKafka::KafkaConsumer*);
   ~KafkaConsumerDisconnect();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::KafkaConsumer * consumer;
@@ -420,10 +420,11 @@ class KafkaConsumerConsumeLoop : public MessageWorker {
 
   static void ConsumeLoop(void *arg);
   void Close();
-  void Execute(const ExecutionMessageBus&);
-  void OnOK();
-  void HandleErrorCallback();
-  void HandleMessageCallback(RdKafka::Message*, RdKafka::ErrorCode);
+  void Execute(const ExecutionMessageBus&) override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
+  void HandleMessageCallback(
+      RdKafka::Message*, RdKafka::ErrorCode) override;
  private:
   uv_thread_t thread_event_loop;
   NodeKafka::KafkaConsumer* consumer;
@@ -439,9 +440,9 @@ class KafkaConsumerConsume : public ErrorAwareWorker {
       const int &);
   ~KafkaConsumerConsume();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::KafkaConsumer * consumer;
   const int m_timeout_ms;
@@ -455,9 +456,9 @@ class KafkaConsumerCommitted : public ErrorAwareWorker {
     const int &);
   ~KafkaConsumerCommitted();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   std::vector<RdKafka::TopicPartition*> m_topic_partitions;
@@ -471,9 +472,9 @@ class KafkaConsumerCommitCb : public ErrorAwareWorker {
     std::optional<std::vector<RdKafka::TopicPartition*>> &);
   ~KafkaConsumerCommitCb();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   std::optional<std::vector<RdKafka::TopicPartition*>> m_topic_partitions;
@@ -485,9 +486,9 @@ class KafkaConsumerSeek : public ErrorAwareWorker {
     const RdKafka::TopicPartition *, const int &);
   ~KafkaConsumerSeek();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   const RdKafka::TopicPartition * m_toppar;
@@ -500,9 +501,9 @@ class KafkaConsumerConsumeNum : public ErrorAwareWorker {
     const uint32_t &, const int &, bool);
   ~KafkaConsumerConsumeNum();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::KafkaConsumer * m_consumer;
   const uint32_t m_num_messages;
@@ -520,9 +521,9 @@ class AdminClientCreateTopic : public ErrorAwareWorker {
     rd_kafka_NewTopic_t*, const int &);
   ~AdminClientCreateTopic();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::AdminClient * m_client;
   rd_kafka_NewTopic_t* m_topic;
@@ -538,9 +539,9 @@ class AdminClientDeleteTopic : public ErrorAwareWorker {
     rd_kafka_DeleteTopic_t*, const int &);
   ~AdminClientDeleteTopic();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::AdminClient * m_client;
   rd_kafka_DeleteTopic_t* m_topic;
@@ -556,9 +557,9 @@ class AdminClientCreatePartitions : public ErrorAwareWorker {
     rd_kafka_NewPartitions_t*, const int &);
   ~AdminClientCreatePartitions();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
  private:
   NodeKafka::AdminClient * m_client;
   rd_kafka_NewPartitions_t* m_partitions;
@@ -578,9 +579,9 @@ class AdminClientListGroups : public ErrorAwareWorker {
       const int &);
   ~AdminClientListGroups();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -601,9 +602,9 @@ class AdminClientDescribeGroups : public ErrorAwareWorker {
           std::vector<std::string> &, bool, const int &);
   ~AdminClientDescribeGroups();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -622,9 +623,9 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
           rd_kafka_DeleteGroup_t **, size_t, const int &);
   ~AdminClientDeleteGroups();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -645,9 +646,9 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
         const int &);
   ~AdminClientListConsumerGroupOffsets();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -668,9 +669,9 @@ class AdminClientDeleteRecords : public ErrorAwareWorker {
          const int &);
   ~AdminClientDeleteRecords();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -691,9 +692,9 @@ class AdminClientDescribeTopics : public ErrorAwareWorker {
           const int &);
   ~AdminClientDescribeTopics();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::AdminClient *m_client;
@@ -713,9 +714,9 @@ class AdminClientListOffsets : public ErrorAwareWorker {
        rd_kafka_IsolationLevel_t);
   ~AdminClientListOffsets();
 
-  void Execute();
-  void OnOK();
-  void HandleErrorCallback();
+  void Execute() override;
+  void OnOK() override;
+  void HandleErrorCallback() override;
 
  private:
   NodeKafka::AdminClient *m_client;

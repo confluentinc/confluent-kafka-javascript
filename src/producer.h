@@ -76,8 +76,8 @@ class Producer : public Connection<Producer> {
     int64_t timestamp, void* opaque,
     RdKafka::Headers* headers);
 
-  void ActivateDispatchers();
-  void DeactivateDispatchers();
+  void ActivateDispatchers() override;
+  void DeactivateDispatchers() override;
 
   void ConfigureCallback(const std::string& string_key,
                          const Napi::Function& cb, bool add) override;

@@ -86,8 +86,8 @@ class KafkaConsumer : public Connection<KafkaConsumer> {
   Baton Subscribe(std::vector<std::string>);
   Baton Consume(int timeout_ms);
 
-  void ActivateDispatchers();
-  void DeactivateDispatchers();
+  void ActivateDispatchers() override;
+  void DeactivateDispatchers() override;
 
   void ConfigureCallback(const std::string& string_key,
        const Napi::Function& cb, bool add) override;

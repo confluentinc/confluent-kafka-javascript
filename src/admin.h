@@ -41,8 +41,8 @@ class AdminClient : public Connection<AdminClient> {
   static void Init(const Napi::Env&, Napi::Object);
 
   explicit AdminClient(const Napi::CallbackInfo&);
-  void ActivateDispatchers();
-  void DeactivateDispatchers();
+  void ActivateDispatchers() override;
+  void DeactivateDispatchers() override;
 
   Baton Connect();
   Baton Disconnect();
