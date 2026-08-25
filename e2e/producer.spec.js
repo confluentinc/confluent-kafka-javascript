@@ -117,6 +117,28 @@ describe('Producer', function() {
       producer.produce('test', null, Buffer.from('value'), Buffer.from('key\0s'));
     });
 
+    it('should not produce a message with malformed headers', function(done) {
+      var delivered = false;
+      var tt = setInterval(function() {
+        producer.poll();
+      }, 25);
+
+      producer.once('delivery-report', function() {
+        delivered = true;
+      });
+
+      t.throws(function() {
+        producer.produce('test', null, Buffer.from('value'), null, null, null,
+          [{header: 1}]);
+      }, /Header value must be a string or buffer/);
+
+      setTimeout(function() {
+        clearInterval(tt);
+        t.equal(delivered, false);
+        done();
+      }, 500);
+    });
+
     it('should produce a message with an opaque', function(done) {
       var tt = setInterval(function() {
         producer.poll();

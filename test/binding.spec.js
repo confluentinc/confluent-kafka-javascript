@@ -69,6 +69,32 @@ module.exports = {
           return new addon.Producer();
         });
       },
+      'rejects malformed headers before producing': function() {
+        t.throws(function() {
+          client.produce('test', null, Buffer.from('value'), null, null,
+            {marker: true}, [{header: 1}]);
+        }, /Header value must be a string or buffer/);
+
+        t.throws(function() {
+          client.produce('test', null, Buffer.from('value'), null, null, null,
+            [{}]);
+        }, /Header key must be a string/);
+      },
+      'rejects invalid topic and timestamp values safely': function() {
+        t.throws(function() {
+          client.produce(1, null, Buffer.from('value'), 'key', null,
+            {marker: true});
+        }, /Topic must be a string or Topic object/);
+
+        t.throws(function() {
+          client.produce({}, null, Buffer.from('value'), 'key', null,
+            {marker: true});
+        }, /Invalid argument/);
+
+        t.throws(function() {
+          client.produce('test', null, Buffer.from('value'), 'key', 'now');
+        }, /Timestamp must be a number/);
+      },
       'has necessary methods from superclass': function() {
         var methods = ['connect', 'disconnect', 'configureCallbacks', 'getMetadata'];
         methods.forEach(function(m) {

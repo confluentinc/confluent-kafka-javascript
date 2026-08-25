@@ -8,6 +8,7 @@
  * of the MIT license.  See the LICENSE.txt file for details.
  */
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -443,6 +444,13 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     return env.Null();
   }
 
+  if (info.Length() > 6 && !info[6].IsUndefined() && !info[6].IsNull() &&
+      !info[6].IsArray()) {
+    Napi::Error::New(env, "Headers must be an array")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
   // Second parameter is the partition
   int32_t partition;
 
@@ -484,7 +492,8 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     if (message_buffer_data == NULL) {
       // empty string message buffer should not end up as null message
       Napi::Object message_buffer_object_emptystring =
-    Napi::Buffer<char>::New(env, new char[0], 0);
+    Napi::Buffer<char>::New(env, new char[0], 0,
+        [](Napi::Env, char* data) { delete[] data; });
       message_buffer_length =
     message_buffer_object_emptystring.As<Napi::Buffer<char>>().Length();
       message_buffer_data = message_buffer_object_emptystring.As<Napi::Buffer<char>>().Data(); // NOLINT
@@ -493,7 +502,7 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
 
   size_t key_buffer_length;
   const void* key_buffer_data;
-  std::string * key = NULL;
+  std::unique_ptr<std::string> key;
 
   if (info[3].IsNull() || info[3].IsUndefined()) {
     // This is okay for whatever reason
@@ -515,7 +524,8 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     if (key_buffer_data == NULL) {
       // empty string key buffer should not end up as null key
       Napi::Object key_buffer_object_emptystring =
-    Napi::Buffer<char>::New(env, new char[0], 0);
+    Napi::Buffer<char>::New(env, new char[0], 0,
+        [](Napi::Env, char* data) { delete[] data; });
       key_buffer_length = key_buffer_object_emptystring
           .As<Napi::Buffer<char>>().Length();
       key_buffer_data = key_buffer_object_emptystring.As<Napi::Buffer<char>>()
@@ -526,7 +536,7 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     Napi::String val = info[3].ToString();
     // Get string pointer for this thing
     std::string keyUTF8 = val.Utf8Value();
-    key = new std::string(keyUTF8);
+    key.reset(new std::string(keyUTF8));
 
     key_buffer_data = key->data();
     key_buffer_length = key->length();
@@ -558,54 +568,72 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     // Napi::Object object = Napi::New(env, persistent);
   }
 
+  auto cleanup_pending_produce_data = [&opaque]() {
+    if (opaque) {
+      Napi::Reference<Napi::Value> *persistent =
+          static_cast<Napi::Reference<Napi::Value> *>(opaque);
+      persistent->Reset();
+      delete persistent;
+      opaque = NULL;
+    }
+  };
+
   std::vector<RdKafka::Headers::Header> headers;
   if (info.Length() > 6 && !info[6].IsUndefined() && !info[6].IsNull()) {
     Napi::Array v8Headers = info[6].As<Napi::Array>();
 
     if (v8Headers.Length() >= 1) {
       for (unsigned int i = 0; i < v8Headers.Length(); i++) {
-  Napi::Object header = (v8Headers).Get(i)
-    .ToObject();
-  if (header.IsEmpty()) {
-    continue;
-  }
+        Napi::Value header_value = v8Headers.Get(i);
+        if (!header_value.IsObject()) {
+          Napi::Error::New(env, "Each header must be an object")
+              .ThrowAsJavaScriptException();
+          cleanup_pending_produce_data();
+          return env.Null();
+        }
+        Napi::Object header = header_value.As<Napi::Object>();
+        if (header.IsEmpty()) {
+          continue;
+        }
 
-  Napi::Array props = header.GetPropertyNames();
+        Napi::Array props = header.GetPropertyNames();
 
-  // TODO: Other properties in the list of properties should not be
-  // ignored, but they are. This is a bug, need to handle it either in JS
-  // or here.
-  Napi::Value jsKey = props.Get(0u);
+        // TODO: Other properties in the list of properties should not be
+        // ignored, but they are. This is a bug, need to handle it either in JS
+        // or here.
+        Napi::Value jsKey = props.Get(0u);
 
-  // The key must be a string.
-  if (!jsKey.IsString()) {
-    Napi::Error::New(env, "Header key must be a string")
-        .ThrowAsJavaScriptException();
-    continue;
-  }
-  std::string key = jsKey.As<Napi::String>().Utf8Value();
+        // The key must be a string.
+        if (!jsKey.IsString()) {
+          Napi::Error::New(env, "Header key must be a string")
+              .ThrowAsJavaScriptException();
+          cleanup_pending_produce_data();
+          return env.Null();
+        }
+        std::string key = jsKey.As<Napi::String>().Utf8Value();
 
-  // Valid types for the header are string or buffer.
-  // Other types will throw an error.
-  Napi::Value v8Value = header.Get(jsKey.As<Napi::String>());
+        // Valid types for the header are string or buffer.
+        // Other types will throw an error.
+        Napi::Value v8Value = header.Get(jsKey.As<Napi::String>());
 
-  if (v8Value.IsBuffer()) {
-    const char* value = v8Value.As<Napi::Buffer<char>>().Data();
-    const size_t value_len = v8Value.As<Napi::Buffer<char>>().Length();
-    headers.push_back(RdKafka::Headers::Header(key, value, value_len));
-  } else if (v8Value.IsString()) {
-    std::string uValue = v8Value.As<Napi::String>().Utf8Value();
-    std::string value(uValue);
-    headers.push_back(
-        RdKafka::Headers::Header(key, value.c_str(), value.size()));
-  } else {
-    Napi::Error::New(env, "Header value must be a string or buffer")
-        .ThrowAsJavaScriptException();
-  }
+        if (v8Value.IsBuffer()) {
+          const char* value = v8Value.As<Napi::Buffer<char>>().Data();
+          const size_t value_len = v8Value.As<Napi::Buffer<char>>().Length();
+          headers.push_back(RdKafka::Headers::Header(key, value, value_len));
+        } else if (v8Value.IsString()) {
+          std::string uValue = v8Value.As<Napi::String>().Utf8Value();
+          std::string value(uValue);
+          headers.push_back(
+              RdKafka::Headers::Header(key, value.c_str(), value.size()));
+        } else {
+          Napi::Error::New(env, "Header value must be a string or buffer")
+              .ThrowAsJavaScriptException();
+          cleanup_pending_produce_data();
+          return env.Null();
+        }
       }
     }
   }
-
 
   // Let the JS library throw if we need to so the error can be more rich
   int error_code;
@@ -625,8 +653,28 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
       delete rd_headers;
     }
   } else {
+    if (!info[0].IsObject()) {
+      Napi::Error::New(env, "Topic must be a string or Topic object")
+          .ThrowAsJavaScriptException();
+      cleanup_pending_produce_data();
+      return env.Null();
+    }
+
     // First parameter is a topic OBJECT
-    Topic* topic = ObjectWrap<Topic>::Unwrap(info[0].As<Napi::Object>());
+    Topic* topic;
+    try {
+      topic = ObjectWrap<Topic>::Unwrap(info[0].As<Napi::Object>());
+    } catch (const Napi::Error& error) {
+      cleanup_pending_produce_data();
+      error.ThrowAsJavaScriptException();
+      return env.Null();
+    }
+    if (topic == nullptr) {
+      Napi::Error::New(env, "Topic must be a string or Topic object")
+          .ThrowAsJavaScriptException();
+      cleanup_pending_produce_data();
+      return env.Null();
+    }
 
     // Unwrap it and turn it into an RdKafka::Topic*
     Baton topic_baton = topic->toRDKafkaTopic(this);
@@ -635,6 +683,7 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
       // Let the JS library throw if we need to so the error can be more rich
       error_code = static_cast<int>(topic_baton.err());
 
+      cleanup_pending_produce_data();
       return Napi::Number::New(env, error_code);
     }
 
@@ -654,14 +703,7 @@ Napi::Value Producer::NodeProduce(const Napi::CallbackInfo &info) {
     // be a delivery report for it, so we have to clean up the opaque
     // data now, if there was any.
 
-    Napi::Reference<Napi::Value> *persistent =
-      static_cast<Napi::Reference<Napi::Value> *>(opaque);
-    persistent->Reset();
-    delete persistent;
-  }
-
-  if (key != NULL) {
-    delete key;
+    cleanup_pending_produce_data();
   }
 
   return Napi::Number::New(env, error_code);
