@@ -767,7 +767,8 @@ void KafkaConsumerConsumeLoop::ConsumeLoop(void* arg) {
           break;
         default:
           // Unknown error. We need to break out of this
-          consumerLoop->SetErrorBaton(b);
+          bus.SendError(Baton(message->err()));
+          delete message;
           consumerLoop->m_looping = false;
           break;
       }
@@ -776,7 +777,7 @@ void KafkaConsumerConsumeLoop::ConsumeLoop(void* arg) {
       bus.SendWarning(ec);
     } else {
       // Unknown error. We need to break out of this
-      consumerLoop->SetErrorBaton(b);
+      bus.SendError(b);
       consumerLoop->m_looping = false;
     }
   }
@@ -830,9 +831,6 @@ void KafkaConsumerConsumeLoop::OnOK() {
   Napi::HandleScope scope(env);
 }
 
-// TODO: this handler is currently unreachable: Execute() is empty and the
-// completion path that used to fire it on disconnect is disabled in
-// KafkaConsumer::Disconnect, so loop-termination errors never reach JS.
 void KafkaConsumerConsumeLoop::HandleErrorCallback() {
   Napi::Env env = Env();
   Napi::HandleScope scope(env);

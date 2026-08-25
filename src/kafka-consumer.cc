@@ -1518,8 +1518,11 @@ Napi::Value KafkaConsumer::NodeDisconnect(const Napi::CallbackInfo &info) {
     // stop the consume loop
     consumeLoop->Close();
 
+    // Drain messages, warnings, and errors queued before the loop stopped.
+    // The old NAN completion path also delivered a pending loop error here.
+    consumeLoop->WorkMessage();
+
     // cleanup the async worker
-    //    consumeLoop->WorkComplete();
     consumeLoop->Destroy();
 
     this->m_consume_loop = nullptr;

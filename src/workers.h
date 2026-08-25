@@ -115,12 +115,14 @@ class MessageWorker : public ErrorAwareWorker {
 
     std::vector<RdKafka::Message*> message_queue;
     std::vector<RdKafka::ErrorCode> warning_queue;
+    std::vector<Baton> error_queue;
 
     {
       scoped_mutex_lock lock(m_async_lock);
       // Copy the vector and empty it
       m_asyncdata.swap(message_queue);
       m_asyncwarning.swap(warning_queue);
+      m_asyncerror.swap(error_queue);
     }
 
     for (unsigned int i = 0; i < message_queue.size(); i++) {
@@ -134,6 +136,11 @@ class MessageWorker : public ErrorAwareWorker {
     for (unsigned int i = 0; i < warning_queue.size(); i++) {
       HandleMessageCallback(NULL, warning_queue[i]);
     }
+
+    for (unsigned int i = 0; i < error_queue.size(); i++) {
+      m_baton = error_queue[i];
+      HandleErrorCallback();
+    }
   }
 
   class ExecutionMessageBus {
@@ -144,6 +151,9 @@ class MessageWorker : public ErrorAwareWorker {
     }
     void SendWarning(RdKafka::ErrorCode c) const {
       that_->ProduceWarning_(c);
+    }
+    void SendError(const Baton& b) const {
+      that_->ProduceError_(b);
     }
     explicit ExecutionMessageBus(MessageWorker* that) : that_(that) {}
    private:
@@ -175,6 +185,12 @@ class MessageWorker : public ErrorAwareWorker {
     uv_async_send(m_async);
   }
 
+  void ProduceError_(const Baton& b) {
+    scoped_mutex_lock lock(m_async_lock);
+    m_asyncerror.push_back(b);
+    uv_async_send(m_async);
+  }
+
   inline static void m_async_message(uv_async_t *async) {
     MessageWorker *worker = static_cast<MessageWorker*>(async->data);
     worker->WorkMessage();
@@ -190,6 +206,7 @@ class MessageWorker : public ErrorAwareWorker {
   uv_mutex_t m_async_lock;
   std::vector<RdKafka::Message*> m_asyncdata;
   std::vector<RdKafka::ErrorCode> m_asyncwarning;
+  std::vector<Baton> m_asyncerror;
 };
 
 namespace Handle {
