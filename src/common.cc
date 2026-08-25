@@ -104,9 +104,7 @@ std::vector<std::string> v8ArrayToStringVector(Napi::Array parameter) {
 
   for (uint32_t i = 0; i < parameter.Length(); i++) {
     Napi::Value v = parameter.Get(i);
-    if (v.IsString()) {
-      newItem.push_back(v.As<Napi::String>().Utf8Value());
-    }
+    newItem.push_back(v.ToString().Utf8Value());
   }
   return newItem;
 }
@@ -116,9 +114,7 @@ std::list<std::string> v8ArrayToStringList(Napi::Array parameter) {
 
   for (uint32_t i = 0; i < parameter.Length(); i++) {
     Napi::Value v = parameter.Get(i);
-    if (v.IsString()) {
-      newItem.push_back(v.As<Napi::String>().Utf8Value());
-    }
+    newItem.push_back(v.ToString().Utf8Value());
   }
   return newItem;
 }
@@ -156,9 +152,7 @@ std::vector<std::string> ToStringVector(Napi::Array parameter) {
                      element.As<Napi::Object>().InstanceOf(regexp_ctor);
 
     if (!is_regexp) {
-      if (element.IsString()) {
-        newItem.push_back(element.As<Napi::String>().Utf8Value());
-      }
+      newItem.push_back(element.ToString().Utf8Value());
     } else {
       Napi::Value source = element.As<Napi::Object>().Get("source");
       if (source.IsString()) {
