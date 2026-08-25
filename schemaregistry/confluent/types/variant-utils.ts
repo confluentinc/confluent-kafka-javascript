@@ -229,6 +229,46 @@ function ymd(date: Date, formatYear: (year: number) => string): string {
     `${pad(date.getUTCDate(), 2)}`;
 }
 
+/**
+ * The range a timestamp may occupy when rendered to JSON, in microseconds since the epoch:
+ * 0001-01-01T00:00:00 through 9999-12-31T23:59:59.999999.
+ *
+ * That is the four-digit-year form every client renders. For the zone-aware types it is RFC 3339
+ * (section 5.6 `date-time`) - also `google.protobuf.Timestamp`'s range, and the range
+ * `timestamp(...)` enforces when constructing a CEL timestamp. The zone-less types carry no
+ * offset, so they are ISO-8601 local date-times rather than RFC 3339, which has no zone-less
+ * form; they share the range so both stay readable by the same date parsers.
+ *
+ * A variant TIMESTAMP_TZ / TIMESTAMP_NTZ is an arbitrary int64 of microseconds - roughly
+ * +/-292,471 years - so it can hold instants outside that form. Those are refused rather than
+ * rendered: this client used bigint arithmetic and so never wrapped, but it emitted
+ * `+10000-01-01T00:00:00Z` (ISO-8601's expanded year, not RFC 3339) at the top and year `0000` at
+ * the bottom, neither of which parses back. It is also exactly what Python's `datetime` and .NET's
+ * `DateTime` can hold, so every client can enforce the same bound natively.
+ *
+ * The nanosecond-based types need no check: an int64 of nanoseconds spans only 1677-2262.
+ */
+const MIN_TIMESTAMP_MICROS = -62135596800000000n;
+const MAX_TIMESTAMP_MICROS = 253402300799999999n;
+
+function checkMicrosRange(micros: bigint): bigint {
+  if (micros < MIN_TIMESTAMP_MICROS || micros > MAX_TIMESTAMP_MICROS) {
+    throw new VariantError(
+      `timestamp microseconds (${micros}) must be in range ` +
+        `[${MIN_TIMESTAMP_MICROS}, ${MAX_TIMESTAMP_MICROS}]`,
+    );
+  }
+  return micros;
+}
+
+function formatInstantMicros(micros: bigint): string {
+  return formatInstant(checkMicrosRange(micros) * 1000n);
+}
+
+function formatLocalDateTimeMicros(micros: bigint): string {
+  return formatLocalDateTime(checkMicrosRange(micros) * 1000n);
+}
+
 function formatInstant(totalNanos: bigint): string {
   const [sec, nano] = floorDivMod(totalNanos, 1_000_000_000n);
   const date = new Date(Number(sec) * 1000);
@@ -243,7 +283,31 @@ function formatLocalDateTime(totalNanos: bigint): string {
     `${pad(date.getUTCSeconds(), 2)}${fracNanos(nano)}`;
 }
 
+/**
+ * The range a TIME may occupy, in microseconds since midnight: 00:00:00 through 23:59:59.999999.
+ * RFC 3339's `partial-time` requires `time-hour = 2DIGIT` in 00-23, so a value at or past 24 hours
+ * (or negative) has no valid form. A variant TIME is an int64 of microseconds, so those are
+ * reachable and are refused rather than rendered.
+ */
+const MIN_TIME_MICROS = 0n;
+const MAX_TIME_MICROS = 86_400_000_000n - 1n;
+
+/**
+ * The range a DATE may occupy, in days since the epoch: 0001-01-01 through 9999-12-31. RFC 3339's
+ * `full-date` requires `date-fullyear = 4DIGIT`, so an expanded or negative year
+ * (`+10000-01-01`, `-0044-01-01`) is not a valid `full-date`. A variant DATE is an int32 of days -
+ * roughly +/-5.8 million years - so those are reachable and are refused too.
+ */
+const MIN_DATE_EPOCH_DAY = -719162;
+const MAX_DATE_EPOCH_DAY = 2932896;
+
 function formatLocalTime(micros: bigint): string {
+  if (micros < MIN_TIME_MICROS || micros > MAX_TIME_MICROS) {
+    throw new VariantError(
+      `time microseconds of day (${micros}) must be in range ` +
+        `[${MIN_TIME_MICROS}, ${MAX_TIME_MICROS}]`,
+    );
+  }
   const [secs, nano] = floorDivMod(micros * 1000n, 1_000_000_000n);
   const hour = secs / 3600n;
   const rem = secs % 3600n;
@@ -251,6 +315,11 @@ function formatLocalTime(micros: bigint): string {
 }
 
 function formatDate(days: number): string {
+  if (days < MIN_DATE_EPOCH_DAY || days > MAX_DATE_EPOCH_DAY) {
+    throw new VariantError(
+      `date epoch day (${days}) must be in range [${MIN_DATE_EPOCH_DAY}, ${MAX_DATE_EPOCH_DAY}]`,
+    );
+  }
   return ymd(new Date(days * 86_400_000), formatYearIso);
 }
 
@@ -668,9 +737,9 @@ export class Variant {
       case VariantType.DATE:
         return `"${formatDate(Number(this.getLong()))}"`;
       case VariantType.TIMESTAMP_TZ:
-        return `"${formatInstant(this.getLong() * 1000n)}"`;
+        return `"${formatInstantMicros(this.getLong())}"`;
       case VariantType.TIMESTAMP_NTZ:
-        return `"${formatLocalDateTime(this.getLong() * 1000n)}"`;
+        return `"${formatLocalDateTimeMicros(this.getLong())}"`;
       case VariantType.TIMESTAMP_NANOS_TZ:
         return `"${formatInstant(this.getLong())}"`;
       case VariantType.TIMESTAMP_NANOS_NTZ:
