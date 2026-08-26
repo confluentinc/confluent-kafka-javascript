@@ -757,7 +757,7 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
                         await sleep(16000);
                         expect(event.isStale()).toEqual(true);
                         /* The batch is left unresolved because it went stale, so
-                         * exactly these messages are re-consumed once the
+                         * at least these messages are re-consumed once the
                          * partitions are regained. */
                         staleBatchIndex = receivedMessages;
                         staleBatchSize = event.batch.messages.length;
@@ -779,16 +779,26 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
             });
 
         await producer.send({ topic: topicName, messages });
-        /* The messages of the stale batch are re-consumed after not being
-         * resolved. Its size is whatever was fetched rather than a fixed 32,
-         * as batches are filled with up to js.consumer.max.batch.size
-         * messages, depending on what is available. */
+
+        /* The unresolved stale batch is re-consumed once the partitions are
+         * regained, so every message is delivered and at least the messages of
+         * that batch are delivered twice. The exact number of duplicates is not
+         * asserted: consumption resumes from the last committed offset, and how
+         * much had been committed by the time the partitions were lost also
+         * decides whether batches preceding the stale one are replayed. */
+        const distinctOffsets = () => new Set(messagesConsumed.map(m => Number(m.offset)));
         await waitFor(() => staleBatchSize !== undefined, () => null, { delay: 100 });
-        await waitForMessages(messagesConsumed, { number: totalMessages + staleBatchSize, delay: 100 });
-        expect(messagesConsumed.length).toEqual(totalMessages + staleBatchSize);
+        await waitFor(() => distinctOffsets().size === totalMessages &&
+            messagesConsumed.length - totalMessages >= staleBatchSize,
+        () => null, { delay: 100 });
 
         /* Triggers revocation */
         await consumer.disconnect();
+
+        /* No message is lost, */
+        expect(distinctOffsets().size).toEqual(totalMessages);
+        /* and the stale batch is reprocessed. */
+        expect(messagesConsumed.length - totalMessages).toBeGreaterThanOrEqual(staleBatchSize);
 
         expect(staleBatchIndex).toBeDefined();
         expect(receivedMessages).toBeGreaterThan(staleBatchIndex);
