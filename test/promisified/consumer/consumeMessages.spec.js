@@ -734,7 +734,7 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
 
         let errors = false;
         let receivedMessages = 0;
-        let firstLongBatchProcessing;
+        let staleBatchIndex, staleBatchSize;
         consumer.run({
             partitionsConsumedConcurrently,
             eachBatchAutoResolve: true,
@@ -742,23 +742,25 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
                 receivedMessages++;
 
                 try {
-                    if (!firstLongBatchProcessing && event.batch.messages.length >= 32) {
+                    if (!staleBatchIndex && event.batch.messages.length >= 32) {
                         expect(event.isStale()).toEqual(false);
-                        await sleep(6000);
-                        /* 6s 'processing'
-                         * cache clearance starts at 7000 */
-                        expect(event.isStale()).toEqual(false);
-                        firstLongBatchProcessing = receivedMessages;
-                    }
-                    if (firstLongBatchProcessing && receivedMessages === firstLongBatchProcessing + 1) {
-                        expect(event.isStale()).toEqual(false);
-                        await sleep(10000);
-                        /* 10s 'processing'
-                         * 16s in total exceeds max poll interval.
-                         * in this last batch after clearance.
-                         * Batch is marked stale
-                         * and partitions are lost */
+                        /* 16s 'processing' in a single batch exceeds the effective
+                         * max poll interval (2 * max.poll.interval.ms = 14s), which
+                         * is measured from the last fetch. Spreading the wait over
+                         * two consecutive batches instead only exceeds it when the
+                         * second batch is served from a cache filled by the same
+                         * fetch, and the cache is sized dynamically
+                         * (js.consumer.max.cache.size.per.worker.ms), so a fetch
+                         * in between would reset the deadline and the batch would
+                         * never go stale.
+                         * Batch is marked stale and partitions are lost. */
+                        await sleep(16000);
                         expect(event.isStale()).toEqual(true);
+                        /* The batch is left unresolved because it went stale, so
+                         * at least these messages are re-consumed once the
+                         * partitions are regained. */
+                        staleBatchIndex = receivedMessages;
+                        staleBatchSize = event.batch.messages.length;
                     }
                 } catch (e) {
                     console.error(e);
@@ -777,16 +779,29 @@ describe.each(cases)('Consumer - partitionsConsumedConcurrently = %s -', (partit
             });
 
         await producer.send({ topic: topicName, messages });
-        /* 32 message are re-consumed after not being resolved
-         * because of the stale batch */
-        await waitForMessages(messagesConsumed, { number: totalMessages + 32, delay: 100 });
-        expect(messagesConsumed.length).toEqual(totalMessages + 32);
+
+        /* The unresolved stale batch is re-consumed once the partitions are
+         * regained, so every message is delivered and at least the messages of
+         * that batch are delivered twice. The exact number of duplicates is not
+         * asserted: consumption resumes from the last committed offset, and how
+         * much had been committed by the time the partitions were lost also
+         * decides whether batches preceding the stale one are replayed. */
+        const distinctOffsets = () => new Set(messagesConsumed.map(m => Number(m.offset)));
+        await waitFor(() => staleBatchSize !== undefined, () => null, { delay: 100 });
+        await waitFor(() => distinctOffsets().size === totalMessages &&
+            messagesConsumed.length - totalMessages >= staleBatchSize,
+        () => null, { delay: 100 });
 
         /* Triggers revocation */
         await consumer.disconnect();
 
-        expect(firstLongBatchProcessing).toBeDefined();
-        expect(receivedMessages).toBeGreaterThan(firstLongBatchProcessing);
+        /* No message is lost, */
+        expect(distinctOffsets().size).toEqual(totalMessages);
+        /* and the stale batch is reprocessed. */
+        expect(messagesConsumed.length - totalMessages).toBeGreaterThanOrEqual(staleBatchSize);
+
+        expect(staleBatchIndex).toBeDefined();
+        expect(receivedMessages).toBeGreaterThan(staleBatchIndex);
 
         /* First assignment + assignment after partitions lost */
         expect(assigns).toEqual(2);
