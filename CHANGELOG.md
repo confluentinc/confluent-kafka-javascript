@@ -1,4 +1,4 @@
-# confluent-kafka-javascript 1.x.x
+# confluent-kafka-javascript 1.10.1 (not released)
 
 ## Enhancements
 1. Support generating a JSON Schema title from a JSON payload (#505)
@@ -7,6 +7,7 @@
 
 ## Fixes
 1. Preserve HTTP status on Schema Registry error responses (#519)
+2. Upgrade transitive dependencies in package-lock.json for security patches (#)
 
 
 # confluent-kafka-javascript 1.10.0
