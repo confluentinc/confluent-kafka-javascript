@@ -7,6 +7,7 @@ const {
   createProducer,
   createConsumer,
   waitForMessages,
+  waitFor,
   createAdmin,
 } = require("../testhelpers");
 
@@ -260,6 +261,9 @@ describe("fetchOffset function", () => {
     await producer.send({ topic: topicName2, messages });
 
     let messagesConsumed = []; // Define messagesConsumed
+    // One commit per partition: 2 topics with 2 partitions each.
+    const expectedCommits = 4;
+    let commits = 0;
 
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
@@ -275,11 +279,16 @@ describe("fetchOffset function", () => {
               offset: (parseInt(message.offset, 10) + 1).toString(),
             },
           ]);
+          commits++;
         }
       },
     });
 
     await waitForMessages(messagesConsumed, { number: 20 });
+    /* A message is pushed to messagesConsumed before its offset is committed,
+     * so all 20 messages having arrived does not mean every commit has landed.
+     * fetchOffsets would then miss the partitions still being committed. */
+    await waitFor(() => commits === expectedCommits, () => null, { delay: 100 });
 
     // Fetch offsets with multiple topics each with more than 1 partition
     const offsets = await admin.fetchOffsets({

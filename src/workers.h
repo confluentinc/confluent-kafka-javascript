@@ -548,7 +548,7 @@ class AdminClientListGroups : public ErrorAwareWorker {
   const bool m_is_match_types_set;
   std::vector<rd_kafka_consumer_group_type_t> m_match_types;
   const int m_timeout_ms;
-  rd_kafka_event_t *m_event_response;
+  rd_kafka_event_t *m_event_response = NULL;
 };
 
 /**
@@ -569,7 +569,7 @@ class AdminClientDescribeGroups : public ErrorAwareWorker {
   std::vector<std::string> m_groups;
   const bool m_include_authorized_operations;
   const int m_timeout_ms;
-  rd_kafka_event_t *m_event_response;
+  rd_kafka_event_t *m_event_response = NULL;
 };
 
 /**
@@ -590,7 +590,7 @@ class AdminClientDeleteGroups : public ErrorAwareWorker {
   rd_kafka_DeleteGroup_t **m_group_list;
   size_t m_group_cnt;
   const int m_timeout_ms;
-  rd_kafka_event_t *m_event_response;
+  rd_kafka_event_t *m_event_response = NULL;
 };
 
 /**
@@ -613,7 +613,7 @@ class AdminClientListConsumerGroupOffsets : public ErrorAwareWorker {
   size_t m_req_cnt;
   const bool m_require_stable_offsets;
   const int m_timeout_ms;
-  rd_kafka_event_t *m_event_response;
+  rd_kafka_event_t *m_event_response = NULL;
 };
 
 /**
@@ -636,7 +636,7 @@ class AdminClientDeleteRecords : public ErrorAwareWorker {
   size_t m_del_records_cnt;
   const int m_operation_timeout_ms;
   const int m_timeout_ms;
-  rd_kafka_event_t *m_event_response;
+  rd_kafka_event_t *m_event_response = NULL;
 };
 
 /**
@@ -658,7 +658,7 @@ class AdminClientDescribeTopics : public ErrorAwareWorker {
   rd_kafka_TopicCollection_t *m_topics;
   const bool m_include_authorized_operations;
   const int m_timeout_ms;
-  rd_kafka_event_t *m_event_response;
+  rd_kafka_event_t *m_event_response = NULL;
 };
 
 /**
@@ -680,7 +680,7 @@ class AdminClientListOffsets : public ErrorAwareWorker {
   rd_kafka_topic_partition_list_t *m_partitions;
   const int m_timeout_ms;
   const rd_kafka_IsolationLevel_t m_isolation_level;
-  rd_kafka_event_t *m_event_response;
+  rd_kafka_event_t *m_event_response = NULL;
 };
 
 }  // namespace Workers
