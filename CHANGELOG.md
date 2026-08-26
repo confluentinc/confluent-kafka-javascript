@@ -7,7 +7,9 @@
 
 ## Fixes
 1. Preserve HTTP status on Schema Registry error responses (#519)
-2. Upgrade transitive dependencies in package-lock.json for security patches (#)
+2. Upgrade transitive dependencies in package-lock.json for security patches (#525)
+3. Store a message as last consumed offset only after processing `eachMessage`, at the same time when it's stored for committing (#525)
+4. Avoid a message duplicate when seeking back for reprocessing a message or batch (#525)
 
 
 # confluent-kafka-javascript 1.10.0
