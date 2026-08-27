@@ -8,8 +8,8 @@
 ## Fixes
 1. Preserve HTTP status on Schema Registry error responses (#519)
 2. Upgrade transitive dependencies in package-lock.json for security patches (#525)
-3. Store a message as last consumed offset only after processing `eachMessage`, at the same time when it's stored for committing (#525)
-4. Avoid a message duplicate when seeking back for reprocessing a message or batch (#525)
+3. Store a message as last consumed offset only after processing `eachMessage` or resolving offsets in `eachBatch`, at the same time when it's stored for being committed (#525)
+4. Avoid a single message duplicate when seeking back for reprocessing a message or batch (#525)
 5. Fix a crash when an admin operation fails before its result event is received, caused by the event being uninitialized in the admin workers (#525)
 
 
