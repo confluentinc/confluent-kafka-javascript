@@ -1,4 +1,6 @@
 export * from './confluent/types/decimal_pb'
+export * from './confluent/types/variant_pb'
+export * from './confluent/types/variant-utils'
 export * from './confluent/meta_pb'
 export * from './rules/cel/cel-executor'
 export * from './rules/cel/cel-field-executor'
@@ -19,6 +21,11 @@ export * from './serde/serde'
 export * from './rest-error'
 export * from './mock-schemaregistry-client'
 export * from './schemaregistry-client'
+// `Rule` is exported both by schemaregistry-client (the data contract rule) and by
+// confluent/meta_pb (the protobuf message carrying inline validation rules). Re-export
+// them explicitly so the data contract rule keeps the unqualified name.
+export type { Rule } from './schemaregistry-client'
+export type { Rule as MetaRule } from './confluent/meta_pb'
 export {
   BasicAuthCredentials,
   BearerAuthCredentials,
