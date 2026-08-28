@@ -37,7 +37,7 @@
     "@bufbuild/protobuf": "^2.0.0",
     "@criteria/json-schema": "^0.10.0",
     "@criteria/json-schema-validation": "^0.10.0",
-    "@google-cloud/kms": "^5.2.1",
+    "@google-cloud/kms": "^6.0.0",
     "@hackbg/miscreant-esm": "^0.3.2-patch.3",
     "@hapi/boom": "^10.0.1",
     "@smithy/types": "^3.3.0",
