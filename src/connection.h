@@ -110,6 +110,7 @@ class Connection : public Nan::ObjectWrap {
   static NAN_METHOD(NodeSetOAuthBearerToken);
   static NAN_METHOD(NodeSetOAuthBearerTokenFailure);
   static NAN_METHOD(NodeName);
+  static NAN_METHOD(NodeGetClusterId);
 };
 
 }  // namespace NodeKafka
