@@ -216,6 +216,14 @@ export class KafkaConsumer extends Client<KafkaConsumerEvents> {
 
     assignments(): Assignment[];
 
+    /**
+     * Whether the current partition assignment was lost in the rebalance
+     * callback when partitions are revoked.
+     *
+     * Only meaningful when called from within the rebalance callback.
+     */
+    assignmentLost(): boolean;
+
     commit(topicPartition: TopicPartitionOffsetAndMetadata | TopicPartitionOffsetAndMetadata[]): this;
     commit(): this;
 
@@ -253,6 +261,28 @@ export class KafkaConsumer extends Client<KafkaConsumerEvents> {
     subscription(): string[];
 
     unassign(): this;
+
+    /**
+     * Incrementally add partitions to the consumer's current assignment.
+     * Required when using cooperative-sticky rebalancing — call from within
+     * the rebalance callback on `ERR__ASSIGN_PARTITIONS`.
+     */
+    incrementalAssign(assignments: Assignment[]): this;
+
+    /**
+     * Incrementally remove partitions from the consumer's current assignment.
+     * Required when using cooperative-sticky rebalancing — call from within
+     * the rebalance callback on `ERR__REVOKE_PARTITIONS`.
+     */
+    incrementalUnassign(assignments: Assignment[]): this;
+
+    /**
+     * Get the rebalance protocol in use by the consumer group.
+     *
+     * @returns "NONE" if not joined to a group yet, otherwise "COOPERATIVE"
+     *   or "EAGER".
+     */
+    rebalanceProtocol(): "NONE" | "COOPERATIVE" | "EAGER";
 
     unsubscribe(): this;
 
