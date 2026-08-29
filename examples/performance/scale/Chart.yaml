@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ckjs-perf-scale
+description: |
+  Multi-pod producer scale test for confluent-kafka-javascript.
+  Runs examples/performance/performance-consolidated.js --producer on N pods
+  in parallel, against a configurable Kafka cluster.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
