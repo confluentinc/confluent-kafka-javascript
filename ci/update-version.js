@@ -26,10 +26,17 @@ function parseVersion(tag) {
   };
 }
 
+const ALLOWED_COMMANDS = ['git'];
+
 function getCommandOutput(command, args, cb) {
+  if (!ALLOWED_COMMANDS.includes(command)) {
+    cb(new Error(`Refusing to run disallowed command: ${command}`));
+    return;
+  }
+
   let output = '';
 
-  const cmd = spawn(command, args);
+  const cmd = spawn(command, args, { shell: false });
 
   cmd.stdout.on('data', (data) => {
     output += data;
