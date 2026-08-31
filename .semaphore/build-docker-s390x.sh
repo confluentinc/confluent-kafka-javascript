@@ -29,8 +29,14 @@ apt-get install -y build-essential gcc-10 g++-10 perl patch wget curl xz-utils p
 update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
     --slave /usr/bin/g++ g++ /usr/bin/g++-10
 
-curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-s390x.tar.xz" \
-    | tar xJ -C /opt
+# Download the Node tarball and verify it against the official published SHA-256 sum
+# before extracting, rather than piping the download straight into tar.
+NODE_DIST="https://nodejs.org/dist/v${NODE_VERSION}"
+NODE_TARBALL="node-v${NODE_VERSION}-linux-s390x.tar.xz"
+cd /tmp
+curl -fsSLO "${NODE_DIST}/${NODE_TARBALL}"
+curl -fsSL "${NODE_DIST}/SHASUMS256.txt" | grep " ${NODE_TARBALL}\$" | sha256sum -c -
+tar xJf "${NODE_TARBALL}" -C /opt
 export PATH="/opt/node-v${NODE_VERSION}-linux-s390x/bin:$PATH"
 
 # zlib's configure probes for the s390x vector extension using -march=z13, gets a "yes",
