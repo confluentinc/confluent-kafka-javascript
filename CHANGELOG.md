@@ -1,12 +1,17 @@
-# confluent-kafka-javascript 1.x.x
+# confluent-kafka-javascript 1.10.1 (not released)
 
 ## Enhancements
 1. Support generating a JSON Schema title from a JSON payload (#505)
 2. Add support for saving Azure key version with DEK (#507)
 3. Pass context when clients make KEK calls to DEK Registry (#508)
+4. Add support for inline validation rules (#522)
 
 ## Fixes
 1. Preserve HTTP status on Schema Registry error responses (#519)
+2. Upgrade transitive dependencies in package-lock.json for security patches (#525)
+3. Store a message as last consumed offset only after processing `eachMessage` or resolving offsets in `eachBatch`, at the same time when it's stored for being committed (#525)
+4. Avoid a single message duplicate when seeking back for reprocessing a message or batch (#525)
+5. Fix a crash when an admin operation fails before its result event is received, caused by the event being uninitialized in the admin workers (#525)
 
 
 # confluent-kafka-javascript 1.10.0
