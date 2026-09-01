@@ -662,6 +662,26 @@ class AdminClientDescribeTopics : public ErrorAwareWorker {
 };
 
 /**
+ * @brief Describe a remote broker cluster.
+ */
+class AdminClientDescribeCluster : public ErrorAwareWorker {
+ public:
+  AdminClientDescribeCluster(Nan::Callback *, NodeKafka::AdminClient *,
+                             const bool, const int &);
+  ~AdminClientDescribeCluster();
+
+  void Execute();
+  void HandleOKCallback();
+  void HandleErrorCallback();
+
+ private:
+  NodeKafka::AdminClient *m_client;
+  const bool m_include_authorized_operations;
+  const int m_timeout_ms;
+  rd_kafka_event_t *m_event_response = NULL;
+};
+
+/**
  * @brief List Offsets on a remote broker cluster.
  */
 class AdminClientListOffsets : public ErrorAwareWorker {
