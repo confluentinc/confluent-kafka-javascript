@@ -1127,10 +1127,11 @@ v8::Local<v8::Object> FromConsumerGroupDescription(
   v8::Local<v8::Object> returnObject = Nan::New<v8::Object>();
 
   // groupId
-  Nan::Set(
-      returnObject, Nan::New("groupId").ToLocalChecked(),
-      Nan::New<v8::String>(rd_kafka_ConsumerGroupDescription_group_id(desc))
-          .ToLocalChecked());
+  // Check group_id for NULL before using - string accessors can return NULL
+  // for error-state descriptions (e.g. when brokers are unreachable)
+  const char* group_id = rd_kafka_ConsumerGroupDescription_group_id(desc);
+  Nan::Set(returnObject, Nan::New("groupId").ToLocalChecked(),
+           Nan::New<v8::String>(group_id ? group_id : "").ToLocalChecked());
 
   // error
   const rd_kafka_error_t* error = rd_kafka_ConsumerGroupDescription_error(desc);
@@ -1164,15 +1165,17 @@ v8::Local<v8::Object> FromConsumerGroupDescription(
            Nan::New<v8::String>(protocolType).ToLocalChecked());
 
   // protocol
+  // Check partition_assignor for NULL before using - it is NULL for
+  // error-state descriptions (e.g. when brokers are unreachable)
+  const char* partition_assignor =
+      rd_kafka_ConsumerGroupDescription_partition_assignor(desc);
   Nan::Set(returnObject, Nan::New("protocol").ToLocalChecked(),
-           Nan::New<v8::String>(
-               rd_kafka_ConsumerGroupDescription_partition_assignor(desc))
+           Nan::New<v8::String>(partition_assignor ? partition_assignor : "")
                .ToLocalChecked());
 
   // partitionAssignor
   Nan::Set(returnObject, Nan::New("partitionAssignor").ToLocalChecked(),
-           Nan::New<v8::String>(
-               rd_kafka_ConsumerGroupDescription_partition_assignor(desc))
+           Nan::New<v8::String>(partition_assignor ? partition_assignor : "")
                .ToLocalChecked());
 
   // state
