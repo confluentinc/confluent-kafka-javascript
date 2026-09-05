@@ -218,7 +218,18 @@ export function wrapAvroFieldForCel(fieldValue: any, fullName: string, schemaStr
 export function unwrapAvroFieldFromCel(result: any, fullName: string, schemaStr: string): any {
   const resolved = resolveAvroFieldLeaf(fullName, schemaStr)
   const leaf = resolved?.leaf
-  if (leaf == null || typeof leaf !== "object") {
+  if (leaf == null) {
+    return result
+  }
+  // The inverse of avroIntegerToCel: an int/long reached the rule as a CEL int (a bigint), and
+  // avsc rejects a bigint outright ("Cannot mix BigInt and other types"), so it has to be handed
+  // back as a number. Checked for both the short form (the bare string "int") and the long form,
+  // because the short form takes the early return below.
+  const leafType = typeof leaf === "string" ? leaf : leaf.type
+  if ((leafType === "int" || leafType === "long") && typeof result === "bigint") {
+    return Number(result)
+  }
+  if (typeof leaf !== "object") {
     return result
   }
   switch (leaf.logicalType) {
@@ -296,7 +307,11 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
     return branch != null ? avroToCel(value, branch, named) : value
   }
   if (typeof node !== "object") {
-    return value
+    // A primitive in its short form - the bare string "int", "long", "string", ... rather than
+    // {"type": "int"}. Only the integer types need converting; every other primitive already maps
+    // to the right CEL type. This early return is why the long form ({"type":"int",
+    // "logicalType":"date"}) reached the switch below and the short form did not.
+    return typeof node === "string" ? avroIntegerToCel(node, value) : value
   }
   switch (node.logicalType) {
     case "decimal":
@@ -331,9 +346,38 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
       }
       return out
     }
+    case "int":
+    case "long":
+      return avroIntegerToCel(node.type, value)
     default:
       return value
   }
+}
+
+/**
+ * Presents an Avro `int`/`long` as a CEL **int**, leaving every other type untouched.
+ *
+ * avsc hands out a plain JS number for both, and cel-es reads a number as a *double* - so without
+ * this `message.count + 1` failed with "no matching overload for '_+_' applied to '(double, int)'"
+ * while `message.count == 1` still passed, because cel-es compares across the numeric types. That
+ * combination is what made the divergence silent. The Java reference widens int/short/byte to long
+ * for the same reason.
+ *
+ * Logical types riding on int/long are either handled before this (the timestamps) or deliberately
+ * left as ints by Java (`date`, `time-millis`, `time-micros`), so they want this conversion too.
+ *
+ * A non-integral or non-numeric value passes through untouched rather than risking a RangeError
+ * from BigInt(); a long beyond 2^53 has already lost precision inside avsc, which nothing here can
+ * recover.
+ */
+function avroIntegerToCel(typeName: string, value: any): any {
+  if (typeName !== "int" && typeName !== "long") {
+    return value
+  }
+  if (typeof value === "bigint") {
+    return value
+  }
+  return typeof value === "number" && Number.isInteger(value) ? BigInt(value) : value
 }
 
 function isNullBranch(node: any): boolean {
