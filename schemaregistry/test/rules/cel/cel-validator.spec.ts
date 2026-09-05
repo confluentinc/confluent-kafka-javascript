@@ -797,6 +797,46 @@ describe('CelValidator variant functions', () => {
     expect(await validator.execute(rule(expr), null, json)).toBe(true)
   })
 
+  // An *absent* variant — a Protobuf field left unset, or an Avro variant record whose byte
+  // fields are empty — carries no metadata, so there is nothing to read. It reads as CEL null
+  // and every accessor propagates that, rather than the Variant constructor throwing on the
+  // metadata version byte it cannot read.
+  describe('absent variant', () => {
+    const absent = create(VariantSchema, {
+      metadata: new Uint8Array(0),
+      value: new Uint8Array(0),
+    })
+    const absentCases: string[] = [
+      'variants.type(this) == null',
+      // isNull is false, not an error: an absent variant is not a JSON null.
+      '!variants.isNull(this)',
+      "variants.field(this, 'name') == null",
+      "variants.path(this, '$.name') == null",
+      'variants.toJson(this) == null',
+      // The explicit constructor reports it as CEL null too, like variant(null).
+      'variant(this) == null',
+    ]
+
+    it.each(absentCases)('evaluates %s', async (expr) => {
+      const validator = new CelValidator()
+      expect(await validator.execute(rule(expr), VariantSchema, absent)).toBe(true)
+    })
+
+    // Absent must stay distinguishable from a variant that genuinely holds JSON null: the
+    // former is CEL null, the latter a present variant whose type is NULL.
+    it('is distinct from an explicit JSON null', async () => {
+      const validator = new CelValidator()
+      expect(
+        await validator.execute(
+          rule("variants.isNull(variants.parseJson('null'))"), null, 'null')
+      ).toBe(true)
+      expect(
+        await validator.execute(
+          rule("variants.type(variants.parseJson('null')) != null"), null, 'null')
+      ).toBe(true)
+    })
+  })
+
   // A string is rejected by variant(...) with a redirect to parseJson.
   it('rejects a string passed to variant()', async () => {
     const validator = new CelValidator()

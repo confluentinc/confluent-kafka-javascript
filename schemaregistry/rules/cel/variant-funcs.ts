@@ -88,26 +88,45 @@ function coerceBytes(v: unknown, field: string): Uint8Array {
   throw new Error(`variant: expected bytes for '${field}', got ${typeof v}`);
 }
 
-/** A reader over a CEL value that is a confluent.type.Variant, or null if it is not one. */
-function tryReader(v: unknown): Variant | null {
+/** The raw bytes of a CEL value that is a confluent.type.Variant, or null if it is not one.
+ * Read without constructing a Variant: the constructor validates the metadata version byte, so
+ * an absent variant would throw out of it before absence could be reported. */
+function tryBytes(v: unknown): { value: Uint8Array; metadata: Uint8Array } | null {
   if (v === null || v === undefined) return null;
   // Already a Variant (e.g. produced by the Avro variant logical type).
-  if (v instanceof Variant) return v;
+  if (v instanceof Variant) return { value: v.value, metadata: v.metadata };
   if (isReflectMessage(v, VariantSchema)) {
     const m = v.message as ProtoVariant;
-    return new Variant(m.value, m.metadata);
+    return { value: m.value, metadata: m.metadata };
   }
   const any = v as { $typeName?: string; value?: unknown; metadata?: unknown };
   if (typeof v === "object" && any.$typeName === VARIANT_PROTO_NAME) {
-    return new Variant(any.value as Uint8Array, any.metadata as Uint8Array);
+    return { value: any.value as Uint8Array, metadata: any.metadata as Uint8Array };
   }
   return null;
 }
 
-/** A navigation argument: CEL null passes through as null; a real Variant yields a reader;
- * anything else is a hard error (the DYN signature lets a misused non-Variant reach here). */
+/** Whether a value is variant-shaped but carries no metadata at all — a Protobuf field left
+ * unset, or an Avro variant record with empty byte fields. There is nothing to read, so every
+ * accessor treats it as CEL null rather than indexing into a buffer that was never populated. */
+function isAbsent(v: unknown): boolean {
+  const b = tryBytes(v);
+  return b !== null && b.metadata.length === 0;
+}
+
+/** A reader over a CEL value that is a confluent.type.Variant, or null if it is not one — or is
+ * one but absent. */
+function tryReader(v: unknown): Variant | null {
+  const b = tryBytes(v);
+  if (b === null || b.metadata.length === 0) return null;
+  return v instanceof Variant ? v : new Variant(b.value, b.metadata);
+}
+
+/** A navigation argument: CEL null (and an absent variant) pass through as null; a real Variant
+ * yields a reader; anything else is a hard error (the DYN signature lets a misused non-Variant
+ * reach here). */
 function requireReaderOrNull(v: unknown, fn: string): Variant | null {
-  if (v === null || v === undefined) return null;
+  if (v === null || v === undefined || isAbsent(v)) return null;
   const r = tryReader(v);
   if (r === null) throw new Error(`${fn}: expected Variant, got ${typeof v}`);
   return r;
@@ -237,13 +256,18 @@ export const VARIANT_FUNCS: CelFunc[] = [
   // variant(null) -> CEL null (matching the Java reference); other non-Variant inputs error.
   // DYN result (like the navigation accessors) so a CEL-null result is representable.
   celFunc("variant", [DYN], DYN, (v) =>
-    v === null || v === undefined ? null : toVariantMessage(v)),
+    v === null || v === undefined || isAbsent(v) ? null : toVariantMessage(v)),
   // variant(value, metadata) - value first, matching the Java/Spark convention.
-  celFunc("variant", [BYTES, BYTES], VARIANT, (value, metadata) =>
-    reflect(VariantSchema, create(VariantSchema, {
+  celFunc("variant", [BYTES, BYTES], VARIANT, (value, metadata) => {
+    if ((metadata as Uint8Array).length === 0) {
+      throw new Error(
+        "variant(value, metadata): metadata is empty, so there is no variant to read");
+    }
+    return reflect(VariantSchema, create(VariantSchema, {
       value: value as Uint8Array,
       metadata: metadata as Uint8Array,
-    }))),
+    }));
+  }),
 
   // ---- JSON parsing ----
   celFunc("variants.parseJson", [STRING], VARIANT, (s) => {
@@ -263,7 +287,7 @@ export const VARIANT_FUNCS: CelFunc[] = [
 
   // ---- type inspection ----
   celFunc("variants.type", [DYN], DYN, (v) => {
-    if (v === null || v === undefined) return null;
+    if (v === null || v === undefined || isAbsent(v)) return null;
     const r = tryReader(v);
     if (r === null) throw new Error(`variants.type: expected Variant, got ${typeof v}`);
     return TYPE_LABELS[r.getType()];
@@ -306,7 +330,7 @@ export const VARIANT_FUNCS: CelFunc[] = [
 
   // ---- JSON serialization ----
   celFunc("variants.toJson", [DYN], DYN, (v) => {
-    if (v === null || v === undefined) return null;
+    if (v === null || v === undefined || isAbsent(v)) return null;
     const r = tryReader(v);
     if (r === null) throw new Error(`variants.toJson: expected Variant, got ${typeof v}`);
     return r.toJson();
