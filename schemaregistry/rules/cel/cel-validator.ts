@@ -9,6 +9,7 @@ import { DECIMAL_FUNCS } from "./decimal-funcs"
 import { TIMESTAMP_FUNCS } from "./timestamp-funcs"
 import { IS_FUNCS } from "./is-funcs"
 import { VARIANT_FUNCS, variantToCel } from "./variant-funcs"
+import { wrapAvroFieldForCel, wrapAvroForCel } from "./cel-executor"
 import { Variant } from "../../confluent/types/variant-utils"
 
 /**
@@ -112,8 +113,18 @@ export class CelValidator implements ValidationRuleExecutor {
  * protobuf-es's own bridge for exactly this, and is what protovalidate-es uses.
  */
 function celValue(schema: any, msg: any): any {
+  // An Avro walker passes the raw schema text and, for a field rule, the field's full name -
+  // not a descriptor. avsc discards a decimal's scale and a timestamp's unit when it builds a
+  // Type, so only the raw schema can say what the value means, and without this the rule saw
+  // bare bytes / a bare long (finding N1). Converted through the *same* helpers the domain
+  // path uses, so an inline rule and a CEL_FIELD rule on one field see the same value.
+  if (schema != null && typeof schema.avroSchema === 'string') {
+    return schema.fullName != null
+      ? wrapAvroFieldForCel(msg, schema.fullName, schema.avroSchema)
+      : wrapAvroForCel(msg, schema.avroSchema)
+  }
   // A Variant (e.g. from the Avro variant logical type) can't be bound to `this` directly;
-  // bind it as its confluent.type.Variant CEL value.
+  // bind it as its confluent.type.Variant CEL value. Reached when no schema hint is available.
   if (msg instanceof Variant) {
     return variantToCel(msg)
   }

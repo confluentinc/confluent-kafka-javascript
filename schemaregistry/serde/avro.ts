@@ -485,6 +485,12 @@ async function transformField(
 export interface InlineValidationRules {
   recordRules: Map<string, ValidationRule[]>
   fieldRules: Map<string, ValidationRule[]>
+  /**
+   * The raw schema text, carried alongside the rules because the walk needs it to tell an
+   * executor what a value *means*. avsc discards a decimal's scale and a timestamp's unit when
+   * it builds a Type, so the parsed schema cannot describe them and only this can.
+   */
+  schemaJson: string
 }
 
 /**
@@ -497,7 +503,9 @@ export interface InlineValidationRules {
  * @param deps - the resolved schema dependencies
  */
 export function getInlineValidationRules(info: SchemaInfo, deps: Map<string, string>): InlineValidationRules {
-  const rules: InlineValidationRules = { recordRules: new Map(), fieldRules: new Map() }
+  const rules: InlineValidationRules = {
+    recordRules: new Map(), fieldRules: new Map(), schemaJson: info.schema,
+  }
   getInlineValidationRulesRecursively('', '', JSON.parse(info.schema), rules)
   for (const depSchema of deps.values()) {
     getInlineValidationRulesRecursively('', '', JSON.parse(depSchema), rules)
@@ -584,6 +592,29 @@ export async function validateAvroMessage(
 }
 
 /**
+ * What an inline rule's executor is told about the value it is being handed.
+ *
+ * Every format passes its own kind of hint here - protobuf-es passes a `DescMessage` or
+ * `DescField`, the JVM passes an Avro `Schema` - and the executor dispatches on the shape. Avro
+ * cannot pass its parsed `Type`, because avsc drops a decimal's scale and a timestamp's unit
+ * while building one; the raw schema text plus the field's full name is the smallest thing that
+ * still says what the value means. `fullName` is absent for a record-level rule, where `this` is
+ * the whole record.
+ *
+ * Without this, an inline rule saw the *raw* Avro value - a decimal as bare bytes, a timestamp as
+ * a bare long - while a domain rule on the same field saw a proper Decimal/Timestamp. That was
+ * finding N1, and it was the last capability gap against the JVM reference.
+ */
+export interface AvroValidationHint {
+  avroSchema: string
+  fullName?: string
+}
+
+function avroHint(avroSchema: string, fullName?: string): AvroValidationHint {
+  return fullName == null ? { avroSchema } : { avroSchema, fullName }
+}
+
+/**
  * Mirrors transform's switch-on-typeName dispatch shape.
  */
 async function validate(
@@ -644,7 +675,8 @@ async function validate(
       const recordName = recordSchema.name ?? ''
       // Record-level rules: this = the record value.
       for (const rule of rules.recordRules.get(recordName) ?? []) {
-        await evaluateValidationRule(executor, rule, recordSchema, msg, path, out)
+        await evaluateValidationRule(
+          executor, rule, avroHint(rules.schemaJson), msg, path, out)
         if (failFast && out.length > 0) {
           return
         }
@@ -656,7 +688,9 @@ async function validate(
         // The recursion below still runs but no-ops for null.
         if (value != null) {
           for (const rule of rules.fieldRules.get(`${recordName}.${field.name}`) ?? []) {
-            await evaluateValidationRule(executor, rule, field.type, value, childPath, out)
+            await evaluateValidationRule(
+              executor, rule, avroHint(rules.schemaJson, `${recordName}.${field.name}`),
+              value, childPath, out)
             if (failFast && out.length > 0) {
               return
             }

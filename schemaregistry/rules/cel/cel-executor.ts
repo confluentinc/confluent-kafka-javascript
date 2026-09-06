@@ -221,7 +221,7 @@ interface ProtoEnv {
  * self-describing values (decimal -> confluent.type.Decimal, timestamp -> Timestamp). The
  * original `msg` is left untouched (it is still what gets encoded); only new containers are built.
  */
-function wrapAvroForCel(msg: any, schemaStr: string): any {
+export function wrapAvroForCel(msg: any, schemaStr: string): any {
   let schema: any
   try {
     schema = JSON.parse(schemaStr)
