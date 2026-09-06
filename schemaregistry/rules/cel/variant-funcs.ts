@@ -115,8 +115,9 @@ function isAbsent(v: unknown): boolean {
 }
 
 /** A reader over a CEL value that is a confluent.type.Variant, or null if it is not one — or is
- * one but absent. */
-function tryReader(v: unknown): Variant | null {
+ * one but absent. Exported so the Avro write-back can turn a rule's result back into the
+ * Variant that avsc's `variant` logical type encodes from. */
+export function tryReader(v: unknown): Variant | null {
   const b = tryBytes(v);
   if (b === null || b.metadata.length === 0) return null;
   return v instanceof Variant ? v : new Variant(b.value, b.metadata);

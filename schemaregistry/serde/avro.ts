@@ -423,6 +423,20 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
         await transformField(ctx, recordSchema, field, record, fieldTransform)
       }
       return record
+    case 'logical:variant':
+      // A variant is a record of two bytes fields, and a field transform visits primitive
+      // leaves only - so every other client, Java included, leaves a variant field alone. JS
+      // reached it by accident: avsc wraps the record in a LogicalType, so its typeName is
+      // 'logical:variant' rather than 'record' and it missed the case above, falling through
+      // to default: where a tag-matching rule was applied to the whole variant. Harmless for a
+      // condition (it evaluated and passed, which is what a skip looks like) but an error for a
+      // transform, because the rule's result could not be encoded back.
+      //
+      // Java recurses into metadata/value here rather than returning early; the two are
+      // equivalent, because both fields are untagged bytes leaves and nothing can fire on them.
+      // Returning the Variant is the honest form in JS, where the logical type has already
+      // decoded it and the underlying record is no longer addressable.
+      return msg
     default:
       if (fieldCtx != null) {
         const ruleTags = ctx.rule.tags ?? []
@@ -663,6 +677,9 @@ async function validate(
 function getType(schema: Type): FieldType {
   switch (schema.typeName) {
     case 'record':
+    // A variant is a record; avsc's LogicalType wrapper renames it, it does not reclassify it.
+    // Reported as RECORD so a field rule sees the same type Java reports for the same field.
+    case 'logical:variant':
       return FieldType.RECORD
     case 'enum':
       return FieldType.ENUM

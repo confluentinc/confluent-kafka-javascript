@@ -6,7 +6,7 @@ import {
   RuleContext,
 } from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
-import {CelExecutor, unwrapAvroFieldFromCel, wrapAvroFieldForCel} from "./cel-executor";
+import {CelExecutor, wrapAvroFieldForCel} from "./cel-executor";
 import {celFromScalar} from "@bufbuild/cel";
 import type {DescField} from "@bufbuild/protobuf";
 import type {ScalarValue} from "@bufbuild/protobuf/reflect";
@@ -82,12 +82,10 @@ export class CelFieldExecutorTransform implements FieldTransform {
       tags: Array.from(fieldCtx.tags),
       message: fieldCtx.containingMessage
     }
-    const result = await this.executor.execute(ctx, fieldValue, args)
-    // Encode a returned Decimal/Timestamp back to the field's Avro form (bytes/epoch at the
-    // schema scale/unit) so avsc can serialize it; a bool condition result passes through.
-    if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
-      return unwrapAvroFieldFromCel(result, fieldCtx.fullName, ctx.target.schema)
-    }
-    return result
+    // execute() encodes the result back to the field's Avro form itself - a returned
+    // Decimal/Timestamp to bytes/epoch at the schema's scale/unit - picking the field's schema
+    // node off the context. Converting again here would encode it twice, which is what the
+    // guard inside writeBack used to be there to prevent.
+    return await this.executor.execute(ctx, fieldValue, args)
   }
 }

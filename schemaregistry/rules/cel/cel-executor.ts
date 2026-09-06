@@ -1,4 +1,5 @@
 import {RuleRegistry} from "../../serde/rule-registry";
+import {convertProtobufResult} from "./protobuf-result-writer";
 import {RuleContext, RuleError, RuleExecutor} from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
 import stringify from "json-stringify-deterministic";
@@ -10,7 +11,8 @@ import { timestampNow } from "@bufbuild/protobuf/wkt";
 import { DECIMAL_FUNCS, decimalFromBytesScale, decimalToAvroBytes, isCelDecimal } from "./decimal-funcs";
 import { TIMESTAMP_FUNCS, avroTimestampToCel, isCelTimestamp, timestampToEpoch } from "./timestamp-funcs";
 import { IS_FUNCS } from "./is-funcs";
-import { VARIANT_FUNCS } from "./variant-funcs";
+import { VARIANT_FUNCS, tryReader, variantToCel } from "./variant-funcs";
+import { Variant } from "../../confluent/types/variant-utils";
 
 export class CelExecutor implements RuleExecutor {
   config: Map<string, string> | null = null
@@ -92,7 +94,44 @@ export class CelExecutor implements RuleExecutor {
       }
       expr = expr.substring(index + 1)
     }
-    return await this.executeRule(ctx, expr, msg, args)
+    return this.writeBack(ctx, msg, await this.executeRule(ctx, expr, msg, args))
+  }
+
+  /**
+   * Shapes a rule result into the form this format's serializer expects. A CONDITION answers
+   * with a bool and is left alone; a protobuf TRANSFORM returning a map is returning a whole
+   * new message and has to be rebuilt into one.
+   */
+  writeBack(ctx: RuleContext, msg: any, result: any): any {
+    if (ctx.rule.kind === 'CONDITION') {
+      return result
+    }
+    if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
+      // A CEL_FIELD rule runs through this same execute(), and its result is one field's value
+      // rather than a whole record - so the field context selects which schema node to convert
+      // against, exactly as it does for the read in wrapAvroFieldForCel. This used to bail out
+      // instead, leaving CelFieldExecutor to convert afterwards through a second, smaller
+      // converter; the guard existed only to stop the two from both running.
+      const field = ctx.currentField()
+      return field != null
+        ? unwrapAvroFieldFromCel(result, field.fullName, ctx.target.schema)
+        : unwrapAvroFromCel(result, ctx.target.schema)
+    }
+    // A CEL_FIELD result is a field value, not a message, so there is nothing for the protobuf
+    // writer to rebuild - and $typeName below would be the containing message's, which would
+    // rebuild the wrong thing entirely.
+    if (ctx.currentField() != null) {
+      return result
+    }
+    const typeName = msg?.$typeName
+    if (typeName == null || ctx.registry == null) {
+      return result
+    }
+    const schema = ctx.registry.getMessage(typeName)
+    if (schema == null) {
+      return result
+    }
+    return convertProtobufResult(result, schema)
   }
 
   async executeRule(ctx: RuleContext, expr: string, obj: any, args: { [key: string]: any }): Promise<any> {
@@ -213,39 +252,157 @@ export function wrapAvroFieldForCel(fieldValue: any, fullName: string, schemaStr
  * Encodes a `CEL_FIELD` rule result back to the field's Avro representation: a returned Decimal
  * to unscaled bytes at the schema scale, a returned Timestamp to an epoch value in the schema
  * unit. Anything else (a bool condition result, an unchanged value) passes through. Inverse of
- * {@link wrapAvroFieldForCel}.
+ * {@link wrapAvroFieldForCel}, and deliberately its mirror image: the same {@link celToAvro} the
+ * message-level path uses, against the schema node the field context selects.
+ *
+ * It used to be a second, smaller converter of its own, and the two drifted - the field one had no
+ * `variant` arm while `celToAvro` did, so a `CEL_FIELD` transform returning a variant produced a
+ * value avsc could not encode (half of finding D6). One converter cannot have that gap. The read
+ * side has always been shaped this way; this is the write side catching up.
  */
 export function unwrapAvroFieldFromCel(result: any, fullName: string, schemaStr: string): any {
   const resolved = resolveAvroFieldLeaf(fullName, schemaStr)
-  const leaf = resolved?.leaf
-  if (leaf == null) {
+  if (resolved == null) {
     return result
   }
-  // The inverse of avroIntegerToCel: an int/long reached the rule as a CEL int (a bigint), and
-  // avsc rejects a bigint outright ("Cannot mix BigInt and other types"), so it has to be handed
-  // back as a number. Checked for both the short form (the bare string "int") and the long form,
-  // because the short form takes the early return below.
-  const leafType = typeof leaf === "string" ? leaf : leaf.type
-  if ((leafType === "int" || leafType === "long") && typeof result === "bigint") {
-    return Number(result)
-  }
-  if (typeof leaf !== "object") {
+  return celToAvro(result, resolved.leaf, resolved.named)
+}
+
+/**
+ * Encodes a message-level `CEL` rule result back to the record's Avro representation, against
+ * the schema the message conforms to.
+ *
+ * The field-level counterpart is {@link unwrapAvroFieldFromCel}; there was no message-level
+ * one, so the cel-es map reached the Avro writer unchanged and every message-level transform
+ * failed. A decimal, a timestamp and a variant all need their Avro shape back, and the scale
+ * and unit live only in the schema - which is why this is schema-driven where the protobuf
+ * writer is not.
+ */
+export function unwrapAvroFromCel(result: any, schemaStr: string): any {
+  let schema: any
+  try {
+    schema = JSON.parse(schemaStr)
+  } catch {
     return result
   }
-  switch (leaf.logicalType) {
+  const named = new Map<string, any>()
+  collectAvroNamed(schema, named)
+  return celToAvro(result, schema, named)
+}
+
+/** Inverse of {@link avroToCel}: one CEL value back to its Avro representation. */
+function celToAvro(value: any, node: any, named: Map<string, any>): any {
+  if (value == null) {
+    return value
+  }
+  if (typeof node === "string" && named.has(node)) {
+    node = named.get(node)
+  }
+  if (Array.isArray(node)) {
+    // A union: pick the branch that can carry the value, skipping the null branch.
+    const branch = node.find((b: any) => b !== "null" && b?.type !== "null")
+    return branch != null ? celToAvro(value, branch, named) : value
+  }
+  if (typeof node !== "object") {
+    // The short form of an integer type: CEL carries it as a bigint and avsc rejects those
+    // outright ("Cannot mix BigInt and other types").
+    return typeof value === "bigint" ? Number(value) : value
+  }
+
+  switch (node.logicalType) {
     case "decimal":
-      return isCelDecimal(result)
-        ? Buffer.from(decimalToAvroBytes(result, leaf.scale ?? 0))
-        : result
+      return isCelDecimal(value)
+        ? Buffer.from(decimalToAvroBytes(value, node.scale ?? 0))
+        : value
     case "timestamp-millis":
-      return isCelTimestamp(result) ? timestampToEpoch(result, "millis") : result
+      return isCelTimestamp(value) ? timestampToEpoch(value, "millis") : value
     case "timestamp-micros":
-      return isCelTimestamp(result) ? timestampToEpoch(result, "micros") : result
+      return isCelTimestamp(value) ? timestampToEpoch(value, "micros") : value
     case "timestamp-nanos":
-      return isCelTimestamp(result) ? timestampToEpoch(result, "nanos") : result
-    default:
-      return result
+      return isCelTimestamp(value) ? timestampToEpoch(value, "nanos") : value
+    case "variant":
+      return celVariantToAvro(value)
   }
+
+  switch (node.type) {
+    case "record": {
+      // Replace semantics: the result is the whole new record, so only the keys it names are
+      // written and a field it omits is simply absent.
+      const entries = celEntries(value)
+      if (entries == null) {
+        return value
+      }
+      const out: Record<string, any> = {}
+      for (const field of node.fields ?? []) {
+        if (field.name in entries) {
+          out[field.name] = celToAvro(entries[field.name], field.type, named)
+        }
+      }
+      return out
+    }
+    case "array":
+      return Array.isArray(value)
+        ? value.map((v) => celToAvro(v, node.items, named))
+        : value
+    case "map": {
+      const entries = celEntries(value)
+      if (entries == null) {
+        return value
+      }
+      const out: Record<string, any> = {}
+      for (const key of Object.keys(entries)) {
+        out[key] = celToAvro(entries[key], node.values, named)
+      }
+      return out
+    }
+    case "int":
+    case "long":
+      return typeof value === "bigint" ? Number(value) : value
+    default:
+      return value
+  }
+}
+
+/**
+ * An Avro variant field reaches here as a {@link Variant} (the `variant` logical type decodes
+ * to one), or as the raw `{metadata, value}` record when the logical type is not registered.
+ * cel-es cannot bind a bare Variant, so it is wrapped the way `variants.*` expects.
+ */
+function avroVariantToCel(value: any): any {
+  if (value instanceof Variant) {
+    return variantToCel(value)
+  }
+  if (value != null && typeof value === "object" && "metadata" in value && "value" in value) {
+    return variantToCel(new Variant(value.value, value.metadata))
+  }
+  return value
+}
+
+/**
+ * The inverse: back to a {@link Variant}, which is what avsc's `variant` logical type encodes
+ * from (see VariantLogicalType._toValue). A value that is not a variant passes through.
+ */
+function celVariantToAvro(value: any): any {
+  if (value instanceof Variant) {
+    return value
+  }
+  const reader = tryReader(value)
+  return reader != null ? reader : value
+}
+
+/** cel-es returns a NativeMap rather than a plain object; both are flattened to entries here. */
+function celEntries(value: any): Record<string, any> | null {
+  if (value == null || typeof value !== "object") {
+    return null
+  }
+  if (typeof value.entries === "function") {
+    const out: Record<string, any> = {}
+    for (const [k, v] of value.entries()) {
+      out[String(k)] = v
+    }
+    return out
+  }
+  return value as Record<string, any>
 }
 
 /**
@@ -324,6 +481,12 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
       return avroTimestampToCel(Number(value), "micros")
     case "timestamp-nanos":
       return avroTimestampToCel(Number(value), "nanos")
+    case "variant":
+      // Without this arm a confluent.type.Variant record fell to the "record" case below and
+      // became a plain object, so `variants.type(message.data)` had nothing it recognised and
+      // failed - and since CEL_FIELD skips records, that made variants unreachable from JS
+      // domain rules entirely (finding D3).
+      return avroVariantToCel(value)
   }
   switch (node.type) {
     case "record": {
