@@ -249,6 +249,27 @@ export function wrapAvroFieldForCel(fieldValue: any, fullName: string, schemaStr
 }
 
 /**
+ * Converts one Avro field value for CEL against the type the field *declares* - an array stays an
+ * array, a map a map - with the logical types inside it converted.
+ *
+ * The difference from {@link wrapAvroFieldForCel} is which of the two paths is calling, and it is
+ * not cosmetic. A `CEL_FIELD` rule is applied by the walk, which descends into a container and
+ * hands over one *element*, so the element's schema is the right one there. An **inline** field
+ * rule is handed the field's whole value, so `this` is the container itself: converting it against
+ * the element's schema left every element raw, and `decimals.gt(this[0], ...)` failed with
+ * "raw bytes need a scale".
+ */
+export function wrapAvroDeclaredFieldForCel(
+  fieldValue: any, fullName: string, schemaStr: string,
+): any {
+  const resolved = resolveAvroField(fullName, schemaStr)
+  if (resolved == null) {
+    return fieldValue
+  }
+  return avroToCel(fieldValue, resolved.node, resolved.named)
+}
+
+/**
  * Encodes a `CEL_FIELD` rule result back to the field's Avro representation: a returned Decimal
  * to unscaled bytes at the schema scale, a returned Timestamp to an epoch value in the schema
  * unit. Anything else (a bool condition result, an unchanged value) passes through. Inverse of
@@ -257,7 +278,7 @@ export function wrapAvroFieldForCel(fieldValue: any, fullName: string, schemaStr
  *
  * It used to be a second, smaller converter of its own, and the two drifted - the field one had no
  * `variant` arm while `celToAvro` did, so a `CEL_FIELD` transform returning a variant produced a
- * value avsc could not encode (half of finding D6). One converter cannot have that gap. The read
+ * value avsc could not encode. One converter cannot have that gap. The read
  * side has always been shaped this way; this is the write side catching up.
  */
 export function unwrapAvroFieldFromCel(result: any, fullName: string, schemaStr: string): any {
@@ -340,10 +361,12 @@ function celToAvro(value: any, node: any, named: Map<string, any>): any {
       }
       return out
     }
-    case "array":
-      return Array.isArray(value)
-        ? value.map((v) => celToAvro(v, node.items, named))
+    case "array": {
+      const elements = celElements(value)
+      return elements != null
+        ? elements.map((v) => celToAvro(v, node.items, named))
         : value
+    }
     case "map": {
       const entries = celEntries(value)
       if (entries == null) {
@@ -390,6 +413,26 @@ function celVariantToAvro(value: any): any {
   return reader != null ? reader : value
 }
 
+/**
+ * cel-es returns its own list type - `ArrayList`, `RepeatedFieldList` - rather than a JS Array,
+ * so an `Array.isArray` guard rejected it and passed it straight through to the Avro writer,
+ * which then failed with `expected {"type":"array"}, got a ArrayList`. The
+ * counterpart of {@link celEntries}, which already had to do this for maps.
+ *
+ * Duck-typed on `size` plus iterability rather than on a cel-es class, because the runtime has
+ * several list implementations and a rule can produce any of them.
+ */
+function celElements(value: any): any[] | null {
+  if (Array.isArray(value)) {
+    return value
+  }
+  if (value != null && typeof value === "object" && typeof value.size === "number"
+      && typeof value[Symbol.iterator] === "function") {
+    return [...value]
+  }
+  return null
+}
+
 /** cel-es returns a NativeMap rather than a plain object; both are flattened to entries here. */
 function celEntries(value: any): Record<string, any> | null {
   if (value == null || typeof value !== "object") {
@@ -406,14 +449,13 @@ function celEntries(value: any): Record<string, any> | null {
 }
 
 /**
- * Resolves the leaf schema of the field named by `fullName` (`record.field`) within the root
- * schema. The walk hands a field rule the already-unwrapped element (array item, map value, or
- * union branch), so the leaf is the container's element type, not the container itself.
+ * Resolves the schema node the field named by `fullName` (`record.field`) *declares*, containers
+ * and all.
  */
-function resolveAvroFieldLeaf(
+function resolveAvroField(
   fullName: string,
   schemaStr: string,
-): { leaf: any; named: Map<string, any> } | null {
+): { node: any; named: Map<string, any> } | null {
   let schema: any
   try {
     schema = JSON.parse(schemaStr)
@@ -436,7 +478,23 @@ function resolveAvroFieldLeaf(
   if (field == null) {
     return null
   }
-  return { leaf: avroLeafNode(field.type, named), named }
+  return { node: field.type, named }
+}
+
+/**
+ * Resolves the leaf schema of the field named by `fullName` (`record.field`) within the root
+ * schema. The walk hands a field rule the already-unwrapped element (array item, map value, or
+ * union branch), so the leaf is the container's element type, not the container itself.
+ */
+function resolveAvroFieldLeaf(
+  fullName: string,
+  schemaStr: string,
+): { leaf: any; named: Map<string, any> } | null {
+  const resolved = resolveAvroField(fullName, schemaStr)
+  if (resolved == null) {
+    return null
+  }
+  return { leaf: avroLeafNode(resolved.node, resolved.named), named: resolved.named }
 }
 
 /** Unwraps array/map/union containers down to the leaf schema a primitive field value carries. */
@@ -485,7 +543,7 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
       // Without this arm a confluent.type.Variant record fell to the "record" case below and
       // became a plain object, so `variants.type(message.data)` had nothing it recognised and
       // failed - and since CEL_FIELD skips records, that made variants unreachable from JS
-      // domain rules entirely (finding D3).
+      // domain rules entirely.
       return avroVariantToCel(value)
   }
   switch (node.type) {

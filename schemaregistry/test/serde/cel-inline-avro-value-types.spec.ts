@@ -2,7 +2,7 @@
  * Inline `confluent:rules` over Avro's value types: decimal, timestamp and variant, at both
  * message and field level.
  *
- * This was finding N1, the last capability gap against the JVM reference. `CelValidator.celValue`
+ * The last capability gap against the JVM reference. `CelValidator.celValue`
  * decided what to bind by testing `'fieldKind' in schema` - a protobuf-es `DescField` property -
  * and the Avro walk passes no descriptor, so every value fell through to `return msg` raw: a
  * decimal as bare bytes, a timestamp as a bare long. Five of the six cells failed with errors like

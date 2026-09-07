@@ -1,5 +1,5 @@
 /**
- * `CEL_FIELD` rules over protobuf decimal and timestamp fields (capabilities C4 and C5).
+ * `CEL_FIELD` rules over protobuf decimal and timestamp fields.
  *
  * Avro carries these two as logical types on a primitive, so the field is a leaf and a field
  * rule reaches it. Protobuf carries them as messages, so the walk used to descend *past* the
@@ -20,6 +20,7 @@ import { DecimalSchema } from '../../confluent/types/decimal_pb'
 import { VariantSchema } from '../../confluent/types/variant_pb'
 import { parseJson } from '../../confluent/types/variant-utils'
 import { ValueTypesSchema, type ValueTypes } from './test/value_types_pb'
+import { ValueTypeContainersSchema, ValueTypeNestedSchema } from './test/value_type_rules_pb'
 
 // 0x04D2 = 1234 unscaled, i.e. 12.34 at scale 2.
 const UNSCALED_1234 = new Uint8Array([0x04, 0xd2])
@@ -129,5 +130,75 @@ describe('CEL_FIELD over protobuf value types', () => {
 
     expect(out.amount).toBeUndefined()
     expect(out.label).toBe('hi')
+  })
+})
+
+/**
+ * A *repeated* value-type field is a list of single values, not a list of records — and its
+ * rule's result has to be rebuilt **per element**.
+ *
+ * #4538 gave the scalar case its leaf handling; a list never reached it. The walk applies the
+ * rule to each element, so what comes back is an array of decimals, and handing that whole array
+ * to `rebuildValueType` failed with "Rule 'r' returned object for field 'amounts'". A map of leaf
+ * messages is a leaf field here too, and that one bit even when the rule's tags did *not* match
+ * the map: the walk returns it unchanged and the whole object then reached `rebuildValueType`.
+ * The reference answers `[2.11, 3.22]`.
+ */
+describe('CEL_FIELD over a repeated value-type field', () => {
+  /** Unscaled two's-complement bytes; a leading high bit would read back negative. */
+  const unscaled = (n: number): Uint8Array => {
+    let hex = n.toString(16)
+    if (hex.length % 2) hex = '0' + hex
+    let b = Buffer.from(hex, 'hex')
+    if (b[0] & 0x80) b = Buffer.concat([Buffer.from([0]), b])
+    return new Uint8Array(b)
+  }
+  const readUnscaled = (d: any): string =>
+    BigInt('0x' + Buffer.from(d.value).toString('hex')).toString()
+
+  const containers = () => create(ValueTypeContainersSchema, {
+    amounts: [
+      create(DecimalSchema, { value: unscaled(111), precision: 8, scale: 2 }),
+      create(DecimalSchema, { value: unscaled(222), precision: 8, scale: 2 }),
+    ],
+    amountMap: { a: create(DecimalSchema, { value: unscaled(333), precision: 8, scale: 2 }) },
+    nested: create(ValueTypeNestedSchema, {
+      inner: create(DecimalSchema, { value: unscaled(444), precision: 8, scale: 2 }),
+    }),
+    label: 'hi',
+  })
+
+  async function run(expr: string, kind: string, tag: string): Promise<any> {
+    const rule = { name: 'r', type: 'CEL_FIELD', mode: RuleMode.WRITE, kind,
+      tags: [tag], expr } as any
+    const target = { schema: '{}', schemaType: 'PROTOBUF' } as any
+    const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
+      rule, 0, [rule], null, null as any,
+      createRegistry(ValueTypeContainersSchema, ValueTypeNestedSchema, DecimalSchema))
+    const ft = new CelFieldExecutor().newTransform(ctx)
+    return await transform(ctx, ValueTypeContainersSchema, containers(), ft)
+  }
+
+  it('rebuilds the rule result for every element', async () => {
+    const out = await run('decimals.add(decimal(value), decimal("1.00"))', 'TRANSFORM', 'AMOUNTS')
+
+    expect(out.amounts.map(readUnscaled)).toEqual(['211', '322'])
+  })
+
+  // The must-pass twin: an identity rule hands back the message it was given, and the
+  // per-element path has to accept that as readily as a computed decimal.
+  it('leaves the elements of an identity transform intact', async () => {
+    const out = await run('value', 'TRANSFORM', 'AMOUNTS')
+
+    expect(out.amounts.map(readUnscaled)).toEqual(['111', '222'])
+  })
+
+  // The map is what broke the array case: it is a leaf field too, so an untagged map still
+  // reached the rebuild. The reference leaves a tagged map alone, so unchanged is correct.
+  it('leaves the map alone whether or not the rule targets it', async () => {
+    for (const tag of ['AMOUNTS', 'AMOUNTMAP']) {
+      const out = await run('decimals.add(decimal(value), decimal("1.00"))', 'TRANSFORM', tag)
+      expect(readUnscaled(out.amountMap.a)).toBe('333')
+    }
   })
 })

@@ -731,7 +731,27 @@ async function transformField(ctx: RuleContext, fd: DescField, runtimeFd: DescFi
     if (ctx.rule.kind !== 'CONDITION' && isCelLeafMessage(runtimeFd.message?.typeName)) {
       // The rule saw this field as a single value, so what it hands back has to be turned
       // back into the field's message before it is assigned.
-      newValue = rebuildValueType(ctx, runtimeFd, newValue)
+      //
+      // A repeated leaf field needs the same treatment *per element*: the walk applies the rule
+      // to each element, so what comes back is an array of decimals, and handing that whole
+      // array to rebuildValueType failed with "Rule 'r' returned object for field 'amounts'".
+      // Only the singular case was covered, so a field rule over a repeated value type could
+      // not be written back at all.
+      // A map of leaf messages is a leaf field here too (see isCelLeafMessage), so the same
+      // applies per *value* - and this one bit even when the rule's tags did not match the map,
+      // because the walk returns the map unchanged and the whole object then reached
+      // rebuildValueType. An unchanged value is already the right message, which
+      // rebuildValueType passes straight through, so this also gives the reference's answer of
+      // leaving a tagged map alone.
+      if (runtimeFd.fieldKind === 'list' && Array.isArray(newValue)) {
+        newValue = newValue.map(item => rebuildValueType(ctx, runtimeFd, item))
+      } else if (runtimeFd.fieldKind === 'map' && newValue != null
+                 && typeof newValue === 'object') {
+        newValue = Object.fromEntries(Object.entries(newValue)
+          .map(([k, v]) => [k, rebuildValueType(ctx, runtimeFd, v)]))
+      } else {
+        newValue = rebuildValueType(ctx, runtimeFd, newValue)
+      }
     }
     if (ctx.rule.kind === 'CONDITION') {
       if (newValue === false) {
