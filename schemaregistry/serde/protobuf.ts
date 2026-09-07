@@ -715,6 +715,18 @@ async function transformField(ctx: RuleContext, fd: DescField, runtimeFd: DescFi
     } else {
       value = msg[runtimeFd.localName]
     }
+    // Skip-on-null, as the validation walk does: a field with explicit presence that is unset
+    // has no value to transform, and writing one back would *materialise* it - turning an
+    // absent message into a present one carrying a transformed default.
+    //
+    // This only started to matter with #4538. Before it, an unset confluent.type.Decimal was a
+    // message the walk descended into and found nothing to do; now the field is a CEL leaf, so
+    // the rule is invoked on `undefined`, returns null, and rebuildValueType raises. A field
+    // with implicit presence never reads back as undefined (it reads 0 or ""), so this skips
+    // exactly the absent ones.
+    if (value === undefined) {
+      return
+    }
     let newValue = await transformFieldValue(ctx, fd, runtimeFd, value, fieldTransform)
     if (ctx.rule.kind !== 'CONDITION' && isCelLeafMessage(runtimeFd.message?.typeName)) {
       // The rule saw this field as a single value, so what it hands back has to be turned

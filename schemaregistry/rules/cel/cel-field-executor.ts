@@ -56,9 +56,9 @@ export class CelFieldExecutorTransform implements FieldTransform {
   }
 
   async transform(ctx: RuleContext, fieldCtx: FieldContext, fieldValue: any): Promise<any> {
-    if (fieldValue == null) {
-      return null
-    }
+    // No null guard here, matching the reference: whether an absent value reaches a rule is
+    // each format's walk to decide, not the executor's. The protobuf walk skips an unset field
+    // before calling this; the Avro walk passes the null branch through so a rule can guard.
     if (!fieldCtx.isPrimitive()) {
       return fieldValue
     }
