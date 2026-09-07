@@ -380,7 +380,12 @@ async function toType(
 }
 
 async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransform: FieldTransform): Promise<any> {
-  if (msg == null || schema == null) {
+  // Only a missing schema stops the walk. A `null` *value* is the null branch of a
+  // `["null", T]` union and has to reach the rule: the reference binds it as CEL null so a rule
+  // can guard with `value == null`, and returning early here skipped the rule entirely -
+  // indistinguishable, to the caller, from a rule that ran and passed. The reference guards a
+  // null only in the record case, where there are no fields to walk.
+  if (schema == null) {
     return msg
   }
   const fieldCtx = ctx.currentField()
@@ -400,6 +405,9 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       }
       return submsg
     case 'array':
+      if (msg == null) {
+        return msg
+      }
       const arraySchema = schema as ArrayType
       const array = msg as any[]
       for (let i = 0; i < array.length; i++) {
@@ -407,6 +415,9 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       }
       return array
     case 'map':
+      if (msg == null) {
+        return msg
+      }
       const mapSchema = schema as MapType
       const map = msg as { [key: string]: any }
       for (const key of Object.keys(map)) {
@@ -414,6 +425,10 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       }
       return map
     case 'record':
+      if (msg == null) {
+        // A null record has no fields to walk - the one place the reference guards a null.
+        return msg
+      }
       const recordSchema = schema as RecordType
       const record = msg as Record<string, any>
       for (const field of recordSchema.fields) {
@@ -466,7 +481,12 @@ async function transformField(
     )
     const newVal = await transform(ctx, field.type, record[field.name], fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
-      if (!newVal) {
+      // Only an explicit `false` is a failed condition. A falsy field value is not one: an
+      // untagged field the rule never targets comes back unchanged, so `0`, `false`, `""` and a
+      // null union branch all arrive here, and a null field never reaches the executor at all
+      // because the walk returns early on it. json.ts and protobuf.ts already test for `false`;
+      // this is Java's `Boolean.FALSE.equals(newVal)`.
+      if (newVal === false) {
         throw new RuleConditionError(ctx.rule)
       }
     } else {

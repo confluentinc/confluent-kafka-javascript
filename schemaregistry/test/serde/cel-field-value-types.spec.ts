@@ -102,4 +102,32 @@ describe('CEL_FIELD over protobuf value types', () => {
 
     expect(out.data?.metadata.length).toBeGreaterThan(0)
   })
+
+  // An *unset* leaf must be skipped, not transformed. This is the case #4538 opened up and
+  // that none of the cases above cover: every one of them uses a present value.
+  //
+  // Before the leaf treatment an unset confluent.type.Decimal was just a message the walk
+  // descended into and found nothing to do. Making it a CEL leaf meant the rule was invoked on
+  // `undefined`, returned null, and rebuildValueType raised
+  // `Rule 'r' returned null for field 'amount'`. The JVM leaves the field unset, and so does
+  // every other client that took the port - the guard was simply missing here.
+  //
+  // Writing a value back would be worse than the error: it would *materialise* an absent field,
+  // turning "no amount" into "amount 1.00".
+  it('leaves an unset leaf field alone', async () => {
+    const rule = { name: 'r', type: 'CEL_FIELD', mode: RuleMode.WRITE, kind: 'TRANSFORM',
+      tags: ['AMOUNT'], expr: "decimals.add(decimal(value), decimal('1.00'))" } as any
+    const target = { schema: '{}', schemaType: 'PROTOBUF' } as any
+    const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
+      rule, 0, [rule], null, null as any,
+      createRegistry(ValueTypesSchema, DecimalSchema, VariantSchema, TimestampSchema))
+    const ft = new CelFieldExecutor().newTransform(ctx)
+
+    // amount and ts left unset; only the scalar is present.
+    const msg = create(ValueTypesSchema, { label: 'hi' })
+    const out = await transform(ctx, ValueTypesSchema, msg, ft) as ValueTypes
+
+    expect(out.amount).toBeUndefined()
+    expect(out.label).toBe('hi')
+  })
 })
