@@ -6,7 +6,7 @@ import {
   RuleContext,
 } from "../../serde/serde";
 import {ClientConfig} from "../../rest-service";
-import {CelExecutor} from "./cel-executor";
+import {CelExecutor, wrapAvroFieldForCel} from "./cel-executor";
 import {celFromScalar} from "@bufbuild/cel";
 import type {DescField} from "@bufbuild/protobuf";
 import type {ScalarValue} from "@bufbuild/protobuf/reflect";
@@ -56,25 +56,36 @@ export class CelFieldExecutorTransform implements FieldTransform {
   }
 
   async transform(ctx: RuleContext, fieldCtx: FieldContext, fieldValue: any): Promise<any> {
-    if (fieldValue == null) {
-      return null
-    }
+    // No null guard here, matching the reference: whether an absent value reaches a rule is
+    // each format's walk to decide, not the executor's. The protobuf walk skips an unset field
+    // before calling this; the Avro walk passes the null branch through so a rule can guard.
     if (!fieldCtx.isPrimitive()) {
       return fieldValue
     }
+    // Bind `value` the way the field's declared type implies. For Protobuf that means converting
+    // a scalar through its descriptor (celScalarValue): protobuf-es picks whichever JS type is
+    // convenient - a number for an int32, a bigint for both int64 and uint64 - and CEL reads those
+    // as double and int, leaving a rule written against the field's own type without a matching
+    // overload; FieldType cannot express the difference, so the field itself travels on the
+    // context. For Avro it means a decimal/timestamp field arrives as a self-describing
+    // Decimal/Timestamp (scale/unit from the schema), matching `decimal(message.field)` and the
+    // other clients.
+    let value = celScalarValue(fieldCtx, fieldValue)
+    if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
+      value = wrapAvroFieldForCel(fieldValue, fieldCtx.fullName, ctx.target.schema)
+    }
     const args = {
-      // Present the value the way the field's declared type implies: protobuf-es picks
-      // whichever JS type is convenient - a number for an int32, a bigint for both int64
-      // and uint64 - and CEL reads those as double and int, leaving a rule written against
-      // the field's own type without a matching overload. FieldType cannot express the
-      // difference, so the field itself travels on the context.
-      value: celScalarValue(fieldCtx, fieldValue),
+      value,
       fullName: fieldCtx.fullName,
       name: fieldCtx.name,
       typeName: fieldCtx.typeName(),
       tags: Array.from(fieldCtx.tags),
       message: fieldCtx.containingMessage
     }
+    // execute() encodes the result back to the field's Avro form itself - a returned
+    // Decimal/Timestamp to bytes/epoch at the schema's scale/unit - picking the field's schema
+    // node off the context. Converting again here would encode it twice, which is what the
+    // guard inside writeBack used to be there to prevent.
     return await this.executor.execute(ctx, fieldValue, args)
   }
 }
