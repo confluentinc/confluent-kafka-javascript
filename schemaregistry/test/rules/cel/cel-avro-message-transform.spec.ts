@@ -4,7 +4,7 @@
  * Two defects met here. An Avro `confluent.type.Variant` record fell to `avroToCel`'s generic
  * "record" case and became a plain object, so `variants.type(message.data)` had nothing it
  * recognised - and since `CEL_FIELD` skips records, that made variants unreachable from JS
- * domain rules entirely (finding D3). And there was no message-level write-back at all: the
+ * domain rules entirely. And there was no message-level write-back at all: the
  * field-level `unwrapAvroFieldFromCel` had no counterpart, so the cel-es map reached the Avro
  * writer unchanged and every message-level transform failed (including an identity one).
  *
@@ -95,7 +95,7 @@ describe('message-level CEL transforms over Avro', () => {
     expect(out.data.toJson()).toBe('{"name":"bob"}')
   })
 
-  // D3 directly: reading a variant field had to work before any of the above could.
+  // Reading a variant field had to work before any of the above could.
   it('can read a variant field in a condition', async () => {
     const rule = {
       name: 'r', type: 'CEL', mode: RuleMode.WRITE, kind: 'CONDITION',

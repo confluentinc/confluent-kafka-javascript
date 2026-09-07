@@ -1,5 +1,5 @@
 /**
- * D6: a `CEL_FIELD` rule must not reach an Avro *variant* field.
+ * A `CEL_FIELD` rule must not reach an Avro *variant* field.
  *
  * A variant is a record of two bytes fields, and `CEL_FIELD` visits primitive leaves only - which
  * is why every other client, Java included, skips one. (#4538 made decimal and timestamp CEL
@@ -84,7 +84,7 @@ describe('CEL_FIELD over an Avro variant field', () => {
     await expect(roundTrip('CONDITION', 'PLAIN', 'value == "not-hi"')).rejects.toThrow()
   })
 
-  // The visible half of D6: before the fix this threw
+  // Before the fix this threw
   // `Invalid message at data.metadata, expected "bytes", got undefined`, because the rule ran and
   // its cel-es result was handed to avsc unchanged.
   it('leaves a variant field untouched by a transform', async () => {

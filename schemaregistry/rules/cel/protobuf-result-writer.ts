@@ -90,9 +90,10 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
   switch (field.fieldKind) {
     case 'list': {
       const list = out.get(field) as any
+      const element = field.listKind === 'message' ? field.message : undefined
       for (const item of iterate(value)) {
         if (item === null || item === undefined) continue
-        list.add(unwrap(item))
+        list.add(element !== undefined ? asMessageValue(element, item) : unwrap(item))
       }
       return
     }
@@ -100,15 +101,42 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
       const map = out.get(field) as any
       const entries = asEntries(value)
       if (entries === null) return
+      const element = field.mapKind === 'message' ? field.message : undefined
       for (const [k, v] of entries) {
         if (v === null || v === undefined) continue
-        map.set(k as any, unwrap(v))
+        map.set(k as any, element !== undefined ? asMessageValue(element, v) : unwrap(v))
       }
       return
     }
+    case 'message':
+      out.set(field, asMessageValue(field.message, value) as any)
+      return
     default:
       out.set(field, narrow(field, unwrap(value)) as any)
   }
+}
+
+/**
+ * A value bound for a message-valued field, rebuilt from a CEL map when that is what the rule
+ * returned.
+ *
+ * `ReflectMessage.set` wants a message, and cel-es hands one back wrapped in a `ReflectMessage`,
+ * which is exactly what it wants - so a rule that *echoes* a nested message needs nothing. A rule
+ * that **constructs** one returns a CEL map instead (`{"inner": decimal("8.88")}`), and setting
+ * that raised `expected ReflectMessage (test.ValueTypeNested), got object`.
+ *
+ * The root message is already built from a map this way; this is the same step one level down.
+ * It recurses through {@link fill}, so a constructed message nested to any depth works, as does
+ * one constructed inside a list or a map.
+ */
+function asMessageValue(desc: DescMessage, value: any): unknown {
+  const entries = asEntries(value)
+  if (entries === null) {
+    return value
+  }
+  const nested = reflect(desc)
+  fill(nested, entries)
+  return nested
 }
 
 function iterate(value: any): any[] {

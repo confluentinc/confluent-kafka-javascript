@@ -144,7 +144,7 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     }
     avroType.isValid(msg, {errorHook: (path, any, type) => {
       throw new SerializationError(
-        `Invalid message at ${path.join('.')}, expected ${type}, got ${stringify(any)}`)
+        `Invalid message at ${path.join('.')}, expected ${type}, got ${describeInvalid(any)}`)
     }})
     let msgBytes = avroType.typeName === 'bytes' ? msg : avroType.toBuffer(msg)
     msgBytes = await this.executeRulesWithPhase(
@@ -410,20 +410,27 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       }
       const arraySchema = schema as ArrayType
       const array = msg as any[]
+      // Mapped into a *new* array rather than assigned in place. For a `CEL_FIELD` condition
+      // the caller drops what comes back - a list of verdicts is never `false`, so a condition
+      // does not apply to a container field - but assigning into the input had already
+      // replaced the elements with booleans by then, and avsc rejected the record. The
+      // reference builds a new list here for the same reason.
+      const newArray: any[] = []
       for (let i = 0; i < array.length; i++) {
-        array[i] = await transform(ctx, arraySchema.itemsType, array[i], fieldTransform)
+        newArray.push(await transform(ctx, arraySchema.itemsType, array[i], fieldTransform))
       }
-      return array
+      return newArray
     case 'map':
       if (msg == null) {
         return msg
       }
       const mapSchema = schema as MapType
       const map = msg as { [key: string]: any }
+      const newMap: { [key: string]: any } = {}
       for (const key of Object.keys(map)) {
-        map[key] = await transform(ctx, mapSchema.valuesType, map[key], fieldTransform)
+        newMap[key] = await transform(ctx, mapSchema.valuesType, map[key], fieldTransform)
       }
-      return map
+      return newMap
     case 'record':
       if (msg == null) {
         // A null record has no fields to walk - the one place the reference guards a null.
@@ -612,6 +619,25 @@ export async function validateAvroMessage(
 }
 
 /**
+ * A short, safe rendering of the value avsc rejected, for the error message.
+ *
+ * The rejected value is whatever reached the writer, which after a message-level transform can
+ * be a protobuf-es message - and its descriptor graph is circular, so stringifying it threw
+ * `Converting circular structure to JSON` *from inside the error hook*. The reported failure was
+ * then the stringify rather than the schema mismatch that caused it, which is the part that
+ * mattered. Naming the type instead is both safe and more useful: it says which
+ * foreign object was left in the message.
+ */
+function describeInvalid(value: any): string {
+  try {
+    return stringify(value)
+  } catch {
+    const name = value?.$typeName ?? value?.constructor?.name
+    return name != null ? `a ${name}` : String(value)
+  }
+}
+
+/**
  * What an inline rule's executor is told about the value it is being handed.
  *
  * Every format passes its own kind of hint here - protobuf-es passes a `DescMessage` or
@@ -623,7 +649,7 @@ export async function validateAvroMessage(
  *
  * Without this, an inline rule saw the *raw* Avro value - a decimal as bare bytes, a timestamp as
  * a bare long - while a domain rule on the same field saw a proper Decimal/Timestamp. That was
- * finding N1, and it was the last capability gap against the JVM reference.
+ * the last capability gap against the JVM reference.
  */
 export interface AvroValidationHint {
   avroSchema: string
