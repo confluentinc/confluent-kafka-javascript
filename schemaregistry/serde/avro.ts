@@ -24,8 +24,43 @@ import { LRUCache } from 'lru-cache'
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
+import { Variant } from "../confluent/types/variant-utils";
 
 export const AVRO_TYPE = "AVRO"
+
+/**
+ * The Avro `variant` logical type: a record of two bytes fields (metadata, value) carrying
+ * a Spark/Parquet Variant. Decodes to / encodes from a Variant, so serde consumers and CEL
+ * rules see a first-class Variant. Counterpart of Java's io.confluent.avro.type
+ * .VariantConversion; registered via the `logicalTypes` forSchema option (see below).
+ */
+export class VariantLogicalType extends types.LogicalType {
+  override _fromValue(val: { metadata: Uint8Array; value: Uint8Array }): Variant {
+    return new Variant(val.value, val.metadata)
+  }
+
+  override _toValue(any: unknown): unknown {
+    if (any instanceof Variant) {
+      return { metadata: Buffer.from(any.metadata), value: Buffer.from(any.value) }
+    }
+    return any
+  }
+
+  override _resolve(type: Type): ((val: unknown) => unknown) | undefined {
+    if (Type.isType(type, 'logical:variant')) {
+      return (val: unknown) => this._fromValue(val as { metadata: Uint8Array; value: Uint8Array })
+    }
+    return undefined
+  }
+}
+
+/** Merge the built-in `variant` logical type into forSchema options, preserving user ones. */
+function withVariantLogicalType(opts: AvroSerdeConfig): AvroSerdeConfig {
+  return {
+    ...opts,
+    logicalTypes: { ...opts?.logicalTypes, variant: VariantLogicalType },
+  }
+}
 
 type TypeHook = (schema: avro.Schema, opts: ForSchemaOptions) => Type | undefined
 
@@ -109,7 +144,7 @@ export class AvroSerializer extends Serializer implements AvroSerde {
     }
     avroType.isValid(msg, {errorHook: (path, any, type) => {
       throw new SerializationError(
-        `Invalid message at ${path.join('.')}, expected ${type}, got ${stringify(any)}`)
+        `Invalid message at ${path.join('.')}, expected ${type}, got ${describeInvalid(any)}`)
     }})
     let msgBytes = avroType.typeName === 'bytes' ? msg : avroType.toBuffer(msg)
     msgBytes = await this.executeRulesWithPhase(
@@ -327,7 +362,7 @@ async function toType(
     const avroOpts = opts as AvroSerdeConfig
     deps.forEach((schema, _name) => {
       avroOpts.typeHook = userHook
-      avro.Type.forSchema(JSON.parse(schema), avroOpts)
+      avro.Type.forSchema(JSON.parse(schema), withVariantLogicalType(avroOpts))
     })
     if (userHook) {
       return userHook(schema, opts)
@@ -336,16 +371,21 @@ async function toType(
   }
 
   const avroOpts = conf
-  let type = avro.Type.forSchema(JSON.parse(info.schema), {
+  let type = avro.Type.forSchema(JSON.parse(info.schema), withVariantLogicalType({
     ...avroOpts,
     typeHook: addReferencedSchemas(avroOpts?.typeHook),
-  })
+  }))
   serde.schemaToTypeCache.set(schemaCacheKey(info), [type, deps])
   return [type, deps]
 }
 
 async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransform: FieldTransform): Promise<any> {
-  if (msg == null || schema == null) {
+  // Only a missing schema stops the walk. A `null` *value* is the null branch of a
+  // `["null", T]` union and has to reach the rule: the reference binds it as CEL null so a rule
+  // can guard with `value == null`, and returning early here skipped the rule entirely -
+  // indistinguishable, to the caller, from a rule that ran and passed. The reference guards a
+  // null only in the record case, where there are no fields to walk.
+  if (schema == null) {
     return msg
   }
   const fieldCtx = ctx.currentField()
@@ -365,20 +405,37 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       }
       return submsg
     case 'array':
+      if (msg == null) {
+        return msg
+      }
       const arraySchema = schema as ArrayType
       const array = msg as any[]
+      // Mapped into a *new* array rather than assigned in place. For a `CEL_FIELD` condition
+      // the caller drops what comes back - a list of verdicts is never `false`, so a condition
+      // does not apply to a container field - but assigning into the input had already
+      // replaced the elements with booleans by then, and avsc rejected the record. The
+      // reference builds a new list here for the same reason.
+      const newArray: any[] = []
       for (let i = 0; i < array.length; i++) {
-        array[i] = await transform(ctx, arraySchema.itemsType, array[i], fieldTransform)
+        newArray.push(await transform(ctx, arraySchema.itemsType, array[i], fieldTransform))
       }
-      return array
+      return newArray
     case 'map':
+      if (msg == null) {
+        return msg
+      }
       const mapSchema = schema as MapType
       const map = msg as { [key: string]: any }
+      const newMap: { [key: string]: any } = {}
       for (const key of Object.keys(map)) {
-        map[key] = await transform(ctx, mapSchema.valuesType, map[key], fieldTransform)
+        newMap[key] = await transform(ctx, mapSchema.valuesType, map[key], fieldTransform)
       }
-      return map
+      return newMap
     case 'record':
+      if (msg == null) {
+        // A null record has no fields to walk - the one place the reference guards a null.
+        return msg
+      }
       const recordSchema = schema as RecordType
       const record = msg as Record<string, any>
       for (const field of recordSchema.fields) {
@@ -388,6 +445,20 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
         await transformField(ctx, recordSchema, field, record, fieldTransform)
       }
       return record
+    case 'logical:variant':
+      // A variant is a record of two bytes fields, and a field transform visits primitive
+      // leaves only - so every other client, Java included, leaves a variant field alone. JS
+      // reached it by accident: avsc wraps the record in a LogicalType, so its typeName is
+      // 'logical:variant' rather than 'record' and it missed the case above, falling through
+      // to default: where a tag-matching rule was applied to the whole variant. Harmless for a
+      // condition (it evaluated and passed, which is what a skip looks like) but an error for a
+      // transform, because the rule's result could not be encoded back.
+      //
+      // Java recurses into metadata/value here rather than returning early; the two are
+      // equivalent, because both fields are untagged bytes leaves and nothing can fire on them.
+      // Returning the Variant is the honest form in JS, where the logical type has already
+      // decoded it and the underlying record is no longer addressable.
+      return msg
     default:
       if (fieldCtx != null) {
         const ruleTags = ctx.rule.tags ?? []
@@ -417,7 +488,12 @@ async function transformField(
     )
     const newVal = await transform(ctx, field.type, record[field.name], fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
-      if (!newVal) {
+      // Only an explicit `false` is a failed condition. A falsy field value is not one: an
+      // untagged field the rule never targets comes back unchanged, so `0`, `false`, `""` and a
+      // null union branch all arrive here, and a null field never reaches the executor at all
+      // because the walk returns early on it. json.ts and protobuf.ts already test for `false`;
+      // this is Java's `Boolean.FALSE.equals(newVal)`.
+      if (newVal === false) {
         throw new RuleConditionError(ctx.rule)
       }
     } else {
@@ -436,6 +512,14 @@ async function transformField(
 export interface InlineValidationRules {
   recordRules: Map<string, ValidationRule[]>
   fieldRules: Map<string, ValidationRule[]>
+  /**
+   * The raw schema text, carried alongside the rules because the walk needs it to tell an
+   * executor what a value *means*. avsc discards a decimal's scale and a timestamp's unit when
+   * it builds a Type, so the parsed schema cannot describe them and only this can.
+   */
+  schemaJson: string
+  /** The schemas the root's references resolve to, in the order they were collected. */
+  depSchemas: string[]
 }
 
 /**
@@ -448,7 +532,10 @@ export interface InlineValidationRules {
  * @param deps - the resolved schema dependencies
  */
 export function getInlineValidationRules(info: SchemaInfo, deps: Map<string, string>): InlineValidationRules {
-  const rules: InlineValidationRules = { recordRules: new Map(), fieldRules: new Map() }
+  const rules: InlineValidationRules = {
+    recordRules: new Map(), fieldRules: new Map(), schemaJson: info.schema,
+    depSchemas: [...deps.values()],
+  }
   getInlineValidationRulesRecursively('', '', JSON.parse(info.schema), rules)
   for (const depSchema of deps.values()) {
     getInlineValidationRulesRecursively('', '', JSON.parse(depSchema), rules)
@@ -535,6 +622,57 @@ export async function validateAvroMessage(
 }
 
 /**
+ * A short, safe rendering of the value avsc rejected, for the error message.
+ *
+ * The rejected value is whatever reached the writer, which after a message-level transform can
+ * be a protobuf-es message - and its descriptor graph is circular, so stringifying it threw
+ * `Converting circular structure to JSON` *from inside the error hook*. The reported failure was
+ * then the stringify rather than the schema mismatch that caused it, which is the part that
+ * mattered. Naming the type instead is both safe and more useful: it says which
+ * foreign object was left in the message.
+ */
+function describeInvalid(value: any): string {
+  try {
+    return stringify(value)
+  } catch {
+    const name = value?.$typeName ?? value?.constructor?.name
+    return name != null ? `a ${name}` : String(value)
+  }
+}
+
+/**
+ * What an inline rule's executor is told about the value it is being handed.
+ *
+ * Every format passes its own kind of hint here - protobuf-es passes a `DescMessage` or
+ * `DescField`, the JVM passes an Avro `Schema` - and the executor dispatches on the shape. Avro
+ * cannot pass its parsed `Type`, because avsc drops a decimal's scale and a timestamp's unit
+ * while building one; the raw schema text plus the field's full name is the smallest thing that
+ * still says what the value means. `fullName` is absent for a record-level rule, where `this` is
+ * the whole record.
+ *
+ * Without this, an inline rule saw the *raw* Avro value - a decimal as bare bytes, a timestamp as
+ * a bare long - while a domain rule on the same field saw a proper Decimal/Timestamp. That was
+ * the last capability gap against the JVM reference.
+ */
+export interface AvroValidationHint {
+  avroSchema: string
+  fullName?: string
+  /**
+   * The schemas the root's references resolve to. A rule declared in a referenced schema names
+   * a record the root text does not define, so the name resolution needs these too.
+   */
+  depSchemas?: string[]
+}
+
+function avroHint(
+  avroSchema: string, depSchemas: string[], fullName?: string,
+): AvroValidationHint {
+  return fullName == null
+    ? { avroSchema, depSchemas }
+    : { avroSchema, fullName, depSchemas }
+}
+
+/**
  * Mirrors transform's switch-on-typeName dispatch shape.
  */
 async function validate(
@@ -595,7 +733,8 @@ async function validate(
       const recordName = recordSchema.name ?? ''
       // Record-level rules: this = the record value.
       for (const rule of rules.recordRules.get(recordName) ?? []) {
-        await evaluateValidationRule(executor, rule, recordSchema, msg, path, out)
+        await evaluateValidationRule(
+          executor, rule, avroHint(rules.schemaJson, rules.depSchemas), msg, path, out)
         if (failFast && out.length > 0) {
           return
         }
@@ -607,7 +746,10 @@ async function validate(
         // The recursion below still runs but no-ops for null.
         if (value != null) {
           for (const rule of rules.fieldRules.get(`${recordName}.${field.name}`) ?? []) {
-            await evaluateValidationRule(executor, rule, field.type, value, childPath, out)
+            await evaluateValidationRule(
+              executor, rule,
+              avroHint(rules.schemaJson, rules.depSchemas, `${recordName}.${field.name}`),
+              value, childPath, out)
             if (failFast && out.length > 0) {
               return
             }
@@ -628,6 +770,9 @@ async function validate(
 function getType(schema: Type): FieldType {
   switch (schema.typeName) {
     case 'record':
+    // A variant is a record; avsc's LogicalType wrapper renames it, it does not reclassify it.
+    // Reported as RECORD so a field rule sees the same type Java reports for the same field.
+    case 'logical:variant':
       return FieldType.RECORD
     case 'enum':
       return FieldType.ENUM
