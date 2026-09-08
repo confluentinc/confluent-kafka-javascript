@@ -45,7 +45,6 @@ import {
   type Decimal as ProtoDecimal,
 } from "../../confluent/types/decimal_pb";
 import {
-  bigIntToTwosComplementBytes,
   bytesToBigIntSigned,
   decimalPlainString,
   fromProtoDecimal,
@@ -202,11 +201,11 @@ export function isCelDecimal(value: unknown): boolean {
  * schema (e.g. after a multiply) is re-quantized to the schema scale, matching the other clients.
  */
 export function decimalToAvroBytes(value: unknown, scale: number): Uint8Array {
-  const d = toDecimal(value);
-  const unscaled = BigInt(
-    d.mul(new Decimal(10).pow(scale)).toFixed(0, Decimal.ROUND_HALF_UP),
-  );
-  return bigIntToTwosComplementBytes(unscaled);
+  // Round to the schema scale first, then take the unscaled digits exactly. Multiplying by
+  // 10^scale in the default context applied decimal.js's global 20-digit precision and
+  // silently truncated anything wider - the same trap ExactDecimal exists to avoid above.
+  const d = toDecimal(value).toDecimalPlaces(scale, Decimal.ROUND_HALF_UP);
+  return toProtoDecimalWithScale(d, scale).value;
 }
 
 function fromConstructorArg(v: unknown): ReflectMessage {

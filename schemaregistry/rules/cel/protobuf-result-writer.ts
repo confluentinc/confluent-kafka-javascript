@@ -91,9 +91,14 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
     case 'list': {
       const list = out.get(field) as any
       const element = field.listKind === 'message' ? field.message : undefined
+      // Elements need the same scalar narrowing as a singular field: CEL widens every integer
+      // to int64, and protobuf reflection wants a number for the 32-bit types.
+      const elementScalar = field.listKind === 'scalar' ? field.scalar : undefined
       for (const item of iterate(value)) {
         if (item === null || item === undefined) continue
-        list.add(element !== undefined ? asMessageValue(element, item) : unwrap(item))
+        list.add(element !== undefined
+          ? asMessageValue(element, item)
+          : narrowScalar(elementScalar, field, unwrap(item)))
       }
       return
     }
@@ -102,9 +107,12 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
       const entries = asEntries(value)
       if (entries === null) return
       const element = field.mapKind === 'message' ? field.message : undefined
+      const valueScalar = field.mapKind === 'scalar' ? field.scalar : undefined
       for (const [k, v] of entries) {
         if (v === null || v === undefined) continue
-        map.set(k as any, element !== undefined ? asMessageValue(element, v) : unwrap(v))
+        map.set(narrowScalar(field.mapKey, field, unwrap(k)) as any, element !== undefined
+          ? asMessageValue(element, v)
+          : narrowScalar(valueScalar, field, unwrap(v)))
       }
       return
     }
@@ -172,7 +180,18 @@ function narrow(field: DescField, value: unknown): unknown {
   if (field.fieldKind !== 'scalar') {
     return value
   }
-  switch (field.scalar) {
+  return narrowScalar(field.scalar, field, value)
+}
+
+/**
+ * The scalar conversion itself, keyed on an explicit scalar type so a repeated or map field can
+ * narrow its elements - `field.scalar` on those describes the element, not the field.
+ */
+function narrowScalar(scalar: ScalarType | undefined, field: DescField, value: unknown): unknown {
+  if (scalar === undefined) {
+    return value
+  }
+  switch (scalar) {
     case ScalarType.DOUBLE:
     case ScalarType.FLOAT:
     case ScalarType.INT32:
