@@ -44,8 +44,10 @@ export function bigIntToTwosComplementBytes(n: bigint): Uint8Array {
   if (n === 0n) return new Uint8Array([0]);
   const negative = n < 0n;
   // Convert to an unsigned representation, then truncate to the minimal number of bytes that
-  // preserve the sign on the high bit.
-  const bits = (negative ? -n : n).toString(2).length;
+  // preserve the sign on the high bit. A negative value's magnitude comes from `~n`, which is
+  // one less than `-n`: deriving the width from `-n` over-allocates a byte at every exact
+  // signed boundary, emitting ff80 for -128 where BigInteger.toByteArray gives 80.
+  const bits = (negative ? ~n : n).toString(2).length;
   let byteLen = Math.ceil((bits + 1) / 8);
   if (byteLen === 0) byteLen = 1;
   let v = negative ? (1n << BigInt(byteLen * 8)) + n : n;
