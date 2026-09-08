@@ -150,7 +150,13 @@ function readIndex(cur: Cursor, path: string): number {
   if (cur.pos === start) {
     throw new Error("expected integer index in variant path: " + path);
   }
-  return Number(cur.src.slice(start, cur.pos));
+  // Bounded like Java's Integer.parseInt: an index wider than int32 is an error,
+  // not a silently rounded double.
+  const n = Number(cur.src.slice(start, cur.pos));
+  if (!Number.isSafeInteger(n) || n > 2147483647) {
+    throw new Error("index out of int range in variant path: " + path);
+  }
+  return n;
 }
 
 class Cursor {
