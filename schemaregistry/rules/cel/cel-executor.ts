@@ -221,15 +221,16 @@ interface ProtoEnv {
  * self-describing values (decimal -> confluent.type.Decimal, timestamp -> Timestamp). The
  * original `msg` is left untouched (it is still what gets encoded); only new containers are built.
  */
-export function wrapAvroForCel(msg: any, schemaStr: string): any {
+export function wrapAvroForCel(
+  msg: any, schemaStr: string, depSchemas: readonly string[] = [],
+): any {
   let schema: any
   try {
     schema = JSON.parse(schemaStr)
   } catch {
     return msg
   }
-  const named = new Map<string, any>()
-  collectAvroNamed(schema, named)
+  const named = collectAvroNamedAll(schema, depSchemas)
   return avroToCel(msg, schema, named)
 }
 
@@ -260,9 +261,9 @@ export function wrapAvroFieldForCel(fieldValue: any, fullName: string, schemaStr
  * "raw bytes need a scale".
  */
 export function wrapAvroDeclaredFieldForCel(
-  fieldValue: any, fullName: string, schemaStr: string,
+  fieldValue: any, fullName: string, schemaStr: string, depSchemas: readonly string[] = [],
 ): any {
-  const resolved = resolveAvroField(fullName, schemaStr)
+  const resolved = resolveAvroField(fullName, schemaStr, depSchemas)
   if (resolved == null) {
     return fieldValue
   }
@@ -281,8 +282,10 @@ export function wrapAvroDeclaredFieldForCel(
  * value avsc could not encode. One converter cannot have that gap. The read
  * side has always been shaped this way; this is the write side catching up.
  */
-export function unwrapAvroFieldFromCel(result: any, fullName: string, schemaStr: string): any {
-  const resolved = resolveAvroFieldLeaf(fullName, schemaStr)
+export function unwrapAvroFieldFromCel(
+  result: any, fullName: string, schemaStr: string, depSchemas: readonly string[] = [],
+): any {
+  const resolved = resolveAvroFieldLeaf(fullName, schemaStr, depSchemas)
   if (resolved == null) {
     return result
   }
@@ -299,15 +302,16 @@ export function unwrapAvroFieldFromCel(result: any, fullName: string, schemaStr:
  * and unit live only in the schema - which is why this is schema-driven where the protobuf
  * writer is not.
  */
-export function unwrapAvroFromCel(result: any, schemaStr: string): any {
+export function unwrapAvroFromCel(
+  result: any, schemaStr: string, depSchemas: readonly string[] = [],
+): any {
   let schema: any
   try {
     schema = JSON.parse(schemaStr)
   } catch {
     return result
   }
-  const named = new Map<string, any>()
-  collectAvroNamed(schema, named)
+  const named = collectAvroNamedAll(schema, depSchemas)
   return celToAvro(result, schema, named)
 }
 
@@ -320,8 +324,11 @@ function celToAvro(value: any, node: any, named: Map<string, any>): any {
     node = named.get(node)
   }
   if (Array.isArray(node)) {
-    // A union: pick the branch that can carry the value, skipping the null branch.
-    const branch = node.find((b: any) => b !== "null" && b?.type !== "null")
+    // A union: pick the branch that can actually carry this value, the way Java's
+    // AvroResultWriter.resolveUnion does. Taking the first non-null branch positionally sent a
+    // decimal result down the "string" branch of ["null","string",{...decimal}] and left the
+    // bytes unencoded.
+    const branch = pickAvroWriteBranch(node, value, named)
     return branch != null ? celToAvro(value, branch, named) : value
   }
   if (typeof node !== "object") {
@@ -353,9 +360,9 @@ function celToAvro(value: any, node: any, named: Map<string, any>): any {
       if (entries == null) {
         return value
       }
-      const out: Record<string, any> = {}
+      const out: Record<string, any> = Object.create(null)
       for (const field of node.fields ?? []) {
-        if (field.name in entries) {
+        if (hasOwn(entries, field.name)) {
           out[field.name] = celToAvro(entries[field.name], field.type, named)
         }
       }
@@ -372,7 +379,7 @@ function celToAvro(value: any, node: any, named: Map<string, any>): any {
       if (entries == null) {
         return value
       }
-      const out: Record<string, any> = {}
+      const out: Record<string, any> = Object.create(null)
       for (const key of Object.keys(entries)) {
         out[key] = celToAvro(entries[key], node.values, named)
       }
@@ -439,7 +446,10 @@ function celEntries(value: any): Record<string, any> | null {
     return null
   }
   if (typeof value.entries === "function") {
-    const out: Record<string, any> = {}
+    // Null-prototype: an Avro map key is an arbitrary string, and "__proto__" on a normal
+    // object literal is a prototype assignment rather than an own property - the entry was
+    // dropped before it ever reached the writer.
+    const out: Record<string, any> = Object.create(null)
     for (const [k, v] of value.entries()) {
       out[String(k)] = v
     }
@@ -455,6 +465,7 @@ function celEntries(value: any): Record<string, any> | null {
 function resolveAvroField(
   fullName: string,
   schemaStr: string,
+  depSchemas: readonly string[] = [],
 ): { node: any; named: Map<string, any> } | null {
   let schema: any
   try {
@@ -468,8 +479,7 @@ function resolveAvroField(
   }
   const recordName = fullName.substring(0, dot)
   const fieldName = fullName.substring(dot + 1)
-  const named = new Map<string, any>()
-  collectAvroNamed(schema, named)
+  const named = collectAvroNamedAll(schema, depSchemas)
   const record = named.get(recordName)
   if (record == null || !Array.isArray(record.fields)) {
     return null
@@ -489,8 +499,9 @@ function resolveAvroField(
 function resolveAvroFieldLeaf(
   fullName: string,
   schemaStr: string,
+  depSchemas: readonly string[] = [],
 ): { leaf: any; named: Map<string, any> } | null {
-  const resolved = resolveAvroField(fullName, schemaStr)
+  const resolved = resolveAvroField(fullName, schemaStr, depSchemas)
   if (resolved == null) {
     return null
   }
@@ -518,7 +529,7 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
   }
   if (Array.isArray(node)) {
     // Union: convert against the branch the value took (the common `[null, X]` shape).
-    const branch = pickAvroUnionBranch(node, value)
+    const branch = pickAvroUnionBranch(node, value, named)
     return branch != null ? avroToCel(value, branch, named) : value
   }
   if (typeof node !== "object") {
@@ -550,7 +561,7 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
     case "record": {
       const out: Record<string, any> = { ...value }
       for (const field of node.fields ?? []) {
-        if (field.name in value) {
+        if (hasOwn(value, field.name)) {
           out[field.name] = avroToCel(value[field.name], field.type, named)
         }
       }
@@ -605,11 +616,144 @@ function isNullBranch(node: any): boolean {
   return node === "null" || (typeof node === "object" && node?.type === "null")
 }
 
-function pickAvroUnionBranch(branches: any[], value: any): any {
+function hasOwn(obj: any, key: string): boolean {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key)
+}
+
+function isAvroBytes(value: any): boolean {
+  return value instanceof Uint8Array
+}
+
+/** A list value: a JS array, or one of cel-es's own list types. Never a map. */
+function isCelList(value: any): boolean {
+  if (Array.isArray(value)) {
+    return true
+  }
+  return value != null && typeof value === "object" && typeof value.size === "number"
+    && typeof value[Symbol.iterator] === "function" && typeof value.entries !== "function"
+}
+
+/** A map or record value: cel-es's map types, or a plain object. Never a list. */
+function isCelStruct(value: any): boolean {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return false
+  }
+  return typeof value.entries === "function" || !isAvroBytes(value)
+}
+
+function isTemporalLogicalType(logicalType: any): boolean {
+  return logicalType === "timestamp-millis" || logicalType === "timestamp-micros"
+    || logicalType === "timestamp-nanos" || logicalType === "date"
+    || logicalType === "time-millis" || logicalType === "time-micros"
+    || logicalType === "local-timestamp-millis" || logicalType === "local-timestamp-micros"
+}
+
+/**
+ * Whether `value` can be written as `branch`, mirroring Java
+ * AvroResultWriter.branchAccepts so a union resolves by value rather than by position.
+ */
+function avroBranchAccepts(branch: any, value: any, named: Map<string, any>): boolean {
+  const node = resolveAvroNode(branch, named)
+  if (value === null || value === undefined) {
+    return isNullBranch(node)
+  }
+  const typeName = typeof node === "string" ? node : node?.type
+  const logicalType = typeof node === "object" ? node?.logicalType : undefined
+
+  // The CEL wrapper types encode to exactly one shape, so they resolve before the plain
+  // structural checks below - a Decimal is an object, and would otherwise match a record.
+  if (isCelDecimal(value)) {
+    return logicalType === "decimal" && (typeName === "bytes" || typeName === "fixed")
+  }
+  if (isCelTimestamp(value)) {
+    return (typeName === "long" || typeName === "int") && isTemporalLogicalType(logicalType)
+  }
+  if (value instanceof Variant) {
+    return typeName === "record" && logicalType === "variant"
+  }
+
+  switch (typeName) {
+    case "null":
+      return false
+    case "boolean":
+      return typeof value === "boolean"
+    case "int":
+      if (typeof value === "bigint") {
+        return value >= -2147483648n && value <= 2147483647n
+      }
+      return typeof value === "number" && Number.isInteger(value)
+        && value >= -2147483648 && value <= 2147483647
+    case "long":
+      return typeof value === "bigint"
+        || (typeof value === "number" && Number.isInteger(value))
+    case "float":
+    case "double":
+      // Java's branchAccepts tests `value instanceof Number`, which an integer satisfies too,
+      // so a widened CEL int resolves to a float branch declared ahead of a long one.
+      return typeof value === "number" || typeof value === "bigint"
+    case "string":
+      return typeof value === "string"
+    case "enum":
+      return typeof value === "string" && (node.symbols ?? []).includes(value)
+    case "bytes":
+      return isAvroBytes(value)
+    case "fixed":
+      return isAvroBytes(value) && value.length === node.size
+    case "array":
+      return isCelList(value)
+    case "map":
+      return isCelStruct(value)
+    case "record":
+      return isCelStruct(value)
+    default:
+      return false
+  }
+}
+
+/**
+ * The union branch to write `value` as. Java throws UnresolvedUnionException when no branch
+ * accepts; a union with a single non-null branch cannot be mis-selected, so that one is used
+ * regardless and any real mismatch is left to the Avro writer to report.
+ */
+function pickAvroWriteBranch(branches: any[], value: any, named: Map<string, any>): any {
+  const match = branches.find((b) => avroBranchAccepts(b, value, named))
+  if (match !== undefined) {
+    return match
+  }
+  const nonNull = branches.filter((b) => !isNullBranch(b))
+  if (nonNull.length === 1) {
+    return nonNull[0]
+  }
+  throw new Error(
+    `cel: transform result does not match any branch of union ${JSON.stringify(branches)}`)
+}
+
+function pickAvroUnionBranch(branches: any[], value: any, named: Map<string, any>): any {
   if (value === null) {
     return branches.find(isNullBranch)
   }
-  return branches.find((b) => !isNullBranch(b))
+  // Read direction: same value-based resolution, but a value that matches nothing falls back
+  // to the first non-null branch rather than failing - reading only enriches a value for CEL.
+  return branches.find((b) => avroBranchAccepts(b, value, named))
+    ?? branches.find((b) => !isNullBranch(b))
+}
+
+/**
+ * Indexes the root schema together with the schemas its references resolve to. An inline rule
+ * declared in a *referenced* schema names a record that the root text does not define, so
+ * without the dependencies the lookup failed and the rule saw the raw value.
+ */
+function collectAvroNamedAll(root: any, depSchemas: readonly string[]): Map<string, any> {
+  const named = new Map<string, any>()
+  collectAvroNamed(root, named)
+  for (const dep of depSchemas) {
+    try {
+      collectAvroNamed(JSON.parse(dep), named)
+    } catch {
+      // A dependency that will not parse simply contributes no names.
+    }
+  }
+  return named
 }
 
 function resolveAvroNode(node: any, named: Map<string, any>): any {
@@ -619,24 +763,49 @@ function resolveAvroNode(node: any, named: Map<string, any>): any {
   return node
 }
 
-/** Indexes every named record/enum/fixed definition so a by-name type reference resolves. */
-function collectAvroNamed(node: any, out: Map<string, any>): void {
+/**
+ * Indexes every named record/enum/fixed definition so a by-name type reference resolves.
+ *
+ * Nested definitions inherit the enclosing namespace, so a record `Inner` declared inside
+ * namespace `a` is `a.Inner` - the fullname avsc reports and the one a field rule is keyed by.
+ * Indexing only the bare `name` left those lookups unresolved, and the rule then saw raw
+ * decimal bytes instead of a decoded value. The bare name is kept as an alias so a reference
+ * written without the namespace still resolves.
+ */
+function collectAvroNamed(node: any, out: Map<string, any>, ns: string = ""): void {
   if (Array.isArray(node)) {
-    node.forEach((n) => collectAvroNamed(n, out))
+    node.forEach((n) => collectAvroNamed(n, out, ns))
     return
   }
   if (node == null || typeof node !== "object") {
     return
   }
+  let childNs = ns
   if ((node.type === "record" || node.type === "enum" || node.type === "fixed") && node.name) {
-    out.set(node.name, node)
-    if (node.namespace) {
-      out.set(`${node.namespace}.${node.name}`, node)
+    const [nodeNs, fullName] = avroFullname(node, ns)
+    childNs = nodeNs
+    out.set(fullName, node)
+    if (!out.has(node.name)) {
+      out.set(node.name, node)
     }
   }
   if (node.fields) {
-    node.fields.forEach((f: any) => collectAvroNamed(f.type, out))
+    node.fields.forEach((f: any) => collectAvroNamed(f.type, out, childNs))
   }
-  if (node.items) collectAvroNamed(node.items, out)
-  if (node.values) collectAvroNamed(node.values, out)
+  if (node.items) collectAvroNamed(node.items, out, childNs)
+  if (node.values) collectAvroNamed(node.values, out, childNs)
+}
+
+/**
+ * A named type's namespace and fullname. A dotted `name` is already a fullname and any
+ * `namespace` attribute on it is ignored, per the Avro spec.
+ */
+function avroFullname(node: any, ns: string): [string, string] {
+  const name: string = node.name
+  const dot = name.lastIndexOf(".")
+  if (dot >= 0) {
+    return [name.substring(0, dot), name]
+  }
+  const nodeNs: string = node.namespace !== undefined ? node.namespace : ns
+  return [nodeNs, nodeNs ? `${nodeNs}.${name}` : name]
 }

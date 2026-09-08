@@ -119,9 +119,10 @@ function celValue(schema: any, msg: any): any {
   // bare bytes / a bare long. Converted through the *same* helpers the domain
   // path uses, so an inline rule and a CEL_FIELD rule on one field see the same value.
   if (schema != null && typeof schema.avroSchema === 'string') {
+    const deps = schema.depSchemas ?? []
     return schema.fullName != null
-      ? wrapAvroDeclaredFieldForCel(msg, schema.fullName, schema.avroSchema)
-      : wrapAvroForCel(msg, schema.avroSchema)
+      ? wrapAvroDeclaredFieldForCel(msg, schema.fullName, schema.avroSchema, deps)
+      : wrapAvroForCel(msg, schema.avroSchema, deps)
   }
   // A Variant (e.g. from the Avro variant logical type) can't be bound to `this` directly;
   // bind it as its confluent.type.Variant CEL value. Reached when no schema hint is available.

@@ -518,6 +518,8 @@ export interface InlineValidationRules {
    * it builds a Type, so the parsed schema cannot describe them and only this can.
    */
   schemaJson: string
+  /** The schemas the root's references resolve to, in the order they were collected. */
+  depSchemas: string[]
 }
 
 /**
@@ -532,6 +534,7 @@ export interface InlineValidationRules {
 export function getInlineValidationRules(info: SchemaInfo, deps: Map<string, string>): InlineValidationRules {
   const rules: InlineValidationRules = {
     recordRules: new Map(), fieldRules: new Map(), schemaJson: info.schema,
+    depSchemas: [...deps.values()],
   }
   getInlineValidationRulesRecursively('', '', JSON.parse(info.schema), rules)
   for (const depSchema of deps.values()) {
@@ -654,10 +657,19 @@ function describeInvalid(value: any): string {
 export interface AvroValidationHint {
   avroSchema: string
   fullName?: string
+  /**
+   * The schemas the root's references resolve to. A rule declared in a referenced schema names
+   * a record the root text does not define, so the name resolution needs these too.
+   */
+  depSchemas?: string[]
 }
 
-function avroHint(avroSchema: string, fullName?: string): AvroValidationHint {
-  return fullName == null ? { avroSchema } : { avroSchema, fullName }
+function avroHint(
+  avroSchema: string, depSchemas: string[], fullName?: string,
+): AvroValidationHint {
+  return fullName == null
+    ? { avroSchema, depSchemas }
+    : { avroSchema, fullName, depSchemas }
 }
 
 /**
@@ -722,7 +734,7 @@ async function validate(
       // Record-level rules: this = the record value.
       for (const rule of rules.recordRules.get(recordName) ?? []) {
         await evaluateValidationRule(
-          executor, rule, avroHint(rules.schemaJson), msg, path, out)
+          executor, rule, avroHint(rules.schemaJson, rules.depSchemas), msg, path, out)
         if (failFast && out.length > 0) {
           return
         }
@@ -735,7 +747,8 @@ async function validate(
         if (value != null) {
           for (const rule of rules.fieldRules.get(`${recordName}.${field.name}`) ?? []) {
             await evaluateValidationRule(
-              executor, rule, avroHint(rules.schemaJson, `${recordName}.${field.name}`),
+              executor, rule,
+              avroHint(rules.schemaJson, rules.depSchemas, `${recordName}.${field.name}`),
               value, childPath, out)
             if (failFast && out.length > 0) {
               return

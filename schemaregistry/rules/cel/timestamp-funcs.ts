@@ -112,8 +112,11 @@ function fromEpoch(value: bigint | number, unit: string): Timestamp {
  * is the only thing between a typo and a silently wrong instant.
  */
 function fromEpochPrecision(value: unknown, precision: unknown): Timestamp {
-  if (typeof value !== "bigint" && typeof value !== "number") {
-    throw new Error(`timestamp: epoch value must be int, got ${typeof value}`);
+  // Java declares this overload as (long, long), so a fractional argument is a type error
+  // there rather than a silent truncation. An unsafe integer is already imprecise.
+  if (typeof value !== "bigint"
+      && (typeof value !== "number" || !Number.isSafeInteger(value))) {
+    throw new Error(`timestamp: epoch value must be an integer, got ${String(value)}`);
   }
   const p = typeof precision === "bigint" ? Number(precision) : precision;
   if (typeof p !== "number") {
