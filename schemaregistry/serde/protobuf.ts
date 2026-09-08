@@ -3,7 +3,7 @@ import {
   DeserializerConfig,
   evaluateValidationRule,
   FieldTransform,
-  FieldType, RuleConditionError,
+  FieldType, RuleConditionError, RuleError,
   RuleContext, SchemaId,
   SerdeType, SerializationError,
   Serializer,
@@ -44,10 +44,12 @@ import {
   FileDescriptorProto,
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
+import { isReflectMessage } from "@bufbuild/protobuf/reflect";
 import { LRUCache } from "lru-cache";
 import {field_meta, file_confluent_meta, Meta, message_meta, Rule as MetaRule} from "../confluent/meta_pb";
 import {RuleRegistry} from "./rule-registry";
 import {file_confluent_types_decimal} from "../confluent/types/decimal_pb";
+import {file_confluent_types_variant} from "../confluent/types/variant_pb";
 import {file_google_type_calendar_period} from "../google/type/calendar_period_pb";
 import {file_google_type_color} from "../google/type/color_pb";
 import {file_google_type_date} from "../google/type/date_pb";
@@ -68,6 +70,7 @@ export const PROTOBUF_TYPE = "PROTOBUF"
 const builtinDeps = new Map<string, DescFile>([
   ['confluent/meta.proto',                 file_confluent_meta],
   ['confluent/type/decimal.proto',         file_confluent_types_decimal],
+  ['confluent/type/variant.proto',         file_confluent_types_variant],
   ['google/type/calendar_period.proto',    file_google_type_calendar_period],
   ['google/type/color.proto',              file_google_type_color],
   ['google/type/date.proto',               file_google_type_date],
@@ -555,7 +558,7 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   }
 }
 
-function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
+export function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string, string>): FileRegistry {
   fullyQualifyTypeNames(fileDesc)
   const resolve = (depName: string) => {
     if (isBuiltin(depName)) {
@@ -662,6 +665,13 @@ export async function transform(ctx: RuleContext, descriptor: DescMessage, msg: 
   if (msg == null || descriptor == null) {
     return msg
   }
+  if (msg.$typeName != null && isCelLeafMessage(msg.$typeName)) {
+    // A decimal or a timestamp is a single value to a rule, not a record to descend into.
+    // Without this the walk reached value/scale and seconds/nanos one at a time, so a rule
+    // tagged for the field never fired and the message came back unchanged with no error.
+    // Ported from the JVM client's #4538.
+    return await transformLeaf(ctx, msg, fieldTransform)
+  }
   if (msg.$typeName != null) {
     // Driven by the message's own fields when the runtime descriptor is known, each paired
     // to the schema field by number - see schemaFieldFor.
@@ -705,7 +715,44 @@ async function transformField(ctx: RuleContext, fd: DescField, runtimeFd: DescFi
     } else {
       value = msg[runtimeFd.localName]
     }
-    const newValue = await transformFieldValue(ctx, fd, runtimeFd, value, fieldTransform)
+    // Skip-on-null, as the validation walk does: a field with explicit presence that is unset
+    // has no value to transform, and writing one back would *materialise* it - turning an
+    // absent message into a present one carrying a transformed default.
+    //
+    // This only started to matter with #4538. Before it, an unset confluent.type.Decimal was a
+    // message the walk descended into and found nothing to do; now the field is a CEL leaf, so
+    // the rule is invoked on `undefined`, returns null, and rebuildValueType raises. A field
+    // with implicit presence never reads back as undefined (it reads 0 or ""), so this skips
+    // exactly the absent ones.
+    if (value === undefined) {
+      return
+    }
+    let newValue = await transformFieldValue(ctx, fd, runtimeFd, value, fieldTransform)
+    if (ctx.rule.kind !== 'CONDITION' && isCelLeafMessage(runtimeFd.message?.typeName)) {
+      // The rule saw this field as a single value, so what it hands back has to be turned
+      // back into the field's message before it is assigned.
+      //
+      // A repeated leaf field needs the same treatment *per element*: the walk applies the rule
+      // to each element, so what comes back is an array of decimals, and handing that whole
+      // array to rebuildValueType failed with "Rule 'r' returned object for field 'amounts'".
+      // Only the singular case was covered, so a field rule over a repeated value type could
+      // not be written back at all.
+      // A map of leaf messages is a leaf field here too (see isCelLeafMessage), so the same
+      // applies per *value* - and this one bit even when the rule's tags did not match the map,
+      // because the walk returns the map unchanged and the whole object then reached
+      // rebuildValueType. An unchanged value is already the right message, which
+      // rebuildValueType passes straight through, so this also gives the reference's answer of
+      // leaving a tagged map alone.
+      if (runtimeFd.fieldKind === 'list' && Array.isArray(newValue)) {
+        newValue = newValue.map(item => rebuildValueType(ctx, runtimeFd, item))
+      } else if (runtimeFd.fieldKind === 'map' && newValue != null
+                 && typeof newValue === 'object') {
+        newValue = Object.fromEntries(Object.entries(newValue)
+          .map(([k, v]) => [k, rebuildValueType(ctx, runtimeFd, v)]))
+      } else {
+        newValue = rebuildValueType(ctx, runtimeFd, newValue)
+      }
+    }
     if (ctx.rule.kind === 'CONDITION') {
       if (newValue === false) {
         throw new RuleConditionError(ctx.rule)
@@ -774,6 +821,29 @@ async function transformFieldValue(ctx: RuleContext, fd: DescField, runtimeFd: D
 /**
  * Hands a leaf value to the field transform, when the rule's tags overlap the field's.
  */
+/**
+ * Encodes what a `CEL_FIELD` rule returned back into the field's message.
+ *
+ * cel-es carries a decimal and a timestamp as protobuf messages, wrapped in a `ReflectMessage`,
+ * so this is mostly unwrapping - an identity rule hands back the very message it was given.
+ * Anything that is not that message is a rule-authoring mistake and is named as one rather
+ * than assigned and silently written as an empty default.
+ */
+function rebuildValueType(ctx: RuleContext, fd: DescField, value: any): any {
+  const expected = fd.message?.typeName
+  if (value == null) {
+    throw new RuleError(
+      `Rule '${ctx.rule.name}' returned null for field '${fd.name}', which is a ${expected}`)
+  }
+  const unwrapped = isReflectMessage(value) ? value.message : value
+  if (unwrapped?.$typeName === expected) {
+    return unwrapped
+  }
+  throw new RuleError(
+    `Rule '${ctx.rule.name}' returned ${unwrapped?.$typeName ?? typeof unwrapped}`
+    + ` for field '${fd.name}', which is a ${expected}`)
+}
+
 async function transformLeaf(ctx: RuleContext, value: any,
                              fieldTransform: FieldTransform): Promise<any> {
   const fieldCtx = ctx.currentField()
@@ -787,6 +857,21 @@ async function transformLeaf(ctx: RuleContext, value: any,
   return await fieldTransform.transform(ctx, fieldCtx, value)
 }
 
+/**
+ * Message types a CEL rule works with as a single value rather than as a record.
+ *
+ * Avro carries the same concepts as logical types on a primitive, so the field is a leaf there
+ * and a CEL_FIELD rule reaches it. Variant is deliberately absent: it is a record in Avro too,
+ * so skipping it is the behaviour that matches, and a variant is reached with a message-level
+ * CEL rule instead.
+ */
+const CEL_DECIMAL_TYPE_NAME = 'confluent.type.Decimal'
+const CEL_TIMESTAMP_TYPE_NAME = 'google.protobuf.Timestamp'
+
+export function isCelLeafMessage(typeName: string | undefined): boolean {
+  return typeName === CEL_DECIMAL_TYPE_NAME || typeName === CEL_TIMESTAMP_TYPE_NAME
+}
+
 function getType(fd: DescField): FieldType {
   let kind = fd.fieldKind
   if (fd.fieldKind === 'list') {
@@ -796,6 +881,13 @@ function getType(fd: DescField): FieldType {
     case 'map':
       return FieldType.MAP
     case 'message':
+      // Report the same primitive type the Avro counterpart does, so that CEL_FIELD applies
+      // to the field and a rule written against one format ports to the other.
+      if (isCelLeafMessage(fd.message?.typeName)) {
+        return fd.message?.typeName === CEL_DECIMAL_TYPE_NAME
+          ? FieldType.BYTES
+          : FieldType.LONG
+      }
       return FieldType.RECORD
     case 'enum':
       return FieldType.ENUM
