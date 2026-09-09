@@ -2,9 +2,8 @@
 
 ## Enhancements
 1. References librdkafka 2.15.1-RC1. Refer to the [librdkafka 2.15.1-RC1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.15.1-RC1) for more information.
-2. Add support for saving Azure key version with DEK (#507)
-3. Pass context when clients make KEK calls to DEK Registry (#508)
-4. Add support for inline validation rules (#522)
+2. Pass context when clients make KEK calls to DEK Registry (#508)
+3. Add support for inline validation rules (#522)
 
 ## Fixes
 1. Preserve HTTP status on Schema Registry error responses (#519)
