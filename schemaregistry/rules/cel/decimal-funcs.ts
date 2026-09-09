@@ -45,9 +45,14 @@ import {
   type Decimal as ProtoDecimal,
 } from "../../confluent/types/decimal_pb";
 import {
+  SANE_COEFFICIENT,
   bytesToBigIntSigned,
   decimalPlainString,
   fromProtoDecimal,
+  plainFormLength,
+  requireAlignable,
+  requireSaneWidth,
+  rescaledDigits,
   toProtoDecimal,
   toProtoDecimalWithScale,
 } from "../../confluent/types/decimal-utils";
@@ -91,6 +96,30 @@ function requireIntScale(scale: unknown, fn: string): number {
     throw new Error(`${fn}: scale out of int range: ${n}`);
   }
   return Number(n);
+}
+
+/**
+ * Guard on a rescale: only *expanding* a scale costs anything, and the cost is the resulting
+ * coefficient. Coarsening one is free at any distance - `BigDecimal("1.23").setScale(-100000000)`
+ * is precision 1 - so `rescaledDigits` returns 1 there and this never fires.
+ *
+ * Zero is exempt: rescaling it never expands anything and its result stays compact, which
+ * BigDecimal agrees with (`new BigDecimal(BigInteger.ZERO, 2147483647)` is precision 1).
+ */
+function requireRescalable(d: Decimal, targetScale: number, fn: string): void {
+  // A negative target does not go through toDP - decimal.js rejects a negative argument there -
+  // but through `toNearest(10^-target)`, which *materialises that power of ten*. So unlike
+  // libmpdec's rescale, coarsening is not free here: it costs `-targetScale` digits regardless
+  // of the operand. Measured, `round(decimal("1.23"), -1000000000)` leaked decimal.js's
+  // "Maximum BigInt size exceeded". The cost is the wider of the two.
+  const cost = targetScale < 0
+    ? Math.max(rescaledDigits(targetScale, d), -targetScale)
+    : rescaledDigits(targetScale, d);
+  // Zero is exempt from the *rescale* half - rescaling it never expands anything and its result
+  // stays compact, as `new BigDecimal(BigInteger.ZERO, n)` does - but not from the multiplier,
+  // which is built either way.
+  if (d.isZero() && targetScale >= 0) return;
+  requireSaneWidth(cost, fn, `a scale of ${targetScale}`);
 }
 
 /** An operand in the exact (uncapped) context, so the operation below is not rounded. */
@@ -216,6 +245,12 @@ export function decimalFromBytesScale(value: unknown, scale: unknown): ReflectMe
   // (e.g. unscaled 1990 at scale 2 = 19.90, not 19.9). See decimalToCelScaled.
   // Build the decimal.js value exactly from the unscaled+scale plain string; `.mul(10^-s)` would
   // round an unscaled value above 20 significant digits to decimal.js's global precision.
+  // The coefficient is the width risk on this path; the scale is not, since it only shifts the
+  // exponent. Checked from the byte count before bytesToBigIntSigned builds the integer - one
+  // byte carries about 2.41 decimal digits - and against the *encodable* ceiling, since a
+  // coefficient this client cannot write back is not worth reading in.
+  requireSaneWidth(Math.trunc(value.length * 2.408) + 1, "decimal(bytes, scale)",
+    "the coefficient", SANE_COEFFICIENT);
   const unscaled = value.length === 0 ? 0n : bytesToBigIntSigned(value);
   return decimalToCelScaled(new Decimal(decimalPlainString(unscaled, s)), s);
 }
@@ -268,9 +303,19 @@ function stringExt(v: unknown): string {
     // means an integer value, so render with no fractional digits.
     const p = v.message as ProtoDecimal;
     const scale = p.scale ?? 0;
-    return fromProtoDecimal(p).toFixed(scale > 0 ? scale : 0);
+    const d = fromProtoDecimal(p);
+    // `toFixed` writes every digit of the positional form, and that form can be enormous for a
+    // value that was cheap to compute: `div` holds its coefficient to 38 digits while its
+    // exponent runs free. In this client an over-wide render is a V8 heap OOM, so it has to be
+    // refused rather than attempted. No zero shortcut - a zero at an extreme scale renders as
+    // that many zeros.
+    requireSaneWidth(plainFormLength(d), "string", "the plain form");
+    return d.toFixed(scale > 0 ? scale : 0);
   }
-  if (v instanceof Decimal) return v.toFixed();
+  if (v instanceof Decimal) {
+    requireSaneWidth(plainFormLength(v), "string", "the plain form");
+    return v.toFixed();
+  }
   // Fall through to stdlib semantics for the non-Decimal case.
   if (v === null || v === undefined) return "null";
   if (typeof v === "string") return v;
@@ -437,12 +482,21 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   // Result scales follow java.math.BigDecimal exactly: add/sub take max(s1, s2), mul takes
   // s1 + s2. The exact result never needs more fractional digits than that, so encoding at the
   // derived scale only ever pads with the trailing zeros decimal.js dropped.
-  celFunc("decimals.add", [DYN, DYN], DECIMAL_TYPE, (a, b) =>
-    decimalToCelScaled(exact(a).plus(exact(b)), Math.max(scaleOf(a), scaleOf(b))),
-  ),
-  celFunc("decimals.sub", [DYN, DYN], DECIMAL_TYPE, (a, b) =>
-    decimalToCelScaled(exact(a).minus(exact(b)), Math.max(scaleOf(a), scaleOf(b))),
-  ),
+  // add/sub align their operands, so the aligned frame has to be built before a single digit is
+  // computed. ExactDecimal's precision is 1e9, so nothing below this bounds it, and in this
+  // client an over-wide alignment is a V8 heap OOM that kills the process rather than throwing.
+  celFunc("decimals.add", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
+    const [x, y] = [exact(a), exact(b)];
+    requireAlignable(x, y, "decimals.add");
+    return decimalToCelScaled(x.plus(y), Math.max(scaleOf(a), scaleOf(b)));
+  }),
+  celFunc("decimals.sub", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
+    const [x, y] = [exact(a), exact(b)];
+    requireAlignable(x, y, "decimals.sub");
+    return decimalToCelScaled(x.minus(y), Math.max(scaleOf(a), scaleOf(b)));
+  }),
+  // mul is unguarded at any width: it adds the exponents and multiplies the coefficients, so
+  // the result is as compact as its operands. Measured at 13 MB where add costs 1738 MB.
   celFunc("decimals.mul", [DYN, DYN], DECIMAL_TYPE, (a, b) =>
     decimalToCelScaled(exact(a).times(exact(b)), scaleOf(a) + scaleOf(b)),
   ),
@@ -464,7 +518,15 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     // Exact, not DivDecimal: BigDecimal.remainder is exact. A remainder is smaller than the
     // divisor so the 38-digit cap was almost always enough, but "almost" is not the contract.
     // Scale is max(s1, s2), as for add/sub.
-    return decimalToCelScaled(exact(a).mod(exact(b)), Math.max(scaleOf(a), scaleOf(b)));
+    //
+    // The remainder itself is small, but the *integral quotient* has to be produced to get
+    // there, and that is the width. Not the aligned frame add/sub use: the quotient is narrow
+    // whenever the magnitudes are close or the dividend is the smaller, and measured on the
+    // shared libmpdec `1e-2147483647 mod 1e2147483647` and `1e2147483647 mod 1e2147483000` are
+    // both free while the frame for each is 4.3e9 digits.
+    const [x, y] = [exact(a), exact(b)];
+    requireSaneWidth(Math.max(0, x.e - y.e) + 1, "decimals.mod", "the integral quotient");
+    return decimalToCelScaled(x.mod(y), Math.max(scaleOf(a), scaleOf(b)));
   }),
 
   // ---- selection ----
@@ -509,12 +571,15 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   // requested scale (so round(2.5, 2) -> "2.50"). A negative scale rounds left of the decimal
   // point (round(1234.5, -2) -> 1200). decimal.js's toDP rejects a negative scale, so route those
   // through toNearest(10^-scale), which rounds to the nearest multiple.
-  celFunc("decimals.round", [DYN], DECIMAL_TYPE, (a) =>
-    decimalToCelScaled(toDecimal(a).toDP(0, Decimal.ROUND_HALF_UP), 0),
-  ),
+  celFunc("decimals.round", [DYN], DECIMAL_TYPE, (a) => {
+    const d = toDecimal(a);
+    requireRescalable(d, 0, "decimals.round");
+    return decimalToCelScaled(d.toDP(0, Decimal.ROUND_HALF_UP), 0);
+  }),
   celFunc("decimals.round", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
     const d = toDecimal(a);
     const n = requireIntScale(scale, "decimals.round");
+    requireRescalable(d, n, "decimals.round");
     const rounded = n >= 0
       ? d.toDP(n, Decimal.ROUND_HALF_UP)
       : d.toNearest(new Decimal(10).pow(-n), Decimal.ROUND_HALF_UP);
@@ -531,6 +596,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     const d = toDecimal(a);
     const current = scaleOf(a);
     if (current <= 0) return decimalToCelScaled(d, current);
+    requireRescalable(d, 0, "decimals.trunc");
     return decimalToCelScaled(d.toDP(0, Decimal.ROUND_DOWN), 0);
   }),
   celFunc("decimals.trunc", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
@@ -538,6 +604,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     const target = requireIntScale(scale, "decimals.trunc");
     // Negative scale truncates left of the decimal point toward zero (trunc(1234.5, -2) -> 1200),
     // matching Java setScale(target, DOWN); toDP rejects it, so use toNearest with ROUND_DOWN.
+    requireRescalable(d, target, "decimals.trunc");
     if (target < 0) {
       return decimalToCelScaled(d.toNearest(new Decimal(10).pow(-target), Decimal.ROUND_DOWN), target);
     }
@@ -545,8 +612,18 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     if (target >= current) return decimalToCelScaled(d, current);
     return decimalToCelScaled(d.toDP(target, Decimal.ROUND_DOWN), target);
   }),
-  celFunc("decimals.floor", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_FLOOR))),
-  celFunc("decimals.ceil", [DYN], DECIMAL_TYPE, (a) => decimalToCel(toDecimal(a).toDP(0, Decimal.ROUND_CEIL))),
+  // floor/ceil target scale 0 without going through the round/trunc bindings, so they carry
+  // the same bound. Reachable from a rule that names no scale at all.
+  celFunc("decimals.floor", [DYN], DECIMAL_TYPE, (a) => {
+    const d = toDecimal(a);
+    requireRescalable(d, 0, "decimals.floor");
+    return decimalToCel(d.toDP(0, Decimal.ROUND_FLOOR));
+  }),
+  celFunc("decimals.ceil", [DYN], DECIMAL_TYPE, (a) => {
+    const d = toDecimal(a);
+    requireRescalable(d, 0, "decimals.ceil");
+    return decimalToCel(d.toDP(0, Decimal.ROUND_CEIL));
+  }),
 
   // ---- string(Decimal) — extends stdlib string() with a Decimal arm ----
   celFunc("string", [DYN], STRING, (v) => stringExt(v)),

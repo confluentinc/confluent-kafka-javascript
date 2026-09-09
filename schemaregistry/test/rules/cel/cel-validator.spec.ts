@@ -307,6 +307,97 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
     await expect(evalStr(expr)).rejects.toThrow(/scale out of int range: 1099511627776/)
   })
 
+  // The width ceiling. This client is the one where a width failure is *process death* rather
+  // than an exception - `new Decimal.clone({precision:1e9})('1e2147483647').toFixed()` exits
+  // 134 on a V8 heap OOM and the surrounding try/catch never runs - so there is nothing to
+  // turn into a rule error after the fact and the bound has to be checked before the work.
+  //
+  // The dividing line is not arithmetic vs. rescale, it is whether the operation has to build a
+  // positional form. Measured on the shared libmpdec in the Python client, peak RSS on operands
+  // 1e2147483647 and 3: mul, div, `<`, `==`, `min`, `neg`, `abs` all 13 MB; add 1738 MB, sub
+  // 1738 MB, remainder 1733 MB; add(1e2147483647, 1e-2147483647) 3125 MB. So three of six
+  // arithmetic operations reach a multi-GB allocation from one expression over two operands
+  // each cheap to construct, and the other three cost nothing at any width.
+  // A note on the operands. This client encodes a decimal into its proto form as part of
+  // *constructing* the CEL value, so `decimal("1e2147483647")` cannot exist here at all - the
+  // encode would need a 2 GB plain form. That used to be the process death above; it is now a
+  // rule error at the constructor. Everything below therefore uses exponents around 1e9000000,
+  // which are constructible (plain form under the ceiling, one-digit coefficient) and whose
+  // *combination* is not.
+  const widthRejectedCases: [string, RegExp][] = [
+    // The constructor itself, which is where this client's ceiling bites first.
+    ['decimal("1e2147483647")', /the plain form/],
+    ['decimal("1e-2147483647")', /the plain form/],
+    // Alignment: add/sub expand the narrower operand into the wider one's frame.
+    ['decimals.add(decimal("1e9000000"), decimal("1e-9000000"))', /aligning the operands/],
+    ['decimals.sub(decimal("1e9000000"), decimal("1e-9000000"))', /aligning the operands/],
+    // mod, via the integral quotient it has to produce on the way.
+    ['decimals.mod(decimal("1e9000000"), decimal("1e-9000000"))', /the integral quotient/],
+    // Expanding a rescale, including the one-argument forms - which target scale 0, so a large
+    // positive exponent is what makes them expand. Three of the five call sites did not go
+    // through a guarded helper, each reachable from a rule that names no scale at all.
+    ['decimals.round(decimal("1.23"), 100000000)', /a scale of 100000000/],
+    // Coarsening is *not* free in this client, unlike the others: decimal.js has no negative
+    // toDP, so a negative target goes through `toNearest(10^-target)` and materialises that
+    // power of ten. Measured, these leaked decimal.js's "Maximum BigInt size exceeded".
+    ['decimals.round(decimal("1.23"), -100000000)', /a scale of -100000000/],
+    ['decimals.round(decimal("1.23"), -1000000000)', /a scale of -1000000000/],
+    ['decimals.round(decimal("1e20000000"))', /the plain form|a scale of 0/],
+    ['decimals.floor(decimal("1e20000000"))', /the plain form|a scale of 0/],
+    ['decimals.ceil(decimal("1e20000000"))', /the plain form|a scale of 0/],
+    // The coefficient, bounded far lower than a computation because the wire form is the
+    // unscaled integer in base 256 and decimal <-> binary radix conversion is quadratic. 4300
+    // is CPython's own int_max_str_digits, adopted here and in the C++ client so all three
+    // agree on which decimals can be written.
+    ['decimals.round(decimal("1.23"), 5000)', /the coefficient/],
+    ['decimal(b"' + '\\x01'.repeat(2000) + '", 0)', /the coefficient/],
+  ]
+  it.each(widthRejectedCases)('%s is refused on width', async (expr, message) => {
+    await expect(evalStr(`string(${expr})`)).rejects.toThrow(message)
+  })
+
+  // The must-fail twin. Everything that does not align, does not expand and does not render
+  // wide stays unbounded - and *coarsening* a scale is free at any distance, which an
+  // `abs(shift) + digits` estimate refused wrongly. Measured on libmpdec, all instant and all
+  // one digit wide: 1.23 at scale -1000000 / -100000000 / -2000000000, and 1e-1000000 and
+  // 1e-100000000 at scale 0. Java agrees: BigDecimal("1.23").setScale(-100000000) is
+  // precision 1.
+  const widthAcceptedCases: [string, string][] = [
+    // mul and div at the widest constructible operands.
+    ['string(decimals.mul(decimal("1e9000000"), decimal("1e-9000000")))', '1'],
+    ['string(decimals.div(decimal("1e9000000"), decimal("1e9000000")))', '1'],
+    // Comparison of two operands at opposite ends.
+    ['string(decimals.lt(decimal("1e-9000000"), decimal("1e9000000")))', 'true'],
+    // Alignment that stays narrow because the exponents are equal, however extreme both are.
+    ['string(decimals.sub(decimal("1e9000000"), decimal("1e9000000")))', '0'],
+    // remainder whose integral quotient is small, however far apart the operands are.
+    ['string(decimals.mod(decimal("1e-9000000"), decimal("1e9000000")))', 'SMALL'],
+    // Coarsening a value's own exponent is free - that path is toDP, not toNearest - so only
+    // the explicit negative *scale* above pays.
+    ['string(decimals.round(decimal("1.23"), -1000000))', '0'],
+    ['string(decimals.round(decimal("1e-9000000")))', '0'],
+    ['string(decimals.floor(decimal("1e-9000000")))', '0'],
+    ['string(decimals.ceil(decimal("1e-9000000")))', '1'],
+    ['string(decimals.trunc(decimal("1e-9000000")))', '0'],
+    // Zero is exempt from the rescale bound: rescaling it never expands anything and its
+    // result stays compact, as `new BigDecimal(BigInteger.ZERO, n)` does.
+    ['string(decimals.round(decimal("0"), 4000))', 'SMALL'],
+    // And ordinary values, unchanged.
+    ['string(decimals.round(decimal("1.23"), 4000))', 'LONG'],
+    ['string(decimals.add(decimal("12.34"), decimal("1.5")))', '13.84'],
+    ['string(decimals.mod(decimal("1E40"), decimal("3")))', '1'],
+  ]
+  it.each(widthAcceptedCases)('%s stays unbounded', async (expr, expected) => {
+    const got = await evalStr(expr)
+    if (expected === 'LONG') {
+      expect(got.length).toBeGreaterThan(4000)
+    } else if (expected === 'SMALL') {
+      expect(got.length).toBeGreaterThan(0)
+    } else {
+      expect(got).toBe(expected)
+    }
+  })
+
   // ITEM E (localized): decimal(bytes, scale) preserves the given scale, and string() renders it,
   // so a trailing-zero scale survives (Java new BigDecimal(unscaled, scale).toPlainString()).
   const bytesScaleCases: [string, string][] = [
