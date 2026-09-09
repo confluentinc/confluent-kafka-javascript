@@ -70,6 +70,29 @@ const DivDecimal = Decimal.clone({ precision: 38, rounding: Decimal.ROUND_HALF_U
 // JVM client), so an unbounded context there would diverge in the other direction.
 const ExactDecimal = Decimal.clone({ precision: 1e9 });
 
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+/**
+ * A scale argument as a number, mirroring Java's `requireIntScale`.
+ *
+ * Java declares every scale parameter as `long` and narrows it with `Math.toIntExact`, so an
+ * out-of-int-range value is an error rather than a wildly wrong Decimal; Go, C#, C++, Rust and
+ * Python all carry the same check. Without it a wide scale surfaced as a leaked decimal.js
+ * `[DecimalError]`, or - for `decimals.trunc` - was swallowed by the no-op early return.
+ *
+ * A *negative* scale is legitimate (`BigDecimal.setScale(-2)` rounds to hundreds), so only the
+ * width is constrained here. The CEL declarations are `[DYN, INT]`, which already rejects a
+ * non-integer argument as "no matching overload", exactly as Java's typing does.
+ */
+function requireIntScale(scale: unknown, fn: string): number {
+  const n = typeof scale === "bigint" ? scale : BigInt(Math.trunc(Number(scale)));
+  if (n < BigInt(INT32_MIN) || n > BigInt(INT32_MAX)) {
+    throw new Error(`${fn}: scale out of int range: ${n}`);
+  }
+  return Number(n);
+}
+
 /** An operand in the exact (uncapped) context, so the operation below is not rounded. */
 function exact(v: unknown): Decimal {
   return new ExactDecimal(toDecimal(v).toString());
@@ -180,7 +203,7 @@ export function decimalFromBytesScale(value: unknown, scale: unknown): ReflectMe
       `decimal: expected bytes for the (bytes, scale) overload, got ${typeof value}`,
     );
   }
-  const s = typeof scale === "bigint" ? Number(scale) : (scale as number);
+  const s = requireIntScale(scale, "decimal(bytes, scale)");
   // Preserve the requested scale (matching Java `new BigDecimal(unscaled, scale)`): decimal.js
   // normalizes trailing zeros, so encoding via decimalPlaces() would drop a trailing-zero scale
   // (e.g. unscaled 1990 at scale 2 = 19.90, not 19.9). See decimalToCelScaled.
@@ -484,7 +507,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   ),
   celFunc("decimals.round", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
     const d = toDecimal(a);
-    const n = Number(scale);
+    const n = requireIntScale(scale, "decimals.round");
     const rounded = n >= 0
       ? d.toDP(n, Decimal.ROUND_HALF_UP)
       : d.toNearest(new Decimal(10).pow(-n), Decimal.ROUND_HALF_UP);
@@ -505,7 +528,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   }),
   celFunc("decimals.trunc", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
     const d = toDecimal(a);
-    const target = Number(scale);
+    const target = requireIntScale(scale, "decimals.trunc");
     // Negative scale truncates left of the decimal point toward zero (trunc(1234.5, -2) -> 1200),
     // matching Java setScale(target, DOWN); toDP rejects it, so use toNearest with ROUND_DOWN.
     if (target < 0) {

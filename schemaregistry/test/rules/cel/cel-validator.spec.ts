@@ -293,6 +293,20 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
     expect(await evalStr(expr)).toBe(expected)
   })
 
+  // A scale wider than int32 is a rule error, matching Java's requireIntScale
+  // ("scale out of int range") and the Go, C#, C++, Rust and Python clients. Before this,
+  // decimals.round leaked a decimal.js `[DecimalError]`, decimal(bytes, scale) leaked an
+  // "Invalid string length", and decimals.trunc silently returned the operand unchanged -
+  // the last being the reason this asserts the message and not merely that it throws.
+  const outOfRangeScaleCases: string[] = [
+    'string(decimals.round(decimal("12.345"), 1099511627776))',
+    'string(decimals.trunc(decimal("12.345"), 1099511627776))',
+    'string(decimal(b"\\x04\\xd2", 1099511627776))',
+  ]
+  it.each(outOfRangeScaleCases)('%s rejects an out-of-int-range scale', async (expr) => {
+    await expect(evalStr(expr)).rejects.toThrow(/scale out of int range: 1099511627776/)
+  })
+
   // ITEM E (localized): decimal(bytes, scale) preserves the given scale, and string() renders it,
   // so a trailing-zero scale survives (Java new BigDecimal(unscaled, scale).toPlainString()).
   const bytesScaleCases: [string, string][] = [

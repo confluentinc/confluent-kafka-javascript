@@ -54,7 +54,13 @@ export class VariantLogicalType extends types.LogicalType {
   }
 }
 
-/** Merge the built-in `variant` logical type into forSchema options, preserving user ones. */
+/**
+ * Merge the built-in `variant` logical type into forSchema options, keeping the caller's other
+ * logical types. The built-in deliberately wins for the `variant` key itself: the serde and CEL
+ * layers are written against this exact implementation, and the JVM client does the same - Avro's
+ * `addLogicalTypeConversion` is a map put, and `AvroSchemaUtils` installs its own
+ * `VariantConversion` unconditionally.
+ */
 function withVariantLogicalType(opts: AvroSerdeConfig): AvroSerdeConfig {
   return {
     ...opts,
