@@ -86,6 +86,21 @@ export function decimalPlainString(unscaled: bigint, scale: number): string {
  * integer (for a negative scale the division below is then exact); {@link toProtoDecimal} passes
  * `d.decimalPlaces()`, which always satisfies this.
  */
+/**
+ * The digit count of an unscaled value, which is what `BigDecimal.precision()` reports and what
+ * the JVM writes into `confluent.type.Decimal.precision`. Zero has precision 1 there.
+ *
+ * Derived from the unscaled value actually being written rather than from the operand's own
+ * digits: the two differ whenever a scale is applied (12.34 at scale 4 is written as 123400,
+ * and BigDecimal("12.34").setScale(4).precision() is 6, not 4). Understating it would make a
+ * reader that treats precision as a MathContext -- Java and Python both do -- round the value
+ * and shift its scale.
+ */
+function unscaledPrecision(unscaled: bigint): number {
+  const digits = (unscaled < 0n ? -unscaled : unscaled).toString().length;
+  return digits === 0 ? 1 : digits;
+}
+
 export function decimalToUnscaled(d: Decimal, scale: number): bigint {
   // `toFixed()` (no argument) yields the exact value in plain notation, unaffected by precision.
   const plain = d.toFixed();
@@ -121,7 +136,7 @@ export function toProtoDecimal(d: Decimal): ProtoDecimal {
   return create(ProtoDecimalSchema, {
     value: bigIntToTwosComplementBytes(unscaled),
     scale,
-    precision: 0,
+    precision: unscaledPrecision(unscaled),
   });
 }
 
@@ -144,6 +159,6 @@ export function toProtoDecimalWithScale(d: Decimal, scale: number): ProtoDecimal
   return create(ProtoDecimalSchema, {
     value: bigIntToTwosComplementBytes(unscaled),
     scale,
-    precision: 0,
+    precision: unscaledPrecision(unscaled),
   });
 }

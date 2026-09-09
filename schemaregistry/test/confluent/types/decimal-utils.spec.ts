@@ -89,3 +89,47 @@ describe("decimal-utils exactness above 20 significant digits", () => {
     expect(decimalToUnscaled(new Decimal("0"), 0)).toBe(0n);
   });
 });
+
+/**
+ * `confluent.type.Decimal.precision` is the unscaled value's digit count -- what
+ * `BigDecimal.precision()` reports, and what the JVM writes from both `DecimalUtils.fromBigDecimal`
+ * and its CEL `ProtobufResultWriter`. Both writers here hard-coded `precision: 0`, so the same
+ * value serialized differently than it does on the JVM.
+ *
+ * Derived from the unscaled value actually written, not from the operand's own digits: the two
+ * differ whenever a scale is applied. Understating precision would make a reader that treats it as
+ * a MathContext (Java and Python both do) round the value and shift its scale.
+ */
+describe("decimal-utils precision matches BigDecimal.precision()", () => {
+  // Verified against the JVM: new BigDecimal(v).precision() / .setScale(s).precision().
+  const derived: [string, number, number][] = [
+    // value, precision, scale  -- decimal.js normalizes trailing zeros, so scale is its own
+    ["12.34", 4, 2],
+    ["100", 3, 0],
+    ["0", 1, 0],       // zero has precision 1, not 0
+    ["-12.34", 4, 2],  // the sign is not a digit
+  ];
+  it.each(derived)("toProtoDecimal(%s) -> precision %d", (value, precision, scale) => {
+    const p = toProtoDecimal(new Decimal(value));
+    expect(p.precision).toBe(precision);
+    expect(p.scale).toBe(scale);
+  });
+
+  // The explicit-scale variant: applying a scale changes the digit count, and precision must
+  // follow the written unscaled value. JVM: new BigDecimal("12.34").setScale(4).precision() == 6.
+  const explicit: [string, number, number, bigint][] = [
+    ["12.34", 4, 6, 123400n],
+    ["12.34", 2, 4, 1234n],
+    ["1200", -2, 2, 12n],
+    ["0", 0, 1, 0n],
+  ];
+  it.each(explicit)(
+    "toProtoDecimalWithScale(%s, %d) -> precision %d",
+    (value, scale, precision, unscaled) => {
+      const p = toProtoDecimalWithScale(new Decimal(value), scale);
+      expect(p.precision).toBe(precision);
+      expect(p.scale).toBe(scale);
+      expect(bytesToBigIntSigned(p.value)).toBe(unscaled);
+    },
+  );
+});
