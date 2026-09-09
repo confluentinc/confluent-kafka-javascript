@@ -142,10 +142,17 @@ function scaleOf(v: unknown): number {
  * The scale of a numeric literal: fractional digits minus the exponent, so `"2.00"` is 2,
  * `"1e-5"` is 5 and `"1E+3"` is -3 (all matching `new BigDecimal(String)`).
  *
- * `fromDouble` reproduces `BigDecimal.valueOf(double)`, which routes through `Double.toString` -
- * and that always emits at least one fractional digit ("5.0", "1.0E30"). So `decimal(5.0)` is
- * scale 1 in Java, where JS's own `String(5)` would suggest 0. A double literal therefore never
- * has scale 0, while the string `decimal("5")` correctly does.
+ * `fromDouble` reproduces *one* rule of `BigDecimal.valueOf(double)`, which routes through
+ * `Double.toString`: that always emits at least one fractional digit ("5.0", "1.0E30"). So
+ * `decimal(5.0)` is scale 1 in Java, where JS's own `String(5)` would suggest 0. A double
+ * literal therefore never has scale 0, while the string `decimal("5")` correctly does.
+ *
+ * It does **not** reproduce `Double.toString`'s other rule - plain notation only for
+ * 1e-3 <= |d| < 1e7 - so the digits still come from JS's own formatter and the scale can
+ * differ from Java's above 1e7: `decimal(1e7)` is scale 1 here against Java's -6, and
+ * `decimal(123456789.0)` scale 1 against 0. Byte-identical float/double rendering across the
+ * clients was designed, implemented in all seven and then deliberately backed out on cost, so
+ * each client keeps its native digits; do not "fix" this toward Java without revisiting that.
  */
 function literalScale(text: string, fromDouble: boolean): number {
   const m = /^[+-]?(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(text.trim());
