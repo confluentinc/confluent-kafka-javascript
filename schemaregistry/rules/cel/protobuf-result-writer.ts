@@ -24,6 +24,7 @@
  * This client needs no per-type conversion for decimal, timestamp and variant: cel-es carries
  * all three as protobuf messages, wrapped in a `ReflectMessage`, so unwrapping is enough.
  */
+import { isCelUint } from '@bufbuild/cel'
 import { ScalarType, type DescField, type DescMessage, type Message } from '@bufbuild/protobuf'
 import { isReflectMessage, reflect, type ReflectMessage } from '@bufbuild/protobuf/reflect'
 
@@ -157,15 +158,30 @@ function iterate(value: any): any[] {
 }
 
 /**
- * Values pass through as the runtime produced them.
+ * Values pass through as the runtime produced them, except a CEL `uint`.
  *
  * cel-es wraps messages in a `ReflectMessage`, and that is exactly what `ReflectMessage.set`
  * wants for a message-valued field - unwrapping to the bare message here fails with
  * "expected ReflectMessage, got message". The unwrapping happens once at the top, via
  * `out.message`.
+ *
+ * A CEL `uint` is the one value that does need unwrapping: cel-es carries it as a `CelUint`
+ * wrapper around a bigint, not as a bigint, so it never matched the `typeof value === 'bigint'`
+ * test in {@link narrowScalar} and reached protobuf reflection whole. Measured, an *identity*
+ * message-level transform over a uint32 field failed with
+ * `FieldError: expected number (uint32), got object`, while the same transform over int32,
+ * sint64 and double round-tripped - so the fault was unsignedness, and it covered
+ * uint32/uint64/fixed32/fixed64. The reference does not hit this: Java's message-level
+ * write-back renders the CEL result map to protobuf JSON with Jackson and parses it with
+ * `ProtobufSchema.fromJson`, where an unsigned value is just a JSON number.
+ *
+ * Done here rather than in `narrowScalar` because this is already applied at every value
+ * position - plain scalar, list element, map value, and map *key* (protobuf permits
+ * `map<uint32, V>`). Range and sign are left to protobuf reflection, as they are for every
+ * other scalar in this writer.
  */
 function unwrap(value: any): unknown {
-  return value
+  return isCelUint(value) ? value.value : value
 }
 
 /**

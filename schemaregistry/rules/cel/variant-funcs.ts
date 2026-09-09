@@ -37,7 +37,10 @@ import {
   type Variant as ProtoVariant,
 } from "../../confluent/types/variant_pb";
 import { DecimalSchema } from "../../confluent/types/decimal_pb";
-import { bigIntToTwosComplementBytes } from "../../confluent/types/decimal-utils";
+import {
+  bigIntToTwosComplementBytes,
+  unscaledPrecision,
+} from "../../confluent/types/decimal-utils";
 import { Variant, VariantType, parseJson } from "../../confluent/types/variant-utils";
 import { walk } from "./variant-path";
 
@@ -192,7 +195,14 @@ function decimalToCel(r: Variant): ReflectMessage {
   return reflect(DecimalSchema, create(DecimalSchema, {
     value: bigIntToTwosComplementBytes(unscaled),
     scale,
-    precision: 0,
+    // The unscaled value's digit count, from the shared helper the other two write paths use,
+    // so a decimal reaching the wire from here is indistinguishable from one built by
+    // `decimal(...)`. Left at 0 this was the fourth write path in this client - the other
+    // three were fixed together - and 0 is a value the reference cannot produce, since
+    // BigDecimal.precision() is never less than 1 (zero's is 1). Java's ProtobufResultWriter
+    // does `m.put("precision", dec.precision())` on this same path, so a JVM consumer
+    // rewrites a 0 on its next touch and the bytes stop matching.
+    precision: unscaledPrecision(unscaled),
   }));
 }
 
