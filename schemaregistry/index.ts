@@ -1,4 +1,6 @@
 export * from './confluent/types/decimal_pb'
+export * from './confluent/types/variant_pb'
+export * from './confluent/types/variant-utils'
 export * from './confluent/meta_pb'
 export * from './rules/cel/cel-executor'
 export * from './rules/cel/cel-field-executor'
@@ -24,6 +26,10 @@ export * from './schemaregistry-client'
 // them explicitly so the data contract rule keeps the unqualified name.
 export type { Rule } from './schemaregistry-client'
 export type { Rule as MetaRule } from './confluent/meta_pb'
+// Likewise `Variant`: the variant-utils class is the one users construct and read, so it
+// keeps the unqualified name; the protobuf wire message is aliased.
+export { Variant } from './confluent/types/variant-utils'
+export type { Variant as ProtoVariant } from './confluent/types/variant_pb'
 export {
   BasicAuthCredentials,
   BearerAuthCredentials,
