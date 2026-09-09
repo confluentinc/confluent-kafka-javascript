@@ -398,6 +398,66 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
     }
   })
 
+  // A producer-controlled int32 scale used to be expanded into a positional string on *read*,
+  // before any width guard: `decimalPlainString` pads with "0".repeat(scale), so scale 3e8
+  // allocated a 300000002-character string (301 MB) and past V8's maximum string length threw
+  // `RangeError: Invalid string length` - a rule error, but from the string builder rather than
+  // from anything that names the decimal. Constructing from exponent notation is O(1), so an
+  // extreme scale is now cheap to hold and refused only where the digits are actually needed.
+  const extremeScaleCases: [string, RegExp][] = [
+    // Held cheaply, then refused by the rendering guard - which names the plain form.
+    ['string(decimal(b"\\x01", 2147483647))', /the plain form/],
+    ['string(decimal(b"\\x01", -2147483647))', /the plain form/],
+    ['string(decimal(b"\\x01", 300000000))', /the plain form/],
+  ]
+  it.each(extremeScaleCases)('%s is held cheaply and refused on render', async (expr, message) => {
+    await expect(evalStr(expr)).rejects.toThrow(message)
+  })
+
+  // Note what is *not* here: a comparison against an extreme-scale operand. In this client the
+  // constructor itself encodes to the proto form, so `decimal(b"\x01", 2147483647)` is refused
+  // by the coefficient/plain-form guard before any operator sees it - the same reason
+  // `decimal("1e2147483647")` cannot exist here. Exponent notation removes the eager 301 MB
+  // allocation on the way to that refusal; it does not widen the domain.
+  //
+  // And the value is still exact once it is small enough to look at, which is what the plain
+  // string was there for - `.mul(10^-scale)` would have rounded to decimal.js's global
+  // 20-digit precision. These all go through the same exponent-notation construction.
+  const exactAfterExponentNotation: [string, string][] = [
+    ['string(decimal(b"\\x07\\xc6", 2))', '19.90'],
+    ['string(decimal(b"\\x04\\xd2", 2))', '12.34'],
+    ['string(decimal(b"\\x0c", -2))', '1200'],
+    // 30 significant digits, well past decimal.js's global precision.
+    ['string(decimal("123456789012345678901234567890"))', '123456789012345678901234567890'],
+  ]
+  it.each(exactAfterExponentNotation)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // `==` on two Variants is *identity*, not structural, matching the reference. Measured on
+  // cel-java: io.confluent...type.Variant declares no equals(), so
+  //   variants.parseJson("1") == variants.parseJson("1")  -> false
+  //   variant(this)           == variant(this)            -> false
+  //   variants.parseJson("1") != variants.parseJson("1")  -> true
+  // This client carries a Variant as a proto *message* where Java carries a plain object, so
+  // cel-es's structural message equality applied where Java's reference equality does, and the
+  // first two came back true. Decimal is the one message type this client deliberately makes
+  // numeric, so the two are asserted together.
+  const variantEqualityCases: [string, string][] = [
+    ['string(variants.parseJson("1") == variants.parseJson("1"))', 'false'],
+    ['string(variants.parseJson("1") != variants.parseJson("1"))', 'true'],
+    ['string(variants.parseJson("{}") == variants.parseJson("{}"))', 'false'],
+    ['string(variants.parseJson("1") == variants.parseJson("2"))', 'false'],
+    // A Variant nested in a list follows, since list equality recurses through the same helper.
+    ['string([variants.parseJson("1")] == [variants.parseJson("1")])', 'false'],
+    // Decimal stays numeric, and every other message type stays structural.
+    ['string(decimal("2.0") == decimal(b"\\x14", 1))', 'true'],
+    ['string(decimal("2.0") == decimal("2.00"))', 'true'],
+  ]
+  it.each(variantEqualityCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
   // ITEM E (localized): decimal(bytes, scale) preserves the given scale, and string() renders it,
   // so a trailing-zero scale survives (Java new BigDecimal(unscaled, scale).toPlainString()).
   const bytesScaleCases: [string, string][] = [

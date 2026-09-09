@@ -14,7 +14,7 @@ import { describe, expect, it } from '@jest/globals'
 import { RuleContext } from '../../../serde/serde'
 import { RuleMode } from '../../../schemaregistry-client'
 import { CelExecutor } from '../../../rules/cel/cel-executor'
-import { Variant, parseJson } from '../../../confluent/types/variant-utils'
+import { Variant, VariantBuilder, parseJson } from '../../../confluent/types/variant-utils'
 
 const SCHEMA = JSON.stringify({
   type: 'record',
@@ -115,5 +115,62 @@ describe('message-level CEL transforms over Avro', () => {
     expect(out.label).toBe('changed')
     expect(out.amount).toBeUndefined()
     expect(out.ts).toBeUndefined()
+  })
+
+  // `variants.as(v, "decimal")` is the fourth path in this client that produces a
+  // confluent.type.Decimal, and the one that was left at `precision: 0`. Java's
+  // ProtobufResultWriter does `m.put("precision", dec.precision())` on the same path, and
+  // precision() is never less than 1 - zero's is 1 - so 0 is a value the reference cannot
+  // produce, and a JVM consumer rewrites it on its next touch.
+  //
+  // The variant has to be built rather than parsed from JSON: JSON has no decimal type, so
+  // `variants.parseJson("12.34")` is a DOUBLE and `variants.as(..., "decimal")` rejects it.
+  const decimalVariant = (unscaled: bigint, scale: number): Variant => {
+    const b = new VariantBuilder()
+    b.appendDecimal(unscaled, scale)
+    return b.build()
+  }
+
+  // Asserted at the CEL level rather than on the returned value, because `precision` is a
+  // uint32 and so comes back as a CelUint wrapper - which is the very thing the protobuf
+  // writer has to unwrap (see cel-proto-key-and-uint.spec.ts).
+  const asDecimalHolds = async (unscaled: bigint, scale: number, expr: string): Promise<any> => {
+    const rule = { name: 'r', type: 'CEL', mode: RuleMode.WRITE, kind: 'CONDITION', expr } as any
+    const target = { schema: SCHEMA, schemaType: 'AVRO' } as any
+    const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
+      rule, 0, [rule], null, null as any)
+    return await new CelExecutor().transform(
+      ctx, { ...record(), data: decimalVariant(unscaled, scale) })
+  }
+
+  const PREC = 'variants.as(message.data, "decimal").precision'
+
+  it('variants.as decimal carries the unscaled digit count as its precision', async () => {
+    // 1234 at scale 2 is 12.34: four digits, as BigDecimal("12.34").precision() reports.
+    expect(await asDecimalHolds(BigInt(1234), 2, `${PREC} == 4u`)).toBe(true)
+    expect(await asDecimalHolds(BigInt(1234), 2,
+      'variants.as(message.data, "decimal").scale == 2')).toBe(true)
+    // Trailing zeros count, because the scale is preserved: 1500 at scale 3 is four digits.
+    expect(await asDecimalHolds(BigInt(1500), 3, `${PREC} == 4u`)).toBe(true)
+    // Zero is precision 1, never 0 - which is the value the reference cannot produce.
+    expect(await asDecimalHolds(BigInt(0), 2, `${PREC} == 1u`)).toBe(true)
+    expect(await asDecimalHolds(BigInt(0), 0, `${PREC} == 1u`)).toBe(true)
+    // The sign is not a digit.
+    expect(await asDecimalHolds(BigInt(-9995), 1, `${PREC} == 4u`)).toBe(true)
+    // Negative controls: 0 is what this path used to write for everything.
+    expect(await asDecimalHolds(BigInt(1234), 2, `${PREC} == 0u`)).toBe(false)
+    expect(await asDecimalHolds(BigInt(1234), 2, `${PREC} == 2u`)).toBe(false)
+  })
+
+  it('variants.as decimal agrees with the decimal constructor', async () => {
+    // The property that makes the wire form independent of which path produced it.
+    const expr = 'variants.as(message.data, "decimal") == decimal("12.34")'
+    const rule = { name: 'r', type: 'CEL', mode: RuleMode.WRITE, kind: 'CONDITION', expr } as any
+    const target = { schema: SCHEMA, schemaType: 'AVRO' } as any
+    const ctx = new RuleContext(undefined, null, target, 's', 't', false, RuleMode.WRITE,
+      rule, 0, [rule], null, null as any)
+
+    expect(await new CelExecutor().transform(
+      ctx, { ...record(), data: decimalVariant(BigInt(1234), 2) })).toBe(true)
   })
 })

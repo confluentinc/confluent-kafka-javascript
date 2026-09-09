@@ -522,6 +522,35 @@ function avroLeafNode(node: any, named: Map<string, any>): any {
   return node
 }
 
+/**
+ * Writes one entry, by definition rather than by assignment.
+ *
+ * `out[key] = v` invokes the inherited `__proto__` setter for that one key instead of creating
+ * an own property: the entry is silently dropped when the value is a primitive, and replaces
+ * the object's prototype when it is not. Avro map keys are arbitrary strings, so the map arm
+ * is reachable from data - verified: `{}` then `out["__proto__"] = {x:9}` leaves `Object.keys`
+ * as `["a"]` with `hasOwnProperty` false, where this keeps the entry and reads it back. Java
+ * holds a map in a `HashMap`, where the key is just a string, so there was no reference
+ * behaviour behind the divergence.
+ *
+ * The record arm was *not* broken, because its `{ ...value }` spread copies own properties by
+ * definition rather than by assignment, so the own `__proto__` already exists and the later
+ * write lands on it. (`__proto__` is a legal Avro name - the grammar is
+ * `[A-Za-z_][A-Za-z0-9_]*`.) It goes through here anyway so the record arm does not depend on
+ * that spread for its correctness.
+ *
+ * `Object.create(null)` - which the *write* path (`celToAvro`/`celEntries`) uses for the same
+ * hazard - is not an option here, because this object goes to cel-es rather than to avsc, and
+ * cel-es types a value through its prototype: a null-prototype record failed with
+ * "Cannot read properties of undefined (reading 'name')". Defining the property keeps the
+ * ordinary prototype and still shadows the accessor.
+ */
+function setEntry(out: Record<string, any>, key: string, value: unknown): void {
+  Object.defineProperty(out, key, {
+    value, enumerable: true, writable: true, configurable: true,
+  })
+}
+
 function avroToCel(value: any, node: any, named: Map<string, any>): any {
   node = resolveAvroNode(node, named)
   if (value == null || node == null) {
@@ -562,7 +591,7 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
       const out: Record<string, any> = { ...value }
       for (const field of node.fields ?? []) {
         if (hasOwn(value, field.name)) {
-          out[field.name] = avroToCel(value[field.name], field.type, named)
+          setEntry(out, field.name, avroToCel(value[field.name], field.type, named))
         }
       }
       return out
@@ -574,7 +603,7 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
     case "map": {
       const out: Record<string, any> = {}
       for (const key of Object.keys(value)) {
-        out[key] = avroToCel(value[key], node.values, named)
+        setEntry(out, key, avroToCel(value[key], node.values, named))
       }
       return out
     }

@@ -47,7 +47,6 @@ import {
 import {
   SANE_COEFFICIENT,
   bytesToBigIntSigned,
-  decimalPlainString,
   fromProtoDecimal,
   plainFormLength,
   requireAlignable,
@@ -59,6 +58,7 @@ import {
 
 const { DYN, INT, BOOL, STRING, BYTES, DOUBLE } = CelScalar;
 const DECIMAL_TYPE = objectType(ProtoDecimalSchema);
+const VARIANT_TYPE_NAME = "confluent.type.Variant";
 
 // 38-digit HALF_UP context for division, matching Flink / Java BigDecimal.
 const DivDecimal = Decimal.clone({ precision: 38, rounding: Decimal.ROUND_HALF_UP });
@@ -243,8 +243,10 @@ export function decimalFromBytesScale(value: unknown, scale: unknown): ReflectMe
   // Preserve the requested scale (matching Java `new BigDecimal(unscaled, scale)`): decimal.js
   // normalizes trailing zeros, so encoding via decimalPlaces() would drop a trailing-zero scale
   // (e.g. unscaled 1990 at scale 2 = 19.90, not 19.9). See decimalToCelScaled.
-  // Build the decimal.js value exactly from the unscaled+scale plain string; `.mul(10^-s)` would
-  // round an unscaled value above 20 significant digits to decimal.js's global precision.
+  // Build the decimal.js value exactly, via exponent notation; `.mul(10^-s)` would round an
+  // unscaled value above 20 significant digits to decimal.js's global precision, and the plain
+  // form would expand the scale into digits eagerly - a scale of 3e8 is a 301 MB string.
+  // Exponent notation is O(1) and just as exact.
   // The coefficient is the width risk on this path; the scale is not, since it only shifts the
   // exponent. Checked from the byte count before bytesToBigIntSigned builds the integer - one
   // byte carries about 2.41 decimal digits - and against the *encodable* ceiling, since a
@@ -252,7 +254,7 @@ export function decimalFromBytesScale(value: unknown, scale: unknown): ReflectMe
   requireSaneWidth(Math.trunc(value.length * 2.408) + 1, "decimal(bytes, scale)",
     "the coefficient", SANE_COEFFICIENT);
   const unscaled = value.length === 0 ? 0n : bytesToBigIntSigned(value);
-  return decimalToCelScaled(new Decimal(decimalPlainString(unscaled, s)), s);
+  return decimalToCelScaled(new Decimal(`${unscaled}e${-s}`), s);
 }
 
 /** Whether a CEL value is a Decimal this module can encode back to Avro. */
@@ -406,6 +408,18 @@ function celEquals(lhs: unknown, rhs: unknown): boolean {
   if (isReflectMessage(l)) {
     if (!isReflectMessage(r)) return false;
     if (l.desc.typeName !== r.desc.typeName) return false;
+    // Variant is compared by identity, not structurally, which the `lhs === rhs` fast path
+    // above has already settled - so two distinct Variants are unequal however alike their
+    // bytes. That is the reference behaviour, measured: io.confluent...type.Variant declares no
+    // equals(), so cel-java falls back to Object.equals and
+    //   variants.parseJson("1") == variants.parseJson("1")   -> false
+    //   variant(this)           == variant(this)             -> false
+    //   variants.parseJson("1") != variants.parseJson("1")   -> true
+    // Structural comparison here made the first two true, because this client carries a
+    // Variant as a proto *message* where Java carries a plain object - so cel-es's message
+    // equality applied where Java's reference equality does. The docstring on
+    // celEqualsWithDecimal already claimed identity; only the code disagreed.
+    if (l.desc.typeName === VARIANT_TYPE_NAME) return false;
     return equalsMessage(l.desc, l.message, r.message, {
       unpackAny: true,
       unknown: true,

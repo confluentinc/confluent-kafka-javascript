@@ -96,7 +96,7 @@ export function decimalPlainString(unscaled: bigint, scale: number): string {
  * reader that treats precision as a MathContext -- Java and Python both do -- round the value
  * and shift its scale.
  */
-function unscaledPrecision(unscaled: bigint): number {
+export function unscaledPrecision(unscaled: bigint): number {
   const digits = (unscaled < 0n ? -unscaled : unscaled).toString().length;
   return digits === 0 ? 1 : digits;
 }
@@ -224,8 +224,15 @@ export function decimalToUnscaled(d: Decimal, scale: number): bigint {
 export function fromProtoDecimal(p: ProtoDecimal): Decimal {
   const scale = p.scale ?? 0;
   const unscaled = p.value && p.value.length > 0 ? bytesToBigIntSigned(p.value) : 0n;
-  // Build exactly from the plain string; `.mul` would round unscaled values above 20 digits.
-  return new Decimal(decimalPlainString(unscaled, scale));
+  // Exponent notation, not `decimalPlainString`. Both are exact - the point of neither is
+  // `.mul`, which would round an unscaled value above 20 significant digits - but the plain
+  // form expands the scale into digits *eagerly*, and `scale` here is a producer-controlled
+  // int32 arriving off the wire. Measured: scale 3e8 allocates a 300000002-character string
+  // (301 MB) before any width guard runs, and past V8's maximum string length it throws
+  // `RangeError: Invalid string length`. Exponent notation is O(1) - decimal.js stores digits
+  // plus an exponent - so an extreme scale stays cheap here and is refused later by the
+  // guards on rendering and encoding, where the digits are actually needed.
+  return new Decimal(`${unscaled}e${-scale}`);
 }
 
 /**
