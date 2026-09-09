@@ -356,6 +356,42 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
     await expect(evalStr(`string(${expr})`)).rejects.toThrow(message)
   })
 
+  // Expanding a *zero* is free, so the aligned frame is set by the operands that actually have
+  // digits - several of these turn on which operand expands rather than on how far apart the
+  // scales are. A zero also keeps whatever scale it was built with, so its adjusted exponent
+  // says nothing about the cost, which is what an earlier estimate got wrong. Rows measured on
+  // libmpdec and the JDK, which agree: `0E+9e6 + 0E-9e6`, `0E+9e6 + 1` and
+  // `0E+9e6 mod 1E-9e6` are free at one digit, while a *nonzero* operand expanding into a
+  // zero's scale is not. (9e6 rather than 2e9 because this client's constructor encodes, so
+  // the operands themselves have to be constructible - see the note above.)
+  // Asserted on the *value*, not on `string(...)`: the result of adding two zeros nine million
+  // decimal places apart is a zero at scale 9000000, and rendering that is legitimately nine
+  // million characters. The reference does the same - `0E+2e9 + 0E-2e9` is precision 1 at
+  // scale 2000000000 there - so what matters is that the operation is cheap and the value is
+  // zero, not that it prints short.
+  const zeroOperandCases: [string, string][] = [
+    ['string(decimals.eq(decimals.add(decimal("0E+9000000"), decimal("0E-9000000")), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.sub(decimal("0E+9000000"), decimal("0E-9000000")), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.add(decimal("0E+9000000"), decimal("1")), decimal("1")))', 'true'],
+    ['string(decimals.eq(decimals.mod(decimal("0E+9000000"), decimal("1E-9000000")), decimal("0")))', 'true'],
+    ['string(decimals.mod(decimal("0"), decimal("3")))', '0'],
+  ]
+  it.each(zeroOperandCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // The row that must still be refused: here the *one* expands into the zero's scale, so a
+  // blanket zero exemption would have let it through.
+  it('a nonzero operand expanding into a zero scale is refused', async () => {
+    // 2e7 rather than 9e6 so the *alignment* guard is what fires: at 9e6 the frame is under
+    // the 1e7 ceiling and it is the coefficient guard that catches the result instead. Either
+    // way it is refused - the point is that a blanket zero exemption would let it through.
+    await expect(evalStr('string(decimals.add(decimal("1"), decimal("0E-20000000")))'))
+      .rejects.toThrow(/aligning the operands/)
+    await expect(evalStr('string(decimals.add(decimal("1"), decimal("0E-9000000")))'))
+      .rejects.toThrow(/the coefficient/)
+  })
+
   // The must-fail twin. Everything that does not align, does not expand and does not render
   // wide stays unbounded - and *coarsening* a scale is free at any distance, which an
   // `abs(shift) + digits` estimate refused wrongly. Measured on libmpdec, all instant and all

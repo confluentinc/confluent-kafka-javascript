@@ -144,6 +144,12 @@ function shapeOf(d: Decimal): { exponent: number; digits: number } {
  * is precision 1, and measured on libmpdec the same rescale is instant.
  */
 export function rescaledDigits(targetScale: number, d: Decimal): number {
+  // A zero is one digit at any target scale: rescaling it appends nothing, and the reference
+  // agrees (`new BigDecimal(BigInteger.ZERO, 2147483647)` is precision 1). Without this the
+  // *carried* scale drove the estimate - `decimal("0E+9000000")` keeps its literal scale on
+  // the proto while decimal.js normalises the value itself to e=0 - so encoding a zero was
+  // refused for needing 9000001 digits when the coefficient it writes is `0`.
+  if (d.isZero()) return 1;
   const { exponent, digits } = shapeOf(d);
   return Math.max(1, digits + targetScale + exponent);
 }
@@ -187,15 +193,38 @@ export function requireSaneWidth(
   }
 }
 
-/** Guard on the frame `add`/`sub` align their operands in. */
-export function requireAlignable(a: Decimal, b: Decimal, fn: string): void {
-  // No exemption for a zero operand: aligning a zero at an extreme scale with 1 still expands
-  // the *one* into the zero's scale.
-  const sa = shapeOf(a);
-  const sb = shapeOf(b);
-  const exponent = Math.min(sa.exponent, sb.exponent);
-  const adjusted = Math.max(a.e, b.e) + 1;
-  requireSaneWidth(adjusted - exponent + 1, fn, "aligning the operands");
+/**
+ * Digits `d` needs once expanded to `targetScale`.
+ *
+ * A **zero** contributes one digit whatever the distance, because expanding a zero appends
+ * none - and that decides several cases outright, since alignment expands only the operand
+ * whose scale is coarser. Measured on libmpdec in the Python sibling, with the JDK agreeing on
+ * every row: `0E+2e9 + 0E-2e9`, `0E+2e9 + 1` and `0E+2e9 mod 1E-2e9` are all free at one
+ * digit, while `0E-2e9 + 1` is 1601 MB and 2e9+1 digits (`ArithmeticException` on the JVM).
+ * Only the last must be refused, and the difference is purely which operand expands.
+ */
+export function operandWidth(targetScale: number, d: Decimal, scale: number): number {
+  if (d.isZero()) return 1;
+  return d.sd() + (targetScale - scale);
+}
+
+/**
+ * Guard on the frame `add`/`sub` align their operands in.
+ *
+ * The scales are passed in rather than read off the `Decimal`s, because decimal.js does not
+ * carry a BigDecimal scale: it normalises `1.50` to `1.5` and - the case that matters here -
+ * normalises *every* zero to `e = 0`, whatever scale it was built with. So a zero operand's
+ * distance from the other one is invisible in the value and has to come from the proto, which
+ * is what `scaleOf` reads. Measuring the decimal.js exponents instead made this guard a no-op
+ * for a zero operand: `1 + 0E-20000000` aligned to scale 0 as far as the guard could see.
+ */
+export function requireAlignable(
+  a: Decimal, scaleA: number, b: Decimal, scaleB: number, fn: string,
+): void {
+  const targetScale = Math.max(scaleA, scaleB);
+  const needed = Math.max(operandWidth(targetScale, a, scaleA),
+    operandWidth(targetScale, b, scaleB)) + 1;
+  requireSaneWidth(needed, fn, "aligning the operands");
 }
 
 export function decimalToUnscaled(d: Decimal, scale: number): bigint {
