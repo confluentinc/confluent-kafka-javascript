@@ -501,12 +501,12 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   // client an over-wide alignment is a V8 heap OOM that kills the process rather than throwing.
   celFunc("decimals.add", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
     const [x, y] = [exact(a), exact(b)];
-    requireAlignable(x, y, "decimals.add");
+    requireAlignable(x, scaleOf(a), y, scaleOf(b), "decimals.add");
     return decimalToCelScaled(x.plus(y), Math.max(scaleOf(a), scaleOf(b)));
   }),
   celFunc("decimals.sub", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
     const [x, y] = [exact(a), exact(b)];
-    requireAlignable(x, y, "decimals.sub");
+    requireAlignable(x, scaleOf(a), y, scaleOf(b), "decimals.sub");
     return decimalToCelScaled(x.minus(y), Math.max(scaleOf(a), scaleOf(b)));
   }),
   // mul is unguarded at any width: it adds the exponents and multiplies the coefficients, so
@@ -539,7 +539,11 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     // shared libmpdec `1e-2147483647 mod 1e2147483647` and `1e2147483647 mod 1e2147483000` are
     // both free while the frame for each is 4.3e9 digits.
     const [x, y] = [exact(a), exact(b)];
-    requireSaneWidth(Math.max(0, x.e - y.e) + 1, "decimals.mod", "the integral quotient");
+    // A zero dividend has a quotient of zero whatever the scales, and its adjusted exponent
+    // says nothing useful - a zero keeps the scale it was built with. Free everywhere it was
+    // measured, and the JDK returns 0 at precision 1.
+    requireSaneWidth(x.isZero() ? 1 : Math.max(0, x.e - y.e) + 1,
+      "decimals.mod", "the integral quotient");
     return decimalToCelScaled(x.mod(y), Math.max(scaleOf(a), scaleOf(b)));
   }),
 
