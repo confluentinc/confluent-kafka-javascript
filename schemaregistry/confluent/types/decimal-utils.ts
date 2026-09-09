@@ -101,7 +101,112 @@ function unscaledPrecision(unscaled: bigint): number {
   return digits === 0 ? 1 : digits;
 }
 
+/**
+ * The width ceiling for a computation, in decimal digits.
+ *
+ * Deliberately *not* BigDecimal's - BigInteger tops out at Integer.MAX_VALUE bits, which is
+ * 646456993 digits, and reproducing that bound across six decimal libraries is neither
+ * achievable nor the point. This is a round number chosen so no single rule evaluation can
+ * exhaust memory. It matters more here than anywhere else in the family: a width failure in
+ * this client is *process death*, not an exception -
+ * `new Decimal.clone({precision:1e9})('1e2147483647').toFixed()` exits 134 on a V8 heap OOM and
+ * the surrounding try/catch never runs, so there is nothing to turn into a rule error after
+ * the fact.
+ */
+export const SANE_WIDTH = 10_000_000;
+
+/**
+ * A far tighter ceiling on what can be *encoded*, which bounds a different resource.
+ *
+ * `confluent.type.Decimal.value` is the unscaled integer in base 256, and decimal <-> binary
+ * radix conversion is quadratic in every client. 4300 is CPython's own `int_max_str_digits`,
+ * the cap it puts on str <-> int conversion for exactly this reason; the Python and C++
+ * clients both adopt it, so all three agree on which decimals can be written. CEL's documented
+ * decimal precision is 38 digits, so this leaves two orders of headroom over anything a rule
+ * is meant to produce.
+ */
+export const SANE_COEFFICIENT = 4300;
+
+/** A decimal.js value's `(exponent, significant digits)`, without rendering it. */
+function shapeOf(d: Decimal): { exponent: number; digits: number } {
+  const digits = d.isZero() ? 1 : d.sd();
+  // decimal.js's `e` is the exponent of the *first* significant digit, i.e. the adjusted
+  // exponent, so the trailing exponent is e - digits + 1.
+  return { exponent: d.e - digits + 1, digits };
+}
+
+/**
+ * Digits in the coefficient `d` would have at `targetScale`.
+ *
+ * Only *expanding* a scale costs anything - the coefficient grows by the difference.
+ * Coarsening one is free at any distance and yields a single digit, so an
+ * `abs(shift) + digits` estimate refuses it wrongly: `BigDecimal("1.23").setScale(-100000000)`
+ * is precision 1, and measured on libmpdec the same rescale is instant.
+ */
+export function rescaledDigits(targetScale: number, d: Decimal): number {
+  const { exponent, digits } = shapeOf(d);
+  return Math.max(1, digits + targetScale + exponent);
+}
+
+/**
+ * Characters in `d`'s plain (non-scientific) rendering, to within a couple.
+ *
+ * Unlike a rescale this pays for the exponent in *both* directions: a positive exponent writes
+ * that many trailing zeros and a negative one that many leading zeros, so a one-digit
+ * coefficient at an extreme scale still renders enormous.
+ */
+export function plainFormLength(d: Decimal): number {
+  const { exponent, digits } = shapeOf(d);
+  return digits + Math.abs(exponent);
+}
+
+/**
+ * Refuses a positional form too wide to build.
+ *
+ * Three unrelated-looking things reduce to this one quantity, because each has to materialise a
+ * value in positional form: aligning two exponents (`add`, `sub`; `mod` is the same family but
+ * bounded by its integral quotient), rescaling (the rounding family), and rendering
+ * (`toFixed`, which is also how the wire encoder reads the coefficient).
+ *
+ * `mul`, `div`, comparison, negation and `abs` are absent deliberately - none of them aligns,
+ * and each is measurably cheap at any width. Measured on the shared libmpdec in the Python
+ * client, peak RSS on operands 1e2147483647 and 3: mul, div, `<`, `==`, `min`, `neg`, `abs` all
+ * 13 MB; add 1738 MB, sub 1738 MB, remainder 1733 MB; and add(1e2147483647, 1e-2147483647)
+ * 3125 MB. So the guard follows *alignment*, not arithmetic.
+ */
+export function requireSaneWidth(
+  needed: number,
+  fn: string,
+  what: string,
+  limit: number = SANE_WIDTH,
+): void {
+  if (needed > limit) {
+    throw new Error(
+      `${fn}: ${what} needs ${needed} digits, past this client's ${limit}-digit limit`,
+    );
+  }
+}
+
+/** Guard on the frame `add`/`sub` align their operands in. */
+export function requireAlignable(a: Decimal, b: Decimal, fn: string): void {
+  // No exemption for a zero operand: aligning a zero at an extreme scale with 1 still expands
+  // the *one* into the zero's scale.
+  const sa = shapeOf(a);
+  const sb = shapeOf(b);
+  const exponent = Math.min(sa.exponent, sb.exponent);
+  const adjusted = Math.max(a.e, b.e) + 1;
+  requireSaneWidth(adjusted - exponent + 1, fn, "aligning the operands");
+}
+
 export function decimalToUnscaled(d: Decimal, scale: number): bigint {
+  // Every encode funnels through here - the CEL write-back and the serde alike - so this is the
+  // one place the coefficient has to be bounded. `toFixed()` below builds the whole positional
+  // form and `BigInt(...)` then converts it out of base 10, and neither has a bound of its own:
+  // on a value with an extreme exponent the render alone is a V8 heap OOM that kills the
+  // process rather than throwing.
+  requireSaneWidth(plainFormLength(d), "confluent.type.Decimal", "the plain form");
+  requireSaneWidth(rescaledDigits(scale, d), "confluent.type.Decimal", "the coefficient",
+    SANE_COEFFICIENT);
   // `toFixed()` (no argument) yields the exact value in plain notation, unaffected by precision.
   const plain = d.toFixed();
   const negative = plain.startsWith("-");
