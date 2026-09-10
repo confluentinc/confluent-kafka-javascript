@@ -112,10 +112,16 @@ export class CelExecutor implements RuleExecutor {
       // against, exactly as it does for the read in wrapAvroFieldForCel. This used to bail out
       // instead, leaving CelFieldExecutor to convert afterwards through a second, smaller
       // converter; the guard existed only to stop the two from both running.
+      // The dependency texts travel with the read for the same reason they do here: a tagged
+      // field can be *declared* in a referenced schema, and the declaration is what carries a
+      // decimal's scale. Without them the write-back could not resolve such a field either,
+      // and the computed Decimal reached the Avro writer unconverted ("expected \"bytes\", got
+      // a ReflectMessageImpl").
+      const deps = ctx.depSchemas ?? []
       const field = ctx.currentField()
       return field != null
-        ? unwrapAvroFieldFromCel(result, field.fullName, ctx.target.schema)
-        : unwrapAvroFromCel(result, ctx.target.schema)
+        ? unwrapAvroFieldFromCel(result, field.fullName, ctx.target.schema, deps)
+        : unwrapAvroFromCel(result, ctx.target.schema, deps)
     }
     // A CEL_FIELD result is a field value, not a message, so there is nothing for the protobuf
     // writer to rebuild - and $typeName below would be the containing message's, which would
@@ -241,8 +247,10 @@ export function wrapAvroForCel(
  * schema or field can't be resolved. avsc discards the decimal scale, so it is read from the raw
  * schema JSON here.
  */
-export function wrapAvroFieldForCel(fieldValue: any, fullName: string, schemaStr: string): any {
-  const resolved = resolveAvroFieldLeaf(fullName, schemaStr)
+export function wrapAvroFieldForCel(
+  fieldValue: any, fullName: string, schemaStr: string, depSchemas: readonly string[] = [],
+): any {
+  const resolved = resolveAvroFieldLeaf(fullName, schemaStr, depSchemas)
   if (resolved == null) {
     return fieldValue
   }

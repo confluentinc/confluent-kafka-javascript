@@ -72,7 +72,12 @@ export class CelFieldExecutorTransform implements FieldTransform {
     // other clients.
     let value = celScalarValue(fieldCtx, fieldValue)
     if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
-      value = wrapAvroFieldForCel(fieldValue, fieldCtx.fullName, ctx.target.schema)
+      // The dependency texts matter as much as the root's: `getInlineTags` collects tags from
+      // the referenced schemas too, so a tagged decimal/timestamp field can be *declared* in
+      // one. Looking it up in the root alone missed it and the field arrived raw, which is what
+      // `decimal(value)` then failed on.
+      value = wrapAvroFieldForCel(
+        fieldValue, fieldCtx.fullName, ctx.target.schema, ctx.depSchemas ?? [])
     }
     const args = {
       value,
