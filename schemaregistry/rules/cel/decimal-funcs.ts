@@ -106,6 +106,19 @@ function requireIntScale(scale: unknown, fn: string): number {
  * Zero is exempt: rescaling it never expands anything and its result stays compact, which
  * BigDecimal agrees with (`new BigDecimal(BigInteger.ZERO, 2147483647)` is precision 1).
  */
+/**
+ * A zero at `targetScale`, without going through decimal.js's rounding at all.
+ *
+ * Rescaling a zero is exact at any target - the reference holds it at precision 1 - but
+ * decimal.js cannot express the operation: `toDP` rejects a scale above 1e9 outright
+ * (`[DecimalError] Invalid argument: 2147483647`) and the negative-target path builds
+ * `10^-target` for `toNearest`. Since the answer is just zero at the requested scale, take it
+ * directly.
+ */
+function zeroAtScale(d: Decimal, scale: number): ReflectMessage {
+  return decimalToCelScaled(d, scale);
+}
+
 function requireRescalable(d: Decimal, targetScale: number, fn: string): void {
   // A negative target does not go through toDP - decimal.js rejects a negative argument there -
   // but through `toNearest(10^-target)`, which *materialises that power of ten*. So unlike
@@ -597,6 +610,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   celFunc("decimals.round", [DYN, INT], DECIMAL_TYPE, (a, scale) => {
     const d = toDecimal(a);
     const n = requireIntScale(scale, "decimals.round");
+    if (d.isZero()) return zeroAtScale(d, n);
     requireRescalable(d, n, "decimals.round");
     const rounded = n >= 0
       ? d.toDP(n, Decimal.ROUND_HALF_UP)
@@ -622,6 +636,7 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     const target = requireIntScale(scale, "decimals.trunc");
     // Negative scale truncates left of the decimal point toward zero (trunc(1234.5, -2) -> 1200),
     // matching Java setScale(target, DOWN); toDP rejects it, so use toNearest with ROUND_DOWN.
+    if (d.isZero()) return zeroAtScale(d, target);
     requireRescalable(d, target, "decimals.trunc");
     if (target < 0) {
       return decimalToCelScaled(d.toNearest(new Decimal(10).pow(-target), Decimal.ROUND_DOWN), target);

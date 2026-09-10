@@ -418,6 +418,21 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
     // Zero is exempt from the rescale bound: rescaling it never expands anything and its
     // result stays compact, as `new BigDecimal(BigInteger.ZERO, n)` does.
     ['string(decimals.round(decimal("0"), 4000))', 'SMALL'],
+    // ...and the exemption has to be honest all the way down, not just in the guard. The
+    // encoder multiplied by `10n ** scale` regardless of what it was multiplying, so a zero
+    // still paid for the power: measured, 0.221 s and 49 MB at scale 10^7, and
+    // `RangeError: Maximum BigInt size exceeded` at 2^31. And decimal.js cannot even express
+    // the rounding at that target - `toDP` rejects a scale above 1e9 with
+    // `[DecimalError] Invalid argument: 2147483647` - so a zero is taken directly at the
+    // requested scale. The reference holds all of these at precision 1
+    // (`new BigDecimal(BigInteger.ZERO, 2147483647)`).
+    ['string(decimals.eq(decimal(b"", 2147483647), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimal(b"", 10000000), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.round(decimal("0"), 2147483647), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.round(decimal("0"), -2147483648), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.trunc(decimal("0"), 2147483647), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.floor(decimal(b"", 2147483647)), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.ceil(decimal(b"", 2147483647)), decimal("0")))', 'true'],
     // And ordinary values, unchanged.
     ['string(decimals.round(decimal("1.23"), 4000))', 'LONG'],
     ['string(decimals.add(decimal("12.34"), decimal("1.5")))', '13.84'],

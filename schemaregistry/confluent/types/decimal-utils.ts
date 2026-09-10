@@ -236,6 +236,13 @@ export function decimalToUnscaled(d: Decimal, scale: number): bigint {
   requireSaneWidth(plainFormLength(d), "confluent.type.Decimal", "the plain form");
   requireSaneWidth(rescaledDigits(scale, d), "confluent.type.Decimal", "the coefficient",
     SANE_COEFFICIENT);
+  // Zero short-circuits, and this is what makes the guards' zero exemption honest rather than
+  // a lie: the multiply at the end of this function builds `10n ** shift` regardless of what
+  // it is multiplying, so a zero still paid for the power. Measured: 0.221 s and 49 MB at
+  // scale 10^7, and `RangeError: Maximum BigInt size exceeded` at 2^31 - for a value the
+  // reference holds at precision 1 (`new BigDecimal(BigInteger.ZERO, 2147483647)`). Same
+  // correction the C# client needed in Rescale/SetScale.
+  if (d.isZero()) return 0n;
   // `toFixed()` (no argument) yields the exact value in plain notation, unaffected by precision.
   const plain = d.toFixed();
   const negative = plain.startsWith("-");

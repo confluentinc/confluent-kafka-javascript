@@ -144,7 +144,8 @@ export class AvroSerializer extends Serializer implements AvroSerde {
       await this.validateInlineRules(avroType, info, deps, msg)
     }
     msg = await this.executeRules(
-      subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(info, deps))
+      subject, topic, RuleMode.WRITE, null, info, msg, getInlineTags(info, deps),
+      [...deps.values()])
     if (this.validationEnabled(ValidationRulesExecution.AFTER_DOMAIN_RULES)) {
       await this.validateInlineRules(avroType, info, deps, msg)
     }
@@ -318,7 +319,8 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
       target = info
     }
     msg = await this.executeRules(
-      subject, topic, RuleMode.READ, null, target, msg, getInlineTags(info, deps))
+      subject, topic, RuleMode.READ, null, target, msg, getInlineTags(info, deps),
+      [...deps.values()])
     return msg
   }
 
@@ -501,10 +503,15 @@ async function transformField(
     const newVal = await transform(ctx, field.type, record[field.name], fieldTransform)
     if (ctx.rule.kind === 'CONDITION') {
       // Only an explicit `false` is a failed condition. A falsy field value is not one: an
-      // untagged field the rule never targets comes back unchanged, so `0`, `false`, `""` and a
-      // null union branch all arrive here, and a null field never reaches the executor at all
-      // because the walk returns early on it. json.ts and protobuf.ts already test for `false`;
-      // this is Java's `Boolean.FALSE.equals(newVal)`.
+      // untagged field the rule never targets comes back unchanged, so `0`, `false` and `""`
+      // all arrive here as themselves. json.ts and protobuf.ts already test for `false`; this
+      // is Java's `Boolean.FALSE.equals(newVal)`.
+      //
+      // A null union branch arrives here too, but for the opposite reason to what this comment
+      // used to say: the walk no longer returns early on a null, so a rule tagged on that field
+      // *is* evaluated and what lands here is its boolean result - which is the point of being
+      // able to write `value == null` (see cel-null-avro-field.spec.ts). An untagged null still
+      // comes back as `null`, which is not `false` and so still passes.
       if (newVal === false) {
         throw new RuleConditionError(ctx.rule)
       }
