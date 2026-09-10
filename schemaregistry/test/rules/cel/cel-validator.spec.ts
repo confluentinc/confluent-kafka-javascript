@@ -1278,3 +1278,34 @@ describe('variants.as(v, "timestamp") is range-checked', () => {
         rule('variants.tryAs(this, "timestamp") == null'), null, v)).toBe(true)
     })
 })
+
+// `scale` is an int32 on the wire. Two paths reach the encoder out of range, and both only for
+// **zero**: the plain-form width ceiling caps a non-zero scale at 9999999, and zero is exempt
+// from it. Before the guard, protobuf-es stored the value verbatim and the failure surfaced at
+// serialization as "cannot encode field confluent.type.Decimal.scale" - naming the field, not
+// the rule. C++ and Rust already refuse at their encoders for the same reason.
+describe('a scale outside int32 is refused', () => {
+  it.each([
+    // The string constructor: derived scale 2147483648. The reference refuses this at parse
+    // too - new BigDecimal("0E-2147483648") is NumberFormatException("Scale out of range.").
+    ['decimal("0E-2147483648") == decimal("0")', '2147483648'],
+    // decimals.mul sums the operand scales: 2e9 + 2e9.
+    ['decimals.mul(decimal("0E-2000000000"), decimal("0E-2000000000")) == decimal("0")',
+      '4000000000'],
+  ])('%s', async (expr, scale) => {
+    const validator = new CelValidator()
+    await expect(validator.execute(rule(expr), null, 'x'))
+      .rejects.toThrow(`scale ${scale} does not fit the int32 scale field`)
+  })
+
+  // Inside int32 it still answers - including a zero at a wide but legal scale, so the guard
+  // cannot be satisfied by refusing every zero.
+  it.each([
+    'decimal("0E-2000000000") == decimal("0")',
+    'decimal("0.00") == decimal("0")',
+    'decimals.add(decimal("1.50"), decimal("2.25")) == decimal("3.75")',
+  ])('still answers %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, 'x')).toBe(true)
+  })
+})
