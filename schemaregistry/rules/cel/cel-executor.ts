@@ -524,8 +524,15 @@ function resolveAvroFieldLeaf(
 function avroLeafNode(node: any, named: Map<string, any>): any {
   node = resolveAvroNode(node, named)
   if (Array.isArray(node)) {
-    const branch = node.find((b) => !isNullBranch(b))
-    return branch != null ? avroLeafNode(branch, named) : node
+    // Only when the union has one non-null branch is the branch knowable from the schema alone.
+    // With two or more, which one applies depends on the value, so the union is left intact for
+    // avroToCel/celToAvro to resolve the way the reference does - `resolveUnion` on the datum,
+    // then the member at that index. Collapsing to the first non-null branch here handed a
+    // decimal value the "string" branch of ["string", {...decimal}] and skipped the conversion
+    // in both directions; celToAvro already had this bug and already fixed it internally, and
+    // this pre-empted its fix.
+    const nonNull = node.filter((b) => !isNullBranch(b))
+    return nonNull.length === 1 ? avroLeafNode(nonNull[0], named) : node
   }
   if (node != null && typeof node === "object" && !node.logicalType) {
     if (node.type === "array") return avroLeafNode(node.items, named)

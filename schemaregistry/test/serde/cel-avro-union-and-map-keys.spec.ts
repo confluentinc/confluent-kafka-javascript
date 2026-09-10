@@ -51,6 +51,20 @@ const UNION_SCHEMA = JSON.stringify({
   ],
 })
 
+// A union with *two* non-null branches, one of them a logical decimal. Which branch applies is
+// a property of the value, not of the schema.
+const DECIMAL_UNION_SCHEMA = JSON.stringify({
+  type: 'record', name: 'DDoc',
+  fields: [
+    {
+      name: 'u',
+      type: ['string', { type: 'bytes', logicalType: 'decimal', precision: 8, scale: 2 }],
+      'confluent:tags': ['AMOUNT'],
+    },
+    { name: 'label', type: 'string' },
+  ],
+})
+
 const MAP_SCHEMA = JSON.stringify({
   type: 'record', name: 'MDoc',
   fields: [
@@ -178,5 +192,43 @@ describe('"__proto__" as an Avro map key', () => {
     expect(out.m['constructor']).toBe('c!')
     expect(out.m['hasOwnProperty']).toBe('h!')
     expect(out.m['toString']).toBe('t!')
+  })
+})
+
+// The reference resolves a union member from the datum - `resolveUnion(schema, value)`, then the
+// member at that index - in both its transform and validation walks. Collapsing a multi-branch
+// union to its first non-null member instead gave a decimal value the "string" branch, so a
+// tagged CEL_FIELD rule saw raw bytes and the write-back left them unencoded. The single
+// non-null case (["null", X]) is still resolved from the schema, since there is only one answer.
+describe('a union with several non-null branches', () => {
+  it('hands a CEL_FIELD rule the decimal branch, not the first branch', async () => {
+    const rule = {
+      name: 'r', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+      tags: ['AMOUNT'], expr: 'decimals.eq(value, decimal("12.34"))',
+    } as any as Rule
+    // 1234 unscaled at scale 2. If the rule saw raw bytes, decimals.eq would fail the condition.
+    const out = await roundTrip(DECIMAL_UNION_SCHEMA, rule,
+      { u: Buffer.from([0x04, 0xd2]), label: 'hi' })
+    expect(out.label).toBe('hi')
+  })
+
+  it('still resolves the string branch for a string value', async () => {
+    const rule = {
+      name: 'r', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+      tags: ['AMOUNT'], expr: 'value == "hi"',
+    } as any as Rule
+    const out = await roundTrip(DECIMAL_UNION_SCHEMA, rule, { u: 'hi', label: 'ok' })
+    expect(out.label).toBe('ok')
+  })
+
+  it('writes a computed decimal back into the decimal branch', async () => {
+    const rule = {
+      name: 'r', kind: 'TRANSFORM', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+      tags: ['AMOUNT'], expr: 'decimals.add(value, decimal("1.00"))',
+    } as any as Rule
+    const out = await roundTrip(DECIMAL_UNION_SCHEMA, rule,
+      { u: Buffer.from([0x04, 0xd2]), label: 'hi' })
+    // 12.34 + 1.00 = 13.34 -> unscaled 1334 -> 0x05 0x36
+    expect(Array.from(out.u as Uint8Array)).toEqual([0x05, 0x36])
   })
 })
