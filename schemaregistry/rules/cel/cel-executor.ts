@@ -12,7 +12,7 @@ import { DECIMAL_FUNCS, decimalFromBytesScale, decimalToAvroBytes, isCelDecimal 
 import { TIMESTAMP_FUNCS, avroTimestampToCel, isCelTimestamp, timestampToEpoch } from "./timestamp-funcs";
 import { IS_FUNCS } from "./is-funcs";
 import { VARIANT_FUNCS, tryReader, variantToCel } from "./variant-funcs";
-import { Variant } from "../../confluent/types/variant-utils";
+import { Variant } from "../../confluent/type/variant-utils";
 
 export class CelExecutor implements RuleExecutor {
   config: Map<string, string> | null = null

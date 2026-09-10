@@ -43,7 +43,7 @@ import { isReflectMessage, reflect, type ReflectMessage } from "@bufbuild/protob
 import {
   DecimalSchema as ProtoDecimalSchema,
   type Decimal as ProtoDecimal,
-} from "../../confluent/types/decimal_pb";
+} from "../../confluent/type/decimal_pb";
 import {
   SANE_COEFFICIENT,
   bytesToBigIntSigned,
@@ -54,11 +54,10 @@ import {
   rescaledDigits,
   toProtoDecimal,
   toProtoDecimalWithScale,
-} from "../../confluent/types/decimal-utils";
+} from "../../confluent/type/decimal-utils";
 
 const { DYN, INT, BOOL, STRING, BYTES, DOUBLE } = CelScalar;
 const DECIMAL_TYPE = objectType(ProtoDecimalSchema);
-const VARIANT_TYPE_NAME = "confluent.type.Variant";
 
 // 38-digit HALF_UP context for division, matching Flink / Java BigDecimal.
 const DivDecimal = Decimal.clone({ precision: 38, rounding: Decimal.ROUND_HALF_UP });
@@ -421,18 +420,9 @@ function celEquals(lhs: unknown, rhs: unknown): boolean {
   if (isReflectMessage(l)) {
     if (!isReflectMessage(r)) return false;
     if (l.desc.typeName !== r.desc.typeName) return false;
-    // Variant is compared by identity, not structurally, which the `lhs === rhs` fast path
-    // above has already settled - so two distinct Variants are unequal however alike their
-    // bytes. That is the reference behaviour, measured: io.confluent...type.Variant declares no
-    // equals(), so cel-java falls back to Object.equals and
-    //   variants.parseJson("1") == variants.parseJson("1")   -> false
-    //   variant(this)           == variant(this)             -> false
-    //   variants.parseJson("1") != variants.parseJson("1")   -> true
-    // Structural comparison here made the first two true, because this client carries a
-    // Variant as a proto *message* where Java carries a plain object - so cel-es's message
-    // equality applied where Java's reference equality does. The docstring on
-    // celEqualsWithDecimal already claimed identity; only the code disagreed.
-    if (l.desc.typeName === VARIANT_TYPE_NAME) return false;
+    // Variant falls through to structural message equality below, deliberately: variant `==`
+    // is equality of the encoding - the metadata bytes and the standalone value bytes - which is
+    // what comparing the two fields of a confluent.type.Variant message amounts to.
     return equalsMessage(l.desc, l.message, r.message, {
       unpackAny: true,
       unknown: true,
@@ -450,7 +440,7 @@ function celEquals(lhs: unknown, rhs: unknown): boolean {
  * numerically equal. Registering this with the same [dyn, dyn] signature as the stdlib overload
  * makes @bufbuild/cel's group dedup (by func id) replace the stdlib one with this. Every
  * non-Decimal operand pair falls through to {@link celEquals}, preserving stdlib semantics
- * (including message-identity `==` for Variant, which is intentionally unchanged).
+ * (including structural `==` for Variant, which compares its metadata and value bytes).
  *
  * This is also the entry point for nested comparisons: {@link equalsCelList}/{@link equalsCelMap}
  * recurse here, so Decimals inside lists/maps (at any depth) are numeric too.

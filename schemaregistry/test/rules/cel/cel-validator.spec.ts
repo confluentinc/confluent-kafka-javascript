@@ -9,9 +9,9 @@ import {
 import avro from 'avsc';
 import { CelValidator } from '../../../rules/cel/cel-validator';
 import { VariantLogicalType } from '../../../serde/avro';
-import { Variant, parseJson } from '../../../confluent/types/variant-utils';
-import { VariantSchema } from '../../../confluent/types/variant_pb';
-import { DecimalSchema } from '../../../confluent/types/decimal_pb';
+import { Variant, parseJson } from '../../../confluent/type/variant-utils';
+import { VariantSchema } from '../../../confluent/type/variant_pb';
+import { DecimalSchema } from '../../../confluent/type/decimal_pb';
 import { RuleError, ValidationRule } from '../../../serde/serde';
 import {
   ValidationInnerSchema,
@@ -437,6 +437,18 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
     ['string(decimals.round(decimal("1.23"), 4000))', 'LONG'],
     ['string(decimals.add(decimal("12.34"), decimal("1.5")))', '13.84'],
     ['string(decimals.mod(decimal("1E40"), decimal("3")))', '1'],
+    // `mod` must be exact at any width. The Rust client computed it as `trunc(a/b) * b`
+    // through a division capped at its library's default 100-digit precision and returned a
+    // silently wrong residual past that - 1e101 mod 3 came back as 10. decimal.js's `mod` in
+    // the unbounded context is exact, so this client was never affected; pinned so it stays
+    // that way, and because the coverage above stopped at 1E40 (41 digits). Measured on the
+    // JDK: 10^k mod 3 is 1 for every k, and 10^200 mod 7 is 2.
+    ['string(decimals.mod(decimal("1e99"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e101"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e200"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e10000"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e200"), decimal("7")))', '2'],
+    ['string(decimals.mod(decimal("-1e101"), decimal("3")))', '-1'],
   ]
   it.each(widthAcceptedCases)('%s stays unbounded', async (expr, expected) => {
     const got = await evalStr(expr)
@@ -485,22 +497,26 @@ describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () =
     expect(await evalStr(expr)).toBe(expected)
   })
 
-  // `==` on two Variants is *identity*, not structural, matching the reference. Measured on
-  // cel-java: io.confluent...type.Variant declares no equals(), so
-  //   variants.parseJson("1") == variants.parseJson("1")  -> false
-  //   variant(this)           == variant(this)            -> false
-  //   variants.parseJson("1") != variants.parseJson("1")  -> true
-  // This client carries a Variant as a proto *message* where Java carries a plain object, so
-  // cel-es's structural message equality applied where Java's reference equality does, and the
-  // first two came back true. Decimal is the one message type this client deliberately makes
-  // numeric, so the two are asserted together.
+  // `==` on two Variants is equality of the encoding, so cel-es's structural message equality
+  // is left in place. Sound but incomplete: equal bytes mean equal values, but one value has
+  // many encodings. Decimal is the one message type this client deliberately makes numeric
+  // instead, so the two are asserted together.
   const variantEqualityCases: [string, string][] = [
-    ['string(variants.parseJson("1") == variants.parseJson("1"))', 'false'],
-    ['string(variants.parseJson("1") != variants.parseJson("1"))', 'true'],
-    ['string(variants.parseJson("{}") == variants.parseJson("{}"))', 'false'],
+    ['string(variants.parseJson("1") == variants.parseJson("1"))', 'true'],
+    ['string(variants.parseJson("1") != variants.parseJson("1"))', 'false'],
+    ['string(variants.parseJson("{}") == variants.parseJson("{}"))', 'true'],
+    ['string(variants.parseJson("{\\"a\\":1}") == variants.parseJson("{\\"a\\":1}"))', 'true'],
     ['string(variants.parseJson("1") == variants.parseJson("2"))', 'false'],
+    // The documented incompleteness - one value, many encodings - is asserted at the builder
+    // level instead: this client's parseJson cannot produce the pair, because JSON.parse("1.0")
+    // yields the number 1 and the fractional form is lost, so "1" and "1.0" encode identically
+    // here where Java reads the second as a double.
     // A Variant nested in a list follows, since list equality recurses through the same helper.
-    ['string([variants.parseJson("1")] == [variants.parseJson("1")])', 'false'],
+    ['string([variants.parseJson("1")] == [variants.parseJson("1")])', 'true'],
+    ['string([variants.parseJson("1")] == [variants.parseJson("2")])', 'false'],
+    // Navigation: a field reached the same way from the same document.
+    ['string(variants.field(variants.parseJson("{\\"a\\":1}"), "a") == ' +
+      'variants.field(variants.parseJson("{\\"a\\":1}"), "a"))', 'true'],
     // Decimal stays numeric, and every other message type stays structural.
     ['string(decimal("2.0") == decimal(b"\\x14", 1))', 'true'],
     ['string(decimal("2.0") == decimal("2.00"))', 'true'],

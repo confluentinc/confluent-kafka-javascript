@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { Decimal } from "decimal.js";
 import { create } from "@bufbuild/protobuf";
-import { DecimalSchema } from "../../../confluent/types/decimal_pb";
+import { DecimalSchema } from "../../../confluent/type/decimal_pb";
 import {
   bigIntToTwosComplementBytes,
   bytesToBigIntSigned,
@@ -10,7 +10,7 @@ import {
   fromProtoDecimal,
   toProtoDecimal,
   toProtoDecimalWithScale,
-} from "../../../confluent/types/decimal-utils";
+} from "../../../confluent/type/decimal-utils";
 
 /**
  * FIX 1 regression: decimal.js's global precision is 20 significant digits, and its arithmetic

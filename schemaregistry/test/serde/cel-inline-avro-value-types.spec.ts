@@ -21,7 +21,7 @@ import { describe, expect, it } from '@jest/globals'
 import { AvroSerializer } from '../../serde/avro'
 import { SerdeType, ValidationRulesExecution } from '../../serde/serde'
 import { SchemaRegistryClient, type SchemaInfo } from '../../schemaregistry-client'
-import { parseJson } from '../../confluent/types/variant-utils'
+import { parseJson } from '../../confluent/type/variant-utils'
 
 const DECIMAL = { type: 'bytes', logicalType: 'decimal', precision: 8, scale: 2 }
 const TIMESTAMP = { type: 'long', logicalType: 'timestamp-millis' }

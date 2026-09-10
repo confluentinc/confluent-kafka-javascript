@@ -21,7 +21,7 @@ import { RuleContext } from '../../../serde/serde'
 import { RuleMode } from '../../../schemaregistry-client'
 import { CelExecutor } from '../../../rules/cel/cel-executor'
 import { TestMessageSchema, type TestMessage } from '../../serde/test/test_pb'
-import { DecimalSchema } from '../../../confluent/types/decimal_pb'
+import { DecimalSchema } from '../../../confluent/type/decimal_pb'
 import { ValueTypesSchema } from '../../serde/test/value_types_pb'
 
 const protoTransform = async (expr: string, msg: TestMessage): Promise<any> => {

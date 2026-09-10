@@ -10,7 +10,7 @@ import { TIMESTAMP_FUNCS } from "./timestamp-funcs"
 import { IS_FUNCS } from "./is-funcs"
 import { VARIANT_FUNCS, variantToCel } from "./variant-funcs"
 import { wrapAvroDeclaredFieldForCel, wrapAvroForCel } from "./cel-executor"
-import { Variant } from "../../confluent/types/variant-utils"
+import { Variant } from "../../confluent/type/variant-utils"
 
 /**
  * CelValidator is a validation-rule executor backed by CEL. Each rule expression is

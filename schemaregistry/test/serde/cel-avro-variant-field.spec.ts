@@ -20,7 +20,7 @@ import { AvroDeserializer, AvroSerializer } from '../../serde/avro'
 import { SerdeType } from '../../serde/serde'
 import { RuleMode } from '../../schemaregistry-client'
 import { SchemaRegistryClient, type Rule, type SchemaInfo } from '../../schemaregistry-client'
-import { Variant, parseJson } from '../../confluent/types/variant-utils'
+import { Variant, parseJson } from '../../confluent/type/variant-utils'
 import { CelExecutor } from '../../rules/cel/cel-executor'
 import { CelFieldExecutor } from '../../rules/cel/cel-field-executor'
 

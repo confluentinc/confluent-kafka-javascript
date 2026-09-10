@@ -15,9 +15,9 @@ import { TimestampSchema } from '@bufbuild/protobuf/wkt'
 import { RuleContext } from '../../../serde/serde'
 import { RuleMode } from '../../../schemaregistry-client'
 import { CelExecutor } from '../../../rules/cel/cel-executor'
-import { DecimalSchema } from '../../../confluent/types/decimal_pb'
-import { VariantSchema } from '../../../confluent/types/variant_pb'
-import { Variant, parseJson } from '../../../confluent/types/variant-utils'
+import { DecimalSchema } from '../../../confluent/type/decimal_pb'
+import { VariantSchema } from '../../../confluent/type/variant_pb'
+import { Variant, parseJson } from '../../../confluent/type/variant-utils'
 import { ValueTypesSchema, type ValueTypes } from '../../serde/test/value_types_pb'
 
 // 0x04D2 = 1234 unscaled, i.e. 12.34 at scale 2.
