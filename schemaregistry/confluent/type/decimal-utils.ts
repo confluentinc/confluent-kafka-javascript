@@ -300,6 +300,28 @@ export function toProtoDecimal(d: Decimal): ProtoDecimal {
  * `decimal(bytes, scale)` constructor satisfy this.
  */
 export function toProtoDecimalWithScale(d: Decimal, scale: number): ProtoDecimal {
+  // `scale` is an int32 on the wire, and protobuf-es stores an out-of-range number verbatim
+  // rather than refusing it - the failure then surfaces at *serialization* as "cannot encode
+  // field confluent.type.Decimal.scale", naming the field rather than the rule.
+  //
+  // Guarded here rather than at each call site because two paths reach this out of range, and
+  // both do so only for **zero** - the plain-form width ceiling below caps a non-zero scale at
+  // 9999999, and zero is exempt from it:
+  //   decimal("0E-2147483648")                       -> scale 2147483648
+  //   decimals.mul(0E-2000000000, 0E-2000000000)     -> scale 4000000000 (the operand scales sum)
+  // C++ and Rust already bound the scale at their encoders for the same reason
+  // ("decimal scale does not fit the confluent.type.Decimal int32 scale field" /
+  // "decimal scale out of int range"), so this makes the seven agree on refusing it.
+  //
+  // The reference is narrower still on the first case - `new BigDecimal("0E-2147483648")`
+  // raises NumberFormatException("Scale out of range.") - and on the second it *saturates* to
+  // Integer.MAX_VALUE rather than refusing, because BigDecimal.checkScale saturates when the
+  // value is zero and only throws otherwise. Refusing both matches C++ and Rust; the
+  // saturation corner is recorded in decimals.md rather than reproduced.
+  if (!Number.isInteger(scale) || scale < -2147483648 || scale > 2147483647) {
+    throw new RangeError(
+      `confluent.type.Decimal: scale ${scale} does not fit the int32 scale field`);
+  }
   // Unscaled integer = d * 10^scale. For a negative scale this divides (e.g. 1200 * 10^-2 = 12),
   // which is exact because the caller rounded d to a multiple of 10^-scale. Computed from d's
   // exact digits so a >20-digit value is not rounded to global precision.
