@@ -60,7 +60,11 @@ export class CelExecutor implements RuleExecutor {
       return msg
     }
     if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
-      return wrapAvroForCel(msg, ctx.target.schema)
+      // The dependency texts are needed on the way *in* as well as on the way out: a decimal or
+      // timestamp field declared in a referenced schema cannot be recognised without the
+      // schema that declares it, so a message-level rule saw raw bytes and epochs where a
+      // CEL_FIELD rule saw converted values.
+      return wrapAvroForCel(msg, ctx.target.schema, ctx.depSchemas ?? [])
     }
     return msg
   }
