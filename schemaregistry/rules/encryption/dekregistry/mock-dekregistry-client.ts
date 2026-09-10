@@ -20,8 +20,8 @@ class MockDekRegistryClient implements DekClient {
   }
 
   async registerKek(name: string, kmsType: string, kmsKeyId: string, shared: boolean,
-    kmsProps?: { [key: string]: string }, doc?: string): Promise<Kek> {
-    const cacheKey = stringify({ name, deleted: false });
+    kmsProps?: { [key: string]: string }, doc?: string, context?: string): Promise<Kek> {
+    const cacheKey = stringify({ name, deleted: false, context });
     const cachedKek = this.kekCache.get(cacheKey);
     if (cachedKek) {
       return cachedKek;
@@ -40,8 +40,8 @@ class MockDekRegistryClient implements DekClient {
     return kek;
   }
 
-  async getKek(name: string, deleted: boolean = false): Promise<Kek> {
-    const cacheKey = stringify({ name, deleted });
+  async getKek(name: string, deleted: boolean = false, context?: string): Promise<Kek> {
+    const cacheKey = stringify({ name, deleted, context });
     const cachedKek = this.kekCache.get(cacheKey);
     if (cachedKek && (!cachedKek.deleted || deleted)) {
       return cachedKek;

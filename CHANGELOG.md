@@ -1,3 +1,12 @@
+# confluent-kafka-javascript 1.11.0 (unreleased)
+
+## Enhancements
+1. Support generating a JSON Schema title from a JSON payload (#505)
+2. Add support for saving Azure key version with DEK (#507)
+3. Pass context when clients make KEK calls to DEK Registry (#508)
+4. Add support for inline validation rules (#522)
+
+
 # confluent-kafka-javascript 1.10.1
 
 ## Enhancements

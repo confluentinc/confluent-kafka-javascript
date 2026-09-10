@@ -2,8 +2,13 @@ import {afterEach, describe, expect, it} from '@jest/globals';
 import {ClientConfig} from "../../rest-service";
 import {
   FALLBACK_TYPE,
+  FieldContext,
+  FieldRuleExecutor,
+  FieldTransform,
+  FieldType,
   HeaderSchemaIdSerializer,
   KAFKA_CLUSTER_ID,
+  RuleContext,
   SerdeType,
   SerializationError,
   Serializer,
@@ -24,7 +29,8 @@ import {EncryptionExecutor, FieldEncryptionExecutor} from "../../rules/encryptio
 import {
   JsonDeserializer, JsonDeserializerConfig,
   JsonSerializer,
-  JsonSerializerConfig
+  JsonSerializerConfig,
+  tagRecord
 } from "../../serde/json";
 import {RuleRegistry} from "@confluentinc/schemaregistry/serde/rule-registry";
 import stringify from "json-stringify-deterministic";
@@ -39,6 +45,32 @@ CelExecutor.register()
 CelFieldExecutor.register()
 JsonataExecutor.register()
 LocalKmsDriver.register()
+
+// Records the field type the walk reports for each field it reaches, so a test can assert
+// on what a field rule would be handed - and on whether it is reached at all.
+const recordedTypes = new Map<string, FieldType>()
+
+class RecordingFieldExecutor extends FieldRuleExecutor {
+  configure(_clientConfig: ClientConfig, config: Map<string, string>) {
+    this.config = config
+  }
+
+  type(): string {
+    return 'RECORDING_FIELD'
+  }
+
+  override newTransform(_ctx: RuleContext): FieldTransform {
+    return {
+      async transform(_ctx: RuleContext, fieldCtx: FieldContext, fieldValue: any): Promise<any> {
+        recordedTypes.set(fieldCtx.name, fieldCtx.type)
+        return fieldValue
+      }
+    }
+  }
+
+  async close(): Promise<void> {
+  }
+}
 
 //const baseURL = 'http://localhost:8081'
 const baseURL = 'mock://'
@@ -1524,6 +1556,35 @@ describe('JsonSerializer', () => {
   }
 })
 
+describe('RecordNameStrategy', () => {
+  it('serialization with RecordNameStrategy', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const serConfig: JsonSerializerConfig = {
+      autoRegisterSchemas: true,
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD,
+    }
+    const ser = new JsonSerializer(client, SerdeType.VALUE, serConfig)
+
+    const obj = tagRecord({
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([0, 0, 0, 1]).toString('base64')
+    }, 'my-custom-subject')
+    const bytes = await ser.serialize(topic, obj)
+
+    const deserConfig: JsonDeserializerConfig = {
+      subjectNameStrategyType: SubjectNameStrategyType.RECORD
+    }
+    const deser = new JsonDeserializer(client, SerdeType.VALUE, deserConfig)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2).toEqual(obj)
+  })
+})
+
 describe('JsonSerdeWithAssociatedNameStrategy', () => {
   it('serializes and deserializes with associated name strategy', async () => {
     const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
@@ -1758,5 +1819,48 @@ describe('JsonSerdeWithCustomSubjectNameStrategy', () => {
 
     await client.deleteSubject(customSubject, false)
     await client.deleteSubject(customSubject, true)
+  })
+
+  // An enumeration is typed by its values, and JSON Schema does not require it to declare a
+  // type as well - {"enum": ["a", "b"]} is the ordinary form. Read as a typeless node it came
+  // out FieldType.NULL, which the transform walk has no case for, so a field rule was never
+  // charged against such a field at all. The JVM client answers ENUM and does walk it.
+  it('types an enum without a declared type as ENUM', async () => {
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    let registry = new RuleRegistry()
+    registry.registerExecutor(new RecordingFieldExecutor())
+    let ser = new JsonSerializer(client, SerdeType.VALUE, {useLatestVersion: true}, registry)
+
+    let rule: Rule = {
+      name: 'test-recording',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITE,
+      type: 'RECORDING_FIELD',
+      expr: ''
+    }
+    let info: SchemaInfo = {
+      schemaType: 'JSON',
+      schema: JSON.stringify({
+        type: 'object',
+        properties: {
+          code: {enum: ['a', 'b']},
+          label: {type: 'string'},
+          size: {const: 3}
+        }
+      }),
+      ruleSet: {domainRules: [rule]}
+    }
+    await client.register(subject, info, false)
+
+    recordedTypes.clear()
+    await ser.serialize(topic, {code: 'a', label: 'hi', size: 3})
+
+    expect(recordedTypes.get('code')).toEqual(FieldType.ENUM)
+    expect(recordedTypes.get('size')).toEqual(FieldType.ENUM)
+    expect(recordedTypes.get('label')).toEqual(FieldType.STRING)
   })
 })

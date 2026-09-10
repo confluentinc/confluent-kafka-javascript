@@ -31,13 +31,16 @@ import {
   FileDescriptorProtoSchema
 } from "@bufbuild/protobuf/wkt";
 import {
-  NestedMessage_InnerMessageSchema
+  NestedMessage_InnerMessageSchema,
+  file_test_schemaregistry_serde_nested
 } from "./test/nested_pb";
 import {TestMessageSchema} from "./test/test_pb";
 import {DependencyMessageSchema} from "./test/dep_pb";
 import {RuleRegistry} from "@confluentinc/schemaregistry/serde/rule-registry";
 import {LinkedListSchema} from "./test/cycle_pb";
 import {clearKmsClients} from "@confluentinc/schemaregistry/rules/encryption/kms-registry";
+import {CelExecutor} from "../../rules/cel/cel-executor";
+import {CelFieldExecutor} from "../../rules/cel/cel-field-executor";
 
 const encryptionExecutor = EncryptionExecutor.register()
 const fieldEncryptionExecutor = FieldEncryptionExecutor.register()
@@ -231,6 +234,42 @@ describe('ProtobufSerializer', () => {
     let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     let obj2 = await deser.deserialize(topic, bytes)
     expect(obj2).toEqual(obj)
+  })
+  it('cel field transform on a nested message type', async () => {
+    // A nested type is not top-level in the file descriptor, so resolving the descriptor
+    // for the domain-rule path has to search nested messages too.
+    let conf: ClientConfig = {
+      baseURLs: [baseURL],
+      cacheCapacity: 1000
+    }
+    let client = SchemaRegistryClient.newClient(conf)
+    CelFieldExecutor.register()
+    let ser = new ProtobufSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    ser.registry.add(NestedMessage_InnerMessageSchema)
+
+    let celRule: Rule = {
+      name: 'test-cel',
+      kind: 'TRANSFORM',
+      mode: RuleMode.WRITE,
+      type: 'CEL_FIELD',
+      expr: "name == 'id' ; value + '-suffix'"
+    }
+    let ruleSet: RuleSet = {
+      domainRules: [celRule]
+    }
+    let info: SchemaInfo = {
+      schemaType: 'PROTOBUF',
+      schema: Buffer.from(toBinary(FileDescriptorProtoSchema, file_test_schemaregistry_serde_nested.proto)).toString('base64'),
+      ruleSet
+    }
+    await client.register(subject, info, false)
+
+    let obj = create(NestedMessage_InnerMessageSchema, { id: 'inner' })
+    let bytes = await ser.serialize(topic, obj)
+
+    let deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
+    let obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.id).toEqual('inner-suffix')
   })
   it('serialize reference', async () => {
     let conf: ClientConfig = {
@@ -635,5 +674,45 @@ describe('ProtobufDeserializerMissingIndexes', () => {
     const deser = new ProtobufDeserializer(client, SerdeType.VALUE, {})
     // Clients must throw a descriptive error rather than silently falling back.
     await expect(deser.deserialize(topic, bytesWithoutIndexes)).rejects.toThrow('message indexes are absent or malformed')
+  })
+})
+
+describe('ProtobufSerializer CEL domain rules', () => {
+  afterEach(async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+    await client.deleteSubject(subject, false)
+    await client.deleteSubject(subject, true)
+  })
+
+  // A CEL rule reading a field off a protobuf message needs an env whose registry knows
+  // the message type; without one, evaluation fails with "not found in registry".
+  it('evaluates a CEL condition that reads a message field', async () => {
+    CelExecutor.register()
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+    const rule: Rule = {
+      name: 'test-cel',
+      kind: 'CONDITION',
+      mode: RuleMode.WRITE,
+      type: 'CEL',
+      expr: "message.name == 'Kafka'",
+    }
+    const info: SchemaInfo = {
+      schemaType: 'PROTOBUF',
+      schema: Buffer.from(toBinary(FileDescriptorProtoSchema,
+        file_test_schemaregistry_serde_example.proto)).toString('base64'),
+      ruleSet: { domainRules: [rule] },
+    }
+    await client.register(subject, info, false)
+
+    const ser = new ProtobufSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+    ser.registry.add(AuthorSchema)
+
+    const passing = create(AuthorSchema, { name: 'Kafka', id: 123 })
+    expect((await ser.serialize(topic, passing)).length).toBeGreaterThan(0)
+
+    const failing = create(AuthorSchema, { name: 'Java', id: 123 })
+    await expect(ser.serialize(topic, failing)).rejects.toThrow()
   })
 })
