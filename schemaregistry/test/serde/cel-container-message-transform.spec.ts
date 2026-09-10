@@ -25,8 +25,8 @@ import { RuleMode } from '../../schemaregistry-client'
 import { SchemaRegistryClient, type Rule, type SchemaInfo } from '../../schemaregistry-client'
 import { CelExecutor } from '../../rules/cel/cel-executor'
 import { CelFieldExecutor } from '../../rules/cel/cel-field-executor'
-import { DecimalSchema } from '../../confluent/types/decimal_pb'
-import { VariantSchema } from '../../confluent/types/variant_pb'
+import { DecimalSchema } from '../../confluent/type/decimal_pb'
+import { VariantSchema } from '../../confluent/type/variant_pb'
 import { ValueTypeContainersSchema, ValueTypeNestedSchema } from './test/value_type_rules_pb'
 
 CelExecutor.register()

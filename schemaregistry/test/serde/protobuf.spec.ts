@@ -24,7 +24,7 @@ import {
 import {LocalKmsDriver} from "../../rules/encryption/localkms/local-driver";
 import {EncryptionExecutor, FieldEncryptionExecutor} from "../../rules/encryption/encrypt-executor";
 import {AuthorSchema, file_test_schemaregistry_serde_example, PizzaSchema} from "./test/example_pb";
-import {DecimalSchema, file_confluent_types_decimal} from "../../confluent/types/decimal_pb";
+import {DecimalSchema, file_confluent_type_decimal} from "../../confluent/type/decimal_pb";
 import {create, toBinary} from "@bufbuild/protobuf";
 import {
   FieldDescriptorProto_Label,
@@ -507,7 +507,7 @@ describe('ProtobufSerializer', () => {
     }
     const info: SchemaInfo = {
       schemaType: 'PROTOBUF',
-      schema: Buffer.from(toBinary(FileDescriptorProtoSchema, file_confluent_types_decimal.proto)).toString('base64'),
+      schema: Buffer.from(toBinary(FileDescriptorProtoSchema, file_confluent_type_decimal.proto)).toString('base64'),
       ruleSet: { domainRules: [encRule] },
     }
     await client.register(subject, info, false)

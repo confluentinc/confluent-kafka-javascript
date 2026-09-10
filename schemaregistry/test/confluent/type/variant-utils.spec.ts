@@ -25,7 +25,7 @@ import {
   NULL, TRUE, FALSE, INT1, INT2, INT4, INT8, DOUBLE, FLOAT,
   DECIMAL4, DECIMAL8, DECIMAL16, DATE, TIMESTAMP, TIMESTAMP_NTZ, TIME,
   TIMESTAMP_NANOS, TIMESTAMP_NANOS_NTZ, BINARY, UUID,
-} from "../../../confluent/types/variant-utils";
+} from "../../../confluent/type/variant-utils";
 
 const EMPTY_META = new Uint8Array([1, 0, 0]); // version 1, offset_size 1, dict_size 0
 

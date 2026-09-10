@@ -27,7 +27,7 @@
  * be written literally; for keys needing other escapes use `variants.field(v, key)`.
  */
 
-import { Variant, VariantType } from "../../confluent/types/variant-utils";
+import { Variant, VariantType } from "../../confluent/type/variant-utils";
 
 type Segment = { field: string } | { index: number };
 

@@ -14,7 +14,7 @@ import { describe, expect, it } from '@jest/globals'
 import { RuleContext } from '../../../serde/serde'
 import { RuleMode } from '../../../schemaregistry-client'
 import { CelExecutor } from '../../../rules/cel/cel-executor'
-import { Variant, VariantBuilder, parseJson } from '../../../confluent/types/variant-utils'
+import { Variant, VariantBuilder, parseJson } from '../../../confluent/type/variant-utils'
 
 const SCHEMA = JSON.stringify({
   type: 'record',

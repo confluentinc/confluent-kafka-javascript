@@ -24,7 +24,7 @@ import { LRUCache } from 'lru-cache'
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
 import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
-import { Variant } from "../confluent/types/variant-utils";
+import { Variant } from "../confluent/type/variant-utils";
 
 export const AVRO_TYPE = "AVRO"
 

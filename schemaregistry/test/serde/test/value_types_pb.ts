@@ -5,10 +5,10 @@
 import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 import { file_confluent_meta } from "../../../confluent/meta_pb";
-import type { Decimal } from "../../../confluent/types/decimal_pb";
-import { file_confluent_types_decimal } from "../../../confluent/types/decimal_pb";
-import type { Variant } from "../../../confluent/types/variant_pb";
-import { file_confluent_types_variant } from "../../../confluent/types/variant_pb";
+import type { Decimal } from "../../../confluent/type/decimal_pb";
+import { file_confluent_type_decimal } from "../../../confluent/type/decimal_pb";
+import type { Variant } from "../../../confluent/type/variant_pb";
+import { file_confluent_type_variant } from "../../../confluent/type/variant_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { Message } from "@bufbuild/protobuf";
@@ -17,7 +17,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file test/schemaregistry/serde/value_types.proto.
  */
 export const file_test_schemaregistry_serde_value_types: GenFile = /*@__PURE__*/
-  fileDesc("Cit0ZXN0L3NjaGVtYXJlZ2lzdHJ5L3NlcmRlL3ZhbHVlX3R5cGVzLnByb3RvEgR0ZXN0Is8BCgpWYWx1ZVR5cGVzEjQKBmFtb3VudBgBIAEoCzIXLmNvbmZsdWVudC50eXBlLkRlY2ltYWxCC4JECBoGQU1PVU5UEi8KAnRzGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIHgkQEGgJUUxIwCgRkYXRhGAMgASgLMhcuY29uZmx1ZW50LnR5cGUuVmFyaWFudEIJgkQGGgREQVRBEhkKBWxhYmVsGAQgASgJQgqCRAcaBUxBQkVMEg0KBWNvdW50GAUgASgFQglaBy4uL3Rlc3RiBnByb3RvMw", [file_confluent_meta, file_confluent_types_decimal, file_confluent_types_variant, file_google_protobuf_timestamp]);
+  fileDesc("Cit0ZXN0L3NjaGVtYXJlZ2lzdHJ5L3NlcmRlL3ZhbHVlX3R5cGVzLnByb3RvEgR0ZXN0Is8BCgpWYWx1ZVR5cGVzEjQKBmFtb3VudBgBIAEoCzIXLmNvbmZsdWVudC50eXBlLkRlY2ltYWxCC4JECBoGQU1PVU5UEi8KAnRzGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIHgkQEGgJUUxIwCgRkYXRhGAMgASgLMhcuY29uZmx1ZW50LnR5cGUuVmFyaWFudEIJgkQGGgREQVRBEhkKBWxhYmVsGAQgASgJQgqCRAcaBUxBQkVMEg0KBWNvdW50GAUgASgFQglaBy4uL3Rlc3RiBnByb3RvMw", [file_confluent_meta, file_confluent_type_decimal, file_confluent_type_variant, file_google_protobuf_timestamp]);
 
 /**
  * The three value types protobuf carries as messages, plus a scalar. Tagged so a CEL_FIELD

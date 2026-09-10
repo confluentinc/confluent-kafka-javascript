@@ -35,13 +35,13 @@ import { TimestampSchema } from "@bufbuild/protobuf/wkt";
 import {
   VariantSchema,
   type Variant as ProtoVariant,
-} from "../../confluent/types/variant_pb";
-import { DecimalSchema } from "../../confluent/types/decimal_pb";
+} from "../../confluent/type/variant_pb";
+import { DecimalSchema } from "../../confluent/type/decimal_pb";
 import {
   bigIntToTwosComplementBytes,
   unscaledPrecision,
-} from "../../confluent/types/decimal-utils";
-import { Variant, VariantType, parseJson } from "../../confluent/types/variant-utils";
+} from "../../confluent/type/decimal-utils";
+import { Variant, VariantType, parseJson } from "../../confluent/type/variant-utils";
 import { walk } from "./variant-path";
 
 const { DYN, STRING, BOOL, INT, BYTES } = CelScalar;
