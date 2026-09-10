@@ -697,7 +697,14 @@ function avroBranchAccepts(branch: any, value: any, named: Map<string, any>): bo
   if (isCelTimestamp(value)) {
     return (typeName === "long" || typeName === "int") && isTemporalLogicalType(logicalType)
   }
-  if (value instanceof Variant) {
+  // Both shapes a Variant takes, matching celVariantToAvro below: the class, and the
+  // confluent.type.Variant message a CEL rule produces (variants.parseJson and friends return
+  // a ReflectMessage). Testing only `instanceof` meant a computed Variant fell through to the
+  // structural checks and matched any generic `record` branch, so a union listing another
+  // record before the logical-variant one resolved to the wrong branch - while the *writer*
+  // handled both shapes happily. An asymmetry between what a branch accepts and what the
+  // writer can write is exactly what union resolution must not have.
+  if (value instanceof Variant || tryReader(value) !== null) {
     return typeName === "record" && logicalType === "variant"
   }
 

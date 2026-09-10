@@ -432,7 +432,13 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       }
       const mapSchema = schema as MapType
       const map = msg as { [key: string]: any }
-      const newMap: { [key: string]: any } = {}
+      // Null-prototype: an Avro map key is an arbitrary string, and assigning "__proto__" to a
+      // normal object literal invokes the prototype setter instead of creating an own
+      // property - so the entry was dropped (primitive value) or the object's prototype was
+      // replaced (object value). The CEL conversion helpers already build maps this way; this
+      // is the serde's own field-transform walk, which had the same hole. Java holds the map
+      // in a HashMap, where the key is just a string.
+      const newMap: { [key: string]: any } = Object.create(null)
       for (const key of Object.keys(map)) {
         newMap[key] = await transform(ctx, mapSchema.valuesType, map[key], fieldTransform)
       }

@@ -1303,6 +1303,14 @@ export class VariantBuilder {
   }
 
   private writeDecimalUnscaled(unscaled: bigint, scale: number): void {
+    // The scale is written as a single byte below, so a fractional one was silently coerced:
+    // `appendDecimal(1234n, 2.5)` encoded scale 2 and read back as 12.34, a different value
+    // than the caller named. Java cannot express it at all - its appendDecimal takes an `int` -
+    // so this is a TypeScript-only hole in the public overload, and refusing it is what makes
+    // the two agree.
+    if (!Number.isInteger(scale)) {
+      throw new VariantError("decimal scale must be an integer");
+    }
     if (scale < 0) throw new VariantError("cannot encode decimal with negative scale");
     const digits = (unscaled < 0n ? -unscaled : unscaled).toString().length;
     this.checkCapacity(2 + 16);
@@ -1342,6 +1350,11 @@ export class VariantBuilder {
     pushUintLE(header, numOffsets, sizeBytes);
     for (const offset of offsets) pushUintLE(header, offset, offsetSize);
     pushUintLE(header, dataSize, offsetSize);
+    // The header is sized from the element count and the payload size, so it is only known
+    // here - after every checkCapacity the elements did. An array of many small elements could
+    // therefore finish *over* the limit: at a limit of 40 bytes, 20 booleans built a 43-byte
+    // variant. Checked before splicing, so the limit holds for the whole encoding.
+    this.checkCapacity(header.length);
     this.value.splice(start, 0, ...header);
   }
 
@@ -1364,6 +1377,9 @@ export class VariantBuilder {
     for (const field of fields) pushUintLE(header, field.id, idSize);
     for (const field of fields) pushUintLE(header, field.offset, offsetSize);
     pushUintLE(header, dataSize, offsetSize);
+    // As in finishWritingArray: an object's header carries an id and an offset per field, so
+    // it grows with the field count and is only sized once the fields are known.
+    this.checkCapacity(header.length);
     this.value.splice(start, 0, ...header);
   }
 }
