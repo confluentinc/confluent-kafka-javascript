@@ -17,6 +17,7 @@ import {
   SchemaMetadata
 } from "../schemaregistry-client";
 import {
+  clone,
   createFileRegistry, createMutableRegistry,
   DescField,
   DescFile,
@@ -71,6 +72,11 @@ const builtinDeps = new Map<string, DescFile>([
   ['confluent/meta.proto',                 file_confluent_meta],
   ['confluent/type/decimal.proto',         file_confluent_type_decimal],
   ['confluent/type/variant.proto',         file_confluent_type_variant],
+  // The plural spelling stays readable for schemas registered before the confluent value types
+  // moved to their canonical confluent/type/... path. Both declare `package confluent.type`, so
+  // either resolves to the same confluent.type.Decimal. Read-only: this client emits canonical.
+  ['confluent/types/decimal.proto',        file_confluent_type_decimal],
+  ['confluent/types/variant.proto',        file_confluent_type_variant],
   ['google/type/calendar_period.proto',    file_google_type_calendar_period],
   ['google/type/color.proto',              file_google_type_color],
   ['google/type/date.proto',               file_google_type_date],
@@ -565,6 +571,14 @@ export function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string,
       const dep = builtinDeps.get(depName)
       if (dep == null) {
         throw new SerializationError(`dependency ${depName} not found`)
+      }
+      // createFileRegistry matches a dependency edge by the file's own name, not by the name it
+      // was looked up under, so an alias would resolve here and then fail as "Cannot find
+      // <import>". Hand back a copy renamed to the import, as the registry branch below does.
+      if (dep.proto.name !== depName) {
+        const renamed = clone(FileDescriptorProtoSchema, dep.proto)
+        renamed.name = depName
+        return renamed
       }
       return dep
     } else {
