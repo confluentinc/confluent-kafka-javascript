@@ -434,6 +434,24 @@ export class Variant {
     this.view = new DataView(value.buffer, value.byteOffset, value.byteLength);
   }
 
+  /**
+   * The value bytes from this node's start - what any write-back has to use.
+   *
+   * `value` is the whole buffer, shared across sub-variants, so a navigated variant's own value
+   * begins at `pos`. Encoding `value` therefore writes the *parent root* rather than the
+   * selected value: measured, the `a` field of `{"a":1,"secret":"TOPSECRET"}` came back as the
+   * whole document. Every other client has this accessor (Go `StandaloneValueBytes`, C++
+   * `standaloneValueBytes`, Rust `standalone_value_bytes`, C# `StandaloneValueBytes`, Python
+   * `standalone_value_bytes`), and Java's `getValueBuffer` is a positioned `ByteBuffer`.
+   *
+   * Like all of those, this slices to the end of the buffer rather than to the node's exact
+   * extent, so a navigated value still carries its later siblings' bytes. Decoding ignores them
+   * - the encoding is self-delimiting.
+   */
+  standaloneValueBytes(): Uint8Array {
+    return this.pos === 0 ? this.value : this.value.subarray(this.pos);
+  }
+
   getType(): VariantType {
     checkIndex(this.pos, this.value.length);
     const [basicType, typeInfo] = getTypeInfo(this.value, this.pos);

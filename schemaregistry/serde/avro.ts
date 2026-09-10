@@ -41,7 +41,12 @@ export class VariantLogicalType extends types.LogicalType {
 
   override _toValue(any: unknown): unknown {
     if (any instanceof Variant) {
-      return { metadata: Buffer.from(any.metadata), value: Buffer.from(any.value) }
+      // standaloneValueBytes, not `value`: a navigated sub-variant's own value starts at its
+      // position, and `value` is the whole shared buffer - encoding it writes the parent root.
+      return {
+        metadata: Buffer.from(any.metadata),
+        value: Buffer.from(any.standaloneValueBytes()),
+      }
     }
     return any
   }

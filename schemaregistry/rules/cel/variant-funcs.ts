@@ -139,8 +139,9 @@ function requireReaderOrNull(v: unknown, fn: string): Variant | null {
 /** Wrap a (sub-)reader back into a CEL Variant. A sub-value's bytes run from its position to
  * the end of the parent buffer; the reader ignores the trailing bytes. */
 function wrapReader(r: Variant): ReflectMessage {
-  const value = r.pos === 0 ? r.value : r.value.subarray(r.pos);
-  return reflect(VariantSchema, create(VariantSchema, { metadata: r.metadata, value }));
+  return reflect(VariantSchema, create(VariantSchema, {
+    metadata: r.metadata, value: r.standaloneValueBytes(),
+  }));
 }
 
 /**

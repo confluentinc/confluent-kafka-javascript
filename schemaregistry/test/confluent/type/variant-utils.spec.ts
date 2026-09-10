@@ -26,6 +26,7 @@ import {
   DECIMAL4, DECIMAL8, DECIMAL16, DATE, TIMESTAMP, TIMESTAMP_NTZ, TIME,
   TIMESTAMP_NANOS, TIMESTAMP_NANOS_NTZ, BINARY, UUID,
 } from "../../../confluent/type/variant-utils";
+import { VariantLogicalType } from "../../../serde/avro";
 
 const EMPTY_META = new Uint8Array([1, 0, 0]); // version 1, offset_size 1, dict_size 0
 
@@ -674,3 +675,35 @@ describe("the size limit covers the container header", () => {
     }
   });
 });
+
+// A navigated sub-variant's own value starts at its position, so any write-back has to use
+// standaloneValueBytes(). `value` is the whole shared buffer: encoding it wrote the *parent
+// root* - measured, avsc's variant logical type turned the `a` field of
+// {"a":1,"secret":"TOPSECRET"} back into the whole document.
+describe("standaloneValueBytes", () => {
+  it("starts at the navigated position", () => {
+    const doc = parseJson('{"a":1,"secret":"TOPSECRET"}')
+    const child = doc.getFieldByKey("a")!
+
+    expect(child.pos).toBeGreaterThan(0)
+    expect(child.value).toBe(doc.value)                       // the buffer is shared
+    expect(toJsonString(child)).toBe("1")                     // the reader honours pos
+    expect(toJsonString(new Variant(child.standaloneValueBytes(), child.metadata))).toBe("1")
+
+    // A root variant is unaffected: its position is already zero.
+    expect(doc.standaloneValueBytes()).toBe(doc.value)
+  })
+
+  it("is what the Avro logical type encodes", () => {
+    const doc = parseJson('{"a":1,"secret":"TOPSECRET"}')
+    const child = doc.getFieldByKey("a")!
+    const lt = new (VariantLogicalType as any)(
+      { type: "record", name: "V", fields: [] } as any, {} as any)
+
+    for (const [v, want] of [[child, "1"], [doc, '{"a":1,"secret":"TOPSECRET"}']] as
+        [Variant, string][]) {
+      const e = (lt as any)._toValue(v) as { value: Uint8Array; metadata: Uint8Array }
+      expect(toJsonString(new Variant(e.value, e.metadata))).toBe(want)
+    }
+  })
+})
