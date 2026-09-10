@@ -229,23 +229,45 @@ export function isCelTimestamp(value: unknown): boolean {
 /**
  * Encodes a CEL Timestamp back to an Avro epoch value in `unit`, the inverse of
  * {@link avroTimestampToCel}.
+ *
+ * Computed in BigInt and refused if the result is not a safe integer. The reference keeps an
+ * Instant and lets Avro's own conversion produce an exact long, which a JS `number` cannot do:
+ * a present-day nanos epoch is ~1.79e18, far past 2^53, and arithmetic in `number` rounded it
+ * (measured: 1788000000123456789 became 1788000000123456800). avsc then rejected it anyway -
+ * its `long` accepts nothing outside the safe range, exact or not - as `invalid "long": <the
+ * rounded value>`, naming a number the rule never produced. Refusing here reports the unit and
+ * the true value instead. millis, micros and seconds are unaffected: micros stays safe past
+ * year 2250.
  */
 export function timestampToEpoch(value: unknown, unit: string): number {
   const ts = timestampOf(value);
-  const seconds = Number(ts.seconds);
-  const nanos = ts.nanos ?? 0;
+  const seconds = BigInt(ts.seconds);
+  // A Timestamp normalizes nanos into [0, 999999999], so truncating division is also a floor.
+  const nanos = BigInt(ts.nanos ?? 0);
+  let epoch: bigint;
   switch (unit) {
     case "millis":
-      return seconds * 1_000 + Math.trunc(nanos / 1_000_000);
+      epoch = seconds * 1_000n + nanos / 1_000_000n;
+      break;
     case "micros":
-      return seconds * 1_000_000 + Math.trunc(nanos / 1_000);
+      epoch = seconds * 1_000_000n + nanos / 1_000n;
+      break;
     case "nanos":
-      return seconds * 1_000_000_000 + nanos;
+      epoch = seconds * 1_000_000_000n + nanos;
+      break;
     case "seconds":
-      return seconds;
+      epoch = seconds;
+      break;
     default:
       throw new Error(
         `timestamp: unknown unit '${unit}'; expected one of millis, micros, nanos, seconds`,
       );
   }
+  if (epoch > BigInt(Number.MAX_SAFE_INTEGER) || epoch < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new Error(
+      `timestamp: ${unit} epoch ${epoch} exceeds the safe integer range this client can ` +
+        `represent (+/-${Number.MAX_SAFE_INTEGER}); an Avro long cannot carry it`,
+    );
+  }
+  return Number(epoch);
 }
