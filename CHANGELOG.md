@@ -1,4 +1,4 @@
-# confluent-kafka-javascript 1.10.1 (rc1)
+# confluent-kafka-javascript 1.10.1
 
 ## Enhancements
 1. References librdkafka 2.15.1. Refer to the [librdkafka 2.15.1 release notes](https://github.com/confluentinc/librdkafka/releases/tag/v2.15.1) for more information.
