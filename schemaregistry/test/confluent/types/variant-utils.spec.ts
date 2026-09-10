@@ -598,3 +598,79 @@ function bigEndian(value: bigint): Uint8Array {
   out.reverse();
   return new Uint8Array(out);
 }
+
+
+// The scale is written as a single byte, so a fractional one was silently coerced:
+// appendDecimal(1234n, 2.5) encoded scale 2 and read back as 12.34 - a different value than
+// the caller named. Java cannot express it at all (its appendDecimal takes an `int`), so this
+// was a TypeScript-only hole in the public overload.
+describe("appendDecimal scale validation", () => {
+  it("refuses a fractional scale", () => {
+    for (const scale of [2.5, 0.1, -1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const b = new VariantBuilder();
+      expect(() => b.appendDecimal(1234n, scale)).toThrow(VariantError);
+    }
+  });
+
+  it("still accepts the integral scales it always did", () => {
+    for (const [unscaled, scale, want] of [
+      [1234n, 2, "12.34"], [1234n, 0, "1234"], [150n, 2, "1.50"], [0n, 0, "0"],
+    ] as [bigint, number, string][]) {
+      const b = new VariantBuilder();
+      b.appendDecimal(unscaled, scale);
+      expect(b.build().toJson()).toBe(want);
+    }
+  });
+});
+
+// The container header is sized from the element count and the payload size, so it is only
+// known after every checkCapacity the elements did - and it was spliced in without one of its
+// own. An array of many small elements therefore finished *over* the limit: measured, a limit
+// of 40 bytes built a 43-byte variant from 20 booleans.
+describe("the size limit covers the container header", () => {
+  it("refuses an array whose header pushes it over the limit", () => {
+    const build = (limit: number) => {
+      const b = new VariantBuilder(limit);
+      b.startArray();
+      for (let i = 0; i < 20; i++) b.appendBoolean(true);
+      b.endArray();
+      return b.build();
+    };
+    expect(() => build(40)).toThrow(VariantError);
+    // Comfortably above it, the same array builds - so the check bounds rather than blocks.
+    expect(build(4096).value.length).toBeLessThanOrEqual(4096);
+  });
+
+  it("refuses an object whose header pushes it over the limit", () => {
+    const build = (limit: number) => {
+      const b = new VariantBuilder(limit);
+      b.startObject();
+      for (let i = 0; i < 20; i++) {
+        b.appendKey(`k${i}`);
+        b.appendBoolean(true);
+      }
+      b.endObject();
+      return b.build();
+    };
+    expect(() => build(60)).toThrow(VariantError);
+    expect(build(8192).value.length).toBeLessThanOrEqual(8192);
+  });
+
+  // And whatever the limit, a variant that *does* build is within it - which is the property
+  // the header check restores.
+  it("never returns a variant larger than its limit", () => {
+    for (const limit of [64, 128, 256, 1024]) {
+      let v: { value: Uint8Array } | null = null;
+      try {
+        const b = new VariantBuilder(limit);
+        b.startArray();
+        for (let i = 0; i < 30; i++) b.appendBoolean(true);
+        b.endArray();
+        v = b.build();
+      } catch {
+        continue; // refused, which is the other acceptable outcome
+      }
+      expect(v!.value.length).toBeLessThanOrEqual(limit);
+    }
+  });
+});
