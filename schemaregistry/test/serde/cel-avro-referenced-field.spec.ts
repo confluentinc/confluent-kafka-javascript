@@ -76,6 +76,46 @@ async function roundTrip(tag: string, expr: string, kind: string): Promise<any> 
   return await deser.deserialize(subject, await ser.serialize(subject, record))
 }
 
+// A message-level rule (type CEL, no tags) sees the whole record rather than one field, and it
+// needs the referenced schema for the same reason the field walk does: the declaration is what
+// carries the decimal's scale and the timestamp's unit. Without the dependency texts on the way
+// *in*, `message.money.amount` arrived as raw bytes and this condition was false.
+async function messageRoundTrip(expr: string): Promise<any> {
+  const subject = `celrefmsg${n++}`
+  const client = SchemaRegistryClient.newClient({ baseURLs: ['mock://'], cacheCapacity: 1000 })
+  const ser = new AvroSerializer(client, SerdeType.VALUE, { useLatestVersion: true })
+  const deser = new AvroDeserializer(client, SerdeType.VALUE, {})
+
+  await client.register('ref-money-value', { schemaType: 'AVRO', schema: NESTED_SCHEMA } as SchemaInfo, false)
+  const rule = { name: 'r', kind: 'CONDITION', mode: RuleMode.WRITE, type: 'CEL', expr } as any as Rule
+  await client.register(`${subject}-value`, {
+    schemaType: 'AVRO',
+    schema: ROOT_SCHEMA,
+    references: [{ name: 'ref.Money', subject: 'ref-money-value', version: 1 }],
+    ruleSet: { domainRules: [rule] },
+  } as any as SchemaInfo, false)
+
+  const record = {
+    money: { amount: Buffer.from([0x04, 0xd2]), at: 1700000000123 },
+    label: 'hi',
+  }
+  return await deser.deserialize(subject, await ser.serialize(subject, record))
+}
+
+describe('a message-level rule over a referenced Avro schema', () => {
+  it('sees a referenced decimal as a Decimal', async () => {
+    const out = await messageRoundTrip(
+      'decimals.eq(message.money.amount, decimal("12.34"))')
+    expect(out.label).toBe('hi')
+  })
+
+  it('sees a referenced timestamp as a Timestamp', async () => {
+    const out = await messageRoundTrip(
+      'message.money.at == timestamp("2023-11-14T22:13:20.123Z")')
+    expect(out.label).toBe('hi')
+  })
+})
+
 describe('a tagged field declared in a referenced Avro schema', () => {
   it('reaches a decimal rule as a Decimal, not as raw bytes', async () => {
     // Before the dependency texts travelled on the context this failed with
