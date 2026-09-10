@@ -54,8 +54,10 @@ const TIMESTAMP = objectType(TimestampSchema);
  * and `timestamp(253402300800)` returned a value that merely compared unequal, rather than
  * failing the rule the way it does everywhere else.
  */
-const MIN_TIMESTAMP_SECONDS = -62135596800n;
-const MAX_TIMESTAMP_SECONDS = 253402300799n;
+/** The CEL timestamp range in epoch seconds. Exported so the variant extraction path bounds
+ * itself against the same definition rather than a second copy. */
+export const MIN_TIMESTAMP_SECONDS = -62135596800n;
+export const MAX_TIMESTAMP_SECONDS = 253402300799n;
 const MAX_TIMESTAMP_NANOS = 999999999;
 
 function checkRange(ts: Timestamp): Timestamp {
