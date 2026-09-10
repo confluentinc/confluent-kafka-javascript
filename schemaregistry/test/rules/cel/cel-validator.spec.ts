@@ -1309,3 +1309,74 @@ describe('a scale outside int32 is refused', () => {
     expect(await validator.execute(rule(expr), null, 'x')).toBe(true)
   })
 })
+
+// An exact div/sqrt result carries the reference's *preferred* scale, not the quotient's own
+// natural scale: `dividend.scale - divisor.scale` for divide, `scale / 2` truncated toward zero
+// for square root. Trailing zeros are kept down to it and padded up to it, never stripped below.
+//
+// div was previously left on decimal.js's own normalization, and the comment defending that
+// cited `10.0/2.0` -> "5". The example is correct; it is also the only shape that cannot tell
+// the two behaviours apart, because its preferred scale is 1 - 1 = 0. It is kept below as the
+// first case, now alongside the mismatched pairs that do separate them.
+describe('CelValidator exact div/sqrt carry the preferred scale', () => {
+  const evalStr = async (expr: string): Promise<any> =>
+    new CelValidator().execute(rule(expr), null, 0)
+
+  const cases: [string, string][] = [
+    ['string(decimals.div(decimal("10.0"), decimal("2.0")))', '5'],
+    ['string(decimals.div(decimal("10.0"), decimal("2")))', '5.0'],
+    ['string(decimals.div(decimal("6.0"), decimal("3")))', '2.0'],
+    ['string(decimals.div(decimal("10.00"), decimal("2")))', '5.00'],
+    ['string(decimals.div(decimal("1.000"), decimal("0.1")))', '10.00'],
+    ['string(decimals.div(decimal("-6.0"), decimal("3")))', '-2.0'],
+    ['string(decimals.div(decimal("6.0"), decimal("-3")))', '-2.0'],
+    ['string(decimals.div(decimal("100"), decimal("1E+2")))', '1.00'],
+    // ...but never below the exact quotient's own scale: 10/4 is 2.5 at a preferred 0.
+    ['string(decimals.div(decimal("10"), decimal("4")))', '2.5'],
+    ['string(decimals.div(decimal("1.0"), decimal("8")))', '0.125'],
+    ['string(decimals.div(decimal("100.0"), decimal("0.5")))', '200'],
+    ['string(decimals.div(decimal("1000"), decimal("10")))', '100'],
+    // An inexact quotient keeps all 38 digits - padding it would claim digits it lacks, and a
+    // trailing zero there can be significant (1/99 ends in one).
+    ['string(decimals.div(decimal("1.00000"), decimal("3")))', '0.' + '3'.repeat(38)],
+    ['string(decimals.div(decimal("1"), decimal("99")))', '0.010101010101010101010101010101010101010'],
+    ['string(decimals.sqrt(decimal("4.00")))', '2.0'],
+    ['string(decimals.sqrt(decimal("100.0000")))', '10.00'],
+    ['string(decimals.sqrt(decimal("0.0001")))', '0.01'],
+    ['string(decimals.sqrt(decimal("9.0")))', '3'],
+    ['string(decimals.sqrt(decimal("400.0")))', '20'],
+    ['string(decimals.sqrt(decimal("16.000")))', '4.0'],
+    ['string(decimals.sqrt(decimal("2")))', '1.4142135623730950488016887242096980786'],
+  ]
+  it.each(cases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // The scale itself, not its rendering. `string()` is plain form, so it reads the same at
+  // several scales - a zero writes as "0" at every non-positive scale, and 500 writes as "500"
+  // whether its scale is -2 or -1 - but the scale is a field of the confluent.type.Decimal
+  // encoding. The result *is* that message, so a rule can select `.scale` off it.
+  //
+  // Two things are only visible here. A zero takes the preferred scale outright, in both
+  // directions, because the reference returns `zeroValueOf(preferredScale)`; and the target is
+  // `max(preferred, minimalScale)` over the *stripped* scale, which can be negative -
+  // `decimalPlaces()` floors at 0, so it answered 0 where the reference says -2.
+  const scaleCases: [string, number][] = [
+    ['decimals.sqrt(decimal("0"))', 0],
+    ['decimals.sqrt(decimal("0.0"))', 0],
+    ['decimals.sqrt(decimal("0.00"))', 1],
+    ['decimals.sqrt(decimal("0.000"))', 1],
+    ['decimals.div(decimal("0.00"), decimal("3"))', 2],
+    ['decimals.div(decimal("0"), decimal("3.00"))', -2],
+    ['decimals.div(decimal("0.00"), decimal("3.0000"))', -2],
+    ['decimals.sqrt(decimal("4E+2"))', -1],
+    ['decimals.sqrt(decimal("1E+4"))', -2],
+    // scale -3 halves toward zero to -1, not down to the floor's -2.
+    ['decimals.sqrt(decimal("250E+3"))', -1],
+    ['decimals.div(decimal("100.0"), decimal("0.5"))', 0],
+    ['decimals.div(decimal("6.0"), decimal("3"))', 1],
+  ]
+  it.each(scaleCases)('%s has scale %s', async (expr, scale) => {
+    expect(await evalStr(`${expr}.scale == ${scale}`)).toBe(true)
+  })
+})
