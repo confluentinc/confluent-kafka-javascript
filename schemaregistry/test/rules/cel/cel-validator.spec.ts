@@ -9,7 +9,7 @@ import {
 import avro from 'avsc';
 import { CelValidator } from '../../../rules/cel/cel-validator';
 import { VariantLogicalType } from '../../../serde/avro';
-import { Variant, parseJson } from '../../../confluent/type/variant-utils';
+import { Variant, VariantBuilder, parseJson } from '../../../confluent/type/variant-utils';
 import { VariantSchema } from '../../../confluent/type/variant_pb';
 import { DecimalSchema } from '../../../confluent/type/decimal_pb';
 import { RuleError, ValidationRule } from '../../../serde/serde';
@@ -1237,4 +1237,44 @@ describe('CelValidator bare protobuf decimal', () => {
     const msg = create(DecimalSchema, { value: new Uint8Array([0x04, 0xd2]), scale: 2 })
     expect(await new CelValidator().execute(rule(e), DecimalSchema, msg)).toBe(expected)
   })
+})
+
+// A variant timestamp spans the whole int64 range while a CEL timestamp is 0001-9999, so an
+// out-of-range value is reachable from data. It used to be built anyway, leaving an instant that
+// could not be rendered - measured, `string()` failed with "cannot encode message
+// google.protobuf.Timestamp" - but could still be compared, so `< now` answered a confident
+// false for a value that is not a time. Refused now, and routed through the as/tryAs split so a
+// rule can guard, matching the reference's variantGetTimestamp.
+describe('variants.as(v, "timestamp") is range-checked', () => {
+  const MAX_MICROS = 253402300799n * 1_000_000n + 999_999n
+  const MIN_MICROS = -62135596800n * 1_000_000n
+
+  function tsVariant(micros: bigint): Variant {
+    const b = new VariantBuilder()
+    b.appendTimestampTz(micros)
+    return b.build()
+  }
+
+  it.each([0n, MAX_MICROS, MIN_MICROS])('accepts %s', async (micros) => {
+    const v = tsVariant(micros)
+    const validator = new CelValidator()
+    expect(await validator.execute(
+      rule('variants.as(this, "timestamp") == variants.as(this, "timestamp")'), null, v))
+      .toBe(true)
+    // tryAs answers a timestamp, not null - otherwise the guard case below proves nothing.
+    expect(await validator.execute(
+      rule('variants.tryAs(this, "timestamp") == null'), null, v)).toBe(false)
+  })
+
+  it.each([9223372036854775807n, -9223372036854775807n, MAX_MICROS + 1_000_000n])(
+    'refuses %s and names the range', async (micros) => {
+      const v = tsVariant(micros)
+      const validator = new CelValidator()
+      await expect(validator.execute(
+        rule('variants.as(this, "timestamp") != null'), null, v))
+        .rejects.toThrow('is outside 0001-01-01T00:00:00Z')
+      // tryAs answers CEL null instead, so a rule can guard on it.
+      expect(await validator.execute(
+        rule('variants.tryAs(this, "timestamp") == null'), null, v)).toBe(true)
+    })
 })

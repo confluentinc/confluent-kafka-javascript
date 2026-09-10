@@ -43,6 +43,7 @@ import {
 } from "../../confluent/type/decimal-utils";
 import { Variant, VariantType, parseJson } from "../../confluent/type/variant-utils";
 import { walk } from "./variant-path";
+import { MAX_TIMESTAMP_SECONDS, MIN_TIMESTAMP_SECONDS } from "./timestamp-funcs";
 
 const { DYN, STRING, BOOL, INT, BYTES } = CelScalar;
 const VARIANT = objectType(VariantSchema);
@@ -207,10 +208,24 @@ function decimalToCel(r: Variant): ReflectMessage {
   }));
 }
 
-function timestampToCel(r: Variant): ReflectMessage {
+/**
+ * The variant's instant, or null when it falls outside the CEL timestamp range.
+ *
+ * A variant timestamp spans the whole int64 range while a CEL timestamp is 0001-9999, so an
+ * out-of-range value is reachable from data. Null rather than a throw because the caller
+ * decides: `variants.as` raises and names the range, `variants.tryAs` answers CEL null - the
+ * same split those two already apply to a type mismatch. Building it regardless left an invalid
+ * instant in the type system: unrenderable (measured, `string()` fails with "cannot encode
+ * message google.protobuf.Timestamp"), so comparisons were the only thing that could consume
+ * it, and `< now` answered a confident false for a value that is not a time.
+ */
+function timestampToCelOrNull(r: Variant): ReflectMessage | null {
   const raw = r.getLong();
   const totalNanos = MICROS_TIMESTAMP_TYPES.has(r.getType()) ? raw * 1000n : raw;
   const [seconds, nanos] = floorDivMod(totalNanos, 1_000_000_000n);
+  if (seconds < MIN_TIMESTAMP_SECONDS || seconds > MAX_TIMESTAMP_SECONDS) {
+    return null;
+  }
   return reflect(TimestampSchema, create(TimestampSchema, { seconds, nanos: Number(nanos) }));
 }
 
@@ -238,7 +253,14 @@ function variantAs(v: unknown, typeStr: string, nullOnError: boolean): CelValueO
       if (DECIMAL_TYPES.has(t)) return decimalToCel(r);
       break;
     case "timestamp":
-      if (TIMESTAMP_TYPES.has(t)) return timestampToCel(r);
+      if (TIMESTAMP_TYPES.has(t)) {
+        const ts = timestampToCelOrNull(r);
+        if (ts !== null) return ts;
+        if (nullOnError) return null;
+        throw new Error(
+          `variants.as: timestamp ${r.getLong()} is outside ` +
+          "0001-01-01T00:00:00Z..9999-12-31T23:59:59.999999999Z");
+      }
       break;
     case "bytes":
       if (t === VariantType.BINARY) return r.getBinary();
