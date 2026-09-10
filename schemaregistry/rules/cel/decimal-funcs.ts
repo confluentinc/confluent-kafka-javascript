@@ -60,7 +60,8 @@ const { DYN, INT, BOOL, STRING, BYTES, DOUBLE } = CelScalar;
 const DECIMAL_TYPE = objectType(ProtoDecimalSchema);
 
 // 38-digit HALF_UP context for division, matching Flink / Java BigDecimal.
-const DivDecimal = Decimal.clone({ precision: 38, rounding: Decimal.ROUND_HALF_UP });
+const DIV_PRECISION = 38;
+const DivDecimal = Decimal.clone({ precision: DIV_PRECISION, rounding: Decimal.ROUND_HALF_UP });
 
 // Unbounded context for the operations Java computes exactly: add, sub, mul and mod all use
 // java.math.BigDecimal's exact arithmetic, with no precision cap. decimal.js's *global* precision
@@ -177,6 +178,51 @@ function scaleOf(v: unknown): number {
     if (anyV.$typeName === "confluent.type.Decimal") return anyV.scale ?? 0;
   }
   return 0;
+}
+
+/**
+ * The lowest scale that still represents `d` exactly — the scale of `BigDecimal`'s
+ * `stripTrailingZeros`, which can be **negative**: 200 strips to 2E+2, scale -2.
+ *
+ * `decimalPlaces()` cannot express that, because it floors at 0. That matters for the
+ * preferred scale below, where the target is `max(preferred, minimal)` and a preferred scale
+ * of -2 has to survive the max.
+ */
+function minimalScale(d: Decimal): number {
+  // precision() excludes the trailing zeros of the integer part, so this is
+  // (significant digits - 1) - (adjusted exponent), i.e. BigDecimal's stripped scale.
+  return d.precision() - 1 - d.e;
+}
+
+/**
+ * The scale an **exact** div/sqrt result carries in the reference: strip trailing zeros down
+ * to — never below — `preferred`, then pad back up to it when the natural scale is smaller.
+ *
+ * Only for an exact result. Padding an inexact one would claim digits it does not have, and
+ * an inexact 38-digit result can legitimately end in a significant zero (`1/99` does).
+ */
+function preferredScaleFor(value: Decimal, preferred: number): number {
+  if (value.isZero()) {
+    // A zero takes the preferred scale outright, in both directions, because BigDecimal
+    // returns `zeroValueOf(saturateLong(preferredScale))` for it — saturating where a
+    // non-zero result of the same operation throws Underflow. A zero has no trailing zeros
+    // to strip, so `max` could only ever raise its scale, never lower it.
+    return Math.min(Math.max(preferred, INT32_MIN), INT32_MAX);
+  }
+  return Math.max(preferred, minimalScale(value));
+}
+
+/**
+ * The scale of an **inexact** div/sqrt result, which is 38 significant digits by construction:
+ * `(precision - 1) - adjustedExponent`, so `1/3` is scale 38 and `1/99` is scale 39.
+ *
+ * `decimalPlaces()` cannot be used for this. decimal.js strips a trailing zero from its own
+ * representation, and a 38-digit rounded result can legitimately end in a significant one —
+ * `1/99` is `0.010101…010`. Reading the scale back off the stripped value dropped that digit,
+ * leaving 37 significant digits where the reference writes 38.
+ */
+function inexactScale(d: Decimal): number {
+  return DIV_PRECISION - 1 - d.e;
 }
 
 /**
@@ -517,14 +563,24 @@ export const DECIMAL_FUNCS: CelFunc[] = [
   celFunc("decimals.mul", [DYN, DYN], DECIMAL_TYPE, (a, b) =>
     decimalToCelScaled(exact(a).times(exact(b)), scaleOf(a) + scaleOf(b)),
   ),
-  // div is the one arithmetic operation with no derived scale: BigDecimal.divide(MathContext)
-  // yields the exact quotient's own scale, or 38 significant digits when it does not terminate
-  // (`10.0/2.0` is "5", not "5.0"). That is what decimal.js produces natively, so it stays on
-  // decimalToCel.
+  // div's preferred scale is dividend.scale - divisor.scale, applied only when the quotient is
+  // exact - the same rule sqrt uses with scale/2. A non-terminating quotient keeps its 38
+  // significant digits.
+  //
+  // This used to be left on decimal.js's own normalization, on the evidence that `10.0/2.0` is
+  // "5" and not "5.0". That example is correct and it is also the only kind that cannot tell
+  // the two apart, because its preferred scale is 1-1 = 0. Any mismatched pair separates them:
+  // `6.0/3` is "2.0" and `10.00/2` is "5.00".
   celFunc("decimals.div", [DYN, DYN], DECIMAL_TYPE, (a, b) => {
     const bd = toDecimal(b);
     if (bd.isZero()) throw new Error("decimals.div: division by zero");
-    return decimalToCel(new DivDecimal(toDecimal(a).toString()).div(bd.toString()));
+    const ad = toDecimal(a);
+    const quotient = new DivDecimal(ad.toString()).div(bd.toString());
+    // Reconstructed in the exact context so a quotient rounded to 38 digits cannot pass as
+    // exact, which is how sqrt checks it too.
+    const exact = new ExactDecimal(quotient.toString()).times(bd.toString()).eq(ad);
+    if (!exact) return decimalToCelScaled(quotient, inexactScale(quotient));
+    return decimalToCelScaled(quotient, preferredScaleFor(quotient, scaleOf(a) - scaleOf(b)));
   }),
   // Modulo: remainder with the sign of the dividend (default modulo mode
   // ROUND_DOWN), matching Java BigDecimal.remainder and SQL MOD. Throws on a
@@ -567,9 +623,11 @@ export const DECIMAL_FUNCS: CelFunc[] = [
     // sqrt(9.0000) is "3.00" and sqrt(100.000) is "10.0", but sqrt(2) keeps all 38 digits. The
     // squaring is done in the exact context so a rounded root cannot masquerade as exact.
     const exactRoot = new ExactDecimal(root.toString()).pow(2).eq(d);
+    // Math.trunc, not floor: BigDecimal's `scale / 2` truncates toward zero, so the scale -3
+    // of 250E+3 halves to -1 and not down to -2.
     const scale = exactRoot
-      ? Math.max(Math.trunc(scaleOf(a) / 2), root.decimalPlaces())
-      : root.decimalPlaces();
+      ? preferredScaleFor(root, Math.trunc(scaleOf(a) / 2))
+      : inexactScale(root);
     return decimalToCelScaled(root, scale);
   }),
 
