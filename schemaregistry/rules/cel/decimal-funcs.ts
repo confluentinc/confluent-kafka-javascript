@@ -209,7 +209,18 @@ function preferredScaleFor(value: Decimal, preferred: number): number {
     // to strip, so `max` could only ever raise its scale, never lower it.
     return Math.min(Math.max(preferred, INT32_MIN), INT32_MAX);
   }
-  return Math.max(preferred, minimalScale(value));
+  const minimal = minimalScale(value);
+  // The preferred scale does not override the context precision. The reference pads toward it
+  // only while the result still fits in `mc.precision` significant digits, and stops short
+  // otherwise. Measured: `1.<40 zeros> / 1` is scale 37 there, not the preferred 40, and
+  // `1.<100 zeros> / 8` is scale 38, because 0.125 already spends 3 of the 38 on digits that
+  // are not padding. Without this the padding ran to the raw preferred scale — 101 significant
+  // digits for `1.<100 zeros> / 1`.
+  //
+  // `precision()` is the stripped significant-digit count, which is the right base: the
+  // headroom is what is left of the 38 once the value's own digits are counted.
+  const headroom = DIV_PRECISION - value.precision();
+  return Math.max(minimal, Math.min(preferred, minimal + headroom));
 }
 
 /**

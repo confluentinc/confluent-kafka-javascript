@@ -1380,3 +1380,48 @@ describe('CelValidator exact div/sqrt carry the preferred scale', () => {
     expect(await evalStr(`${expr}.scale == ${scale}`)).toBe(true)
   })
 })
+
+// The preferred scale does not override the 38-digit context precision. The reference pads
+// toward the preferred scale only while the result still fits in `mc.precision` significant
+// digits and stops short otherwise, so the target is
+// min(preferred, minimalScale + (38 - minimalPrecision)), floored at the minimal scale.
+//
+// Without the cap the padding ran to the raw preferred scale: `1.<100 zeros> / 1` came back
+// with 101 significant digits, and `sqrt(1.<100 zeros>)` with 51.
+describe('CelValidator the preferred scale cannot exceed the context precision', () => {
+  const evalStr = async (expr: string): Promise<any> =>
+    new CelValidator().execute(rule(expr), null, 0)
+  const z = (n: number) => '0'.repeat(n)
+
+  const cases: [string, string][] = [
+    // 37 zeros is exactly 38 significant digits: the last reachable preferred scale.
+    [`string(decimals.div(decimal("1.${z(37)}"), decimal("1")))`, `1.${z(37)}`],
+    // 40 and 100 would need 41 and 101; both stop at 37.
+    [`string(decimals.div(decimal("1.${z(40)}"), decimal("1")))`, `1.${z(37)}`],
+    [`string(decimals.div(decimal("1.${z(100)}"), decimal("1")))`, `1.${z(37)}`],
+    [`string(decimals.div(decimal("2.${z(100)}"), decimal("1")))`, `2.${z(37)}`],
+    // The cap is on precision, not on scale: 0.5 spends a digit before the padding starts and
+    // so reaches scale 38, where 1 reaches only 37...
+    [`string(decimals.div(decimal("1.${z(100)}"), decimal("2")))`, `0.5${z(37)}`],
+    // ...and 0.125 spends three, reaching 38 from a minimal scale of 3.
+    [`string(decimals.div(decimal("1.${z(100)}"), decimal("8")))`, `0.125${z(35)}`],
+    // sqrt: preferred 20 fits, 37 is exactly the ceiling, 50 does not fit.
+    [`string(decimals.sqrt(decimal("1.${z(40)}")))`, `1.${z(20)}`],
+    [`string(decimals.sqrt(decimal("1.${z(74)}")))`, `1.${z(37)}`],
+    [`string(decimals.sqrt(decimal("1.${z(100)}")))`, `1.${z(37)}`],
+  ]
+  it.each(cases.map(([e, w], i) => [i, e, w] as [number, string, string]))(
+    'case %s keeps 38 significant digits', async (_i, expr, expected) => {
+      expect(await evalStr(expr)).toBe(expected)
+    })
+
+  // A zero is exempt: it is one digit at any scale, so it keeps the full preferred scale.
+  // Measured on the reference: 0.<100 zeros> / 1 is scale 100 at precision 1.
+  const zeroCases: [string, number][] = [
+    [`decimals.div(decimal("0.${z(100)}"), decimal("1"))`, 100],
+    [`decimals.div(decimal("0.${z(100)}"), decimal("3.0"))`, 99],
+  ]
+  it.each(zeroCases)('%s has scale %s', async (expr, scale) => {
+    expect(await evalStr(`${expr}.scale == ${scale}`)).toBe(true)
+  })
+})
