@@ -148,6 +148,10 @@ v8::Local<v8::Array> FromDeleteRecordsResult(
 v8::Local<v8::Array> FromDescribeTopicsResult(
     const rd_kafka_DescribeTopics_result_t* result);
 
+// DescribeCluster: Response
+v8::Local<v8::Object> FromDescribeClusterResult(
+    const rd_kafka_DescribeCluster_result_t* result);
+
 // ListOffsets: Response
 v8::Local<v8::Array> FromListOffsetsResult(
     const rd_kafka_ListOffsets_result_t* result);
