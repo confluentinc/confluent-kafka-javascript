@@ -364,8 +364,8 @@ function selectDecimal(a: unknown, b: unknown, greatest: boolean): ReflectMessag
 /**
  * Extension of CEL stdlib `string(...)` with a Decimal arm.
  *
- * For ReflectMessages of confluent.type.Decimal, returns plain decimal
- * notation (no scientific form). Otherwise delegates to stdlib semantics.
+ * For ReflectMessages of confluent.type.Decimal, returns plain decimal notation (no scientific
+ * form). Anything else has no `string` overload here - see {@link noOverload}.
  */
 function stringExt(v: unknown): string {
   if (isReflectMessage(v, ProtoDecimalSchema)) {
@@ -387,33 +387,58 @@ function stringExt(v: unknown): string {
     requireSaneWidth(plainFormLength(v), "string", "the plain form");
     return v.toFixed();
   }
-  // Fall through to stdlib semantics for the non-Decimal case.
+  throw noOverload("string", v);
+}
+
+/**
+ * The error a conversion raises for an argument no overload accepts.
+ *
+ * cel-es resolves `string(x)` / `double(x)` against its own stdlib overloads *before* it consults
+ * a registered function, so these two extensions only run for arguments no stdlib overload
+ * matched - measured: `string(1)`, `string(true)`, `string(b"ab")`, `string(uint(3))`,
+ * `double(1)`, `double("1.5")` and `double(uint(3))` never reach them. That is what makes
+ * registering a `dyn` overload an extension rather than a replacement, and it is the same
+ * dispatch order the Rust client documents.
+ *
+ * So what is left is our Decimal plus the types CEL has no overload for, and those have to be
+ * refused: the previous fallback re-implemented a lenient version of the stdlib with JavaScript
+ * coercion, where `double(false)` was 0 and a bytes/list/map/message argument became `NaN` - all
+ * of which the reference reports as "found no matching overload", and which every other client
+ * refuses (Java/Go/C#/C++ by declaring the overload on the Decimal type, Rust with this same
+ * error).
+ */
+function noOverload(fn: string, v: unknown): Error {
+  return new Error(`found no matching overload for '${fn}' applied to (${celTypeNameOf(v)})`);
+}
+
+/** A CEL type name for {@link noOverload}'s message. */
+function celTypeNameOf(v: unknown): string {
   if (v === null || v === undefined) return "null";
-  if (typeof v === "string") return v;
-  if (typeof v === "boolean") return v ? "true" : "false";
-  if (typeof v === "bigint") return v.toString();
-  if (typeof v === "number") return v.toString();
-  if (v instanceof Uint8Array) return new TextDecoder().decode(v);
-  return String(v);
+  if (typeof v === "boolean") return "bool";
+  if (typeof v === "string") return "string";
+  if (typeof v === "bigint") return "int";
+  if (typeof v === "number") return "double";
+  if (isCelUint(v)) return "uint";
+  if (v instanceof Uint8Array) return "bytes";
+  if (isCelList(v)) return "list";
+  if (isCelMap(v)) return "map";
+  if (isReflectMessage(v)) return v.desc.typeName;
+  return typeof v;
 }
 
 /**
  * Extension of CEL stdlib `double(...)` with a Decimal arm.
  *
- * For ReflectMessages of confluent.type.Decimal (and decimal.js values),
- * returns the narrowed 64-bit double (may lose precision; out-of-range
- * magnitudes become ±Infinity). Otherwise delegates to stdlib semantics.
+ * For ReflectMessages of confluent.type.Decimal (and decimal.js values), returns the narrowed
+ * 64-bit double (may lose precision; out-of-range magnitudes become ±Infinity). Anything else has
+ * no `double` overload here - see {@link noOverload}.
  */
 function doubleExt(v: unknown): number {
   if (isReflectMessage(v, ProtoDecimalSchema)) {
     return fromProtoDecimal(v.message as ProtoDecimal).toNumber();
   }
   if (v instanceof Decimal) return v.toNumber();
-  // Fall through to stdlib semantics for the non-Decimal case.
-  if (typeof v === "number") return v;
-  if (typeof v === "bigint") return Number(v);
-  if (typeof v === "string") return Number(v);
-  return Number(v as Decimal.Value);
+  throw noOverload("double", v);
 }
 
 function equalsBytes(lhs: Uint8Array, rhs: Uint8Array): boolean {

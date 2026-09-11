@@ -92,14 +92,13 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
     case 'list': {
       const list = out.get(field) as any
       const element = field.listKind === 'message' ? field.message : undefined
-      // Elements need the same scalar narrowing as a singular field: CEL widens every integer
-      // to int64, and protobuf reflection wants a number for the 32-bit types.
-      const elementScalar = field.listKind === 'scalar' ? field.scalar : undefined
+      // Elements need the same narrowing as a singular field: CEL widens every integer to
+      // int64, and protobuf reflection wants a number for the 32-bit types and for an enum.
       for (const item of iterate(value)) {
         if (item === null || item === undefined) continue
         list.add(element !== undefined
           ? asMessageValue(element, item)
-          : narrowScalar(elementScalar, field, unwrap(item)))
+          : narrowElement(field, field.listKind, unwrap(item)))
       }
       return
     }
@@ -108,12 +107,12 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
       const entries = asEntries(value)
       if (entries === null) return
       const element = field.mapKind === 'message' ? field.message : undefined
-      const valueScalar = field.mapKind === 'scalar' ? field.scalar : undefined
       for (const [k, v] of entries) {
         if (v === null || v === undefined) continue
+        // A map key is always a scalar - protobuf does not permit an enum or message key.
         map.set(narrowScalar(field.mapKey, field, unwrap(k)) as any, element !== undefined
           ? asMessageValue(element, v)
-          : narrowScalar(valueScalar, field, unwrap(v)))
+          : narrowElement(field, field.mapKind, unwrap(v)))
       }
       return
     }
@@ -193,10 +192,53 @@ function unwrap(value: any): unknown {
  * `longAsString`.
  */
 function narrow(field: DescField, value: unknown): unknown {
-  if (field.fieldKind !== 'scalar') {
+  if (field.fieldKind !== 'scalar' && field.fieldKind !== 'enum') {
     return value
   }
-  return narrowScalar(field.scalar, field, value)
+  return narrowElement(field, field.fieldKind, value)
+}
+
+/**
+ * One value at a singular, list-element or map-value position. `kind` says which of
+ * `field.scalar` and `field.enum` describes it, because on a repeated or map field those
+ * describe the element rather than the field.
+ */
+function narrowElement(field: DescField, kind: string, value: unknown): unknown {
+  if (kind === 'enum') {
+    return narrowEnum(field, value)
+  }
+  return narrowScalar(kind === 'scalar' ? field.scalar : undefined, field, value)
+}
+
+/**
+ * Narrows a CEL value to a protobuf enum number.
+ *
+ * CEL has no enum type: cel-es reads an enum field as an int, which this runtime carries as a
+ * `bigint`, and protobuf reflection wants the generated numeric value - so an identity
+ * transform over a message with an enum field failed with "expected enum test.Status, got 1n".
+ *
+ * A string is taken as the value's symbol name, which is what the reference accepts:
+ * `JsonFormat.parseEnum` reads a name as well as a number, so a rule may legitimately write
+ * "ACTIVE" rather than 1. An unknown name is a rule error rather than a silent zero. Whether an
+ * unrecognised *number* is allowed is left to protobuf reflection, which keeps it for an open
+ * (proto3) enum and refuses it for a closed one - `findValueByNumberCreatingIfUnknown` versus
+ * `findValueByNumber` on the reference.
+ */
+function narrowEnum(field: DescField, value: unknown): unknown {
+  if (typeof value === 'string') {
+    const found = field.enum?.values.find((v) => v.name === value)
+    if (found === undefined) {
+      throw new Error(`invalid enum value ${value} for enum type ${field.enum?.typeName}`)
+    }
+    return found.number
+  }
+  const num = typeof value === 'bigint' ? Number(value) : value
+  if (typeof num === 'number' && Number.isInteger(num) && (num < -(2 ** 31) || num > 2 ** 31 - 1)) {
+    // An enum number is an int32 on the wire, and the reference range-checks it before the
+    // open/closed decision above.
+    throw new Error(`value ${num} is out of range for enum type ${field.enum?.typeName}`)
+  }
+  return num
 }
 
 /**
