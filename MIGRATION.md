@@ -206,7 +206,7 @@ producerRun().then(consumerRun).catch(console.error);
 #### Consumer Configuration Changes
 
   ```javascript
-  const consumer = kafka.consumer({ kafkaJS: { /* producer-specific configuration changes. */ } });
+  const consumer = kafka.consumer({ kafkaJS: { /* consumer-specific configuration changes. */ } });
   ```
   Each allowed config property is discussed in the table below.
   If there is any change in semantics or the default values, the property and the change is **highlighted in bold**.
