@@ -24,7 +24,7 @@
  * This client needs no per-type conversion for decimal, timestamp and variant: cel-es carries
  * all three as protobuf messages, wrapped in a `ReflectMessage`, so unwrapping is enough.
  */
-import { isCelUint } from '@bufbuild/cel'
+import { isCelList, isCelMap, isCelUint } from '@bufbuild/cel'
 import { ScalarType, type DescField, type DescMessage, type Message } from '@bufbuild/protobuf'
 import { isReflectMessage, reflect, type ReflectMessage } from '@bufbuild/protobuf/reflect'
 
@@ -94,8 +94,10 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
       const element = field.listKind === 'message' ? field.message : undefined
       // Elements need the same narrowing as a singular field: CEL widens every integer to
       // int64, and protobuf reflection wants a number for the 32-bit types and for an enum.
-      for (const item of iterate(value)) {
-        if (item === null || item === undefined) continue
+      for (const item of requireList(field, value)) {
+        if (item === null || item === undefined) {
+          throw new Error(`cannot write null to repeated field ${field.name}`)
+        }
         list.add(element !== undefined
           ? asMessageValue(element, item)
           : narrowElement(field, field.listKind, unwrap(item)))
@@ -104,11 +106,11 @@ function setField(out: ReflectMessage, field: DescField, value: any): void {
     }
     case 'map': {
       const map = out.get(field) as any
-      const entries = asEntries(value)
-      if (entries === null) return
       const element = field.mapKind === 'message' ? field.message : undefined
-      for (const [k, v] of entries) {
-        if (v === null || v === undefined) continue
+      for (const [k, v] of requireEntries(field, value)) {
+        if (v === null || v === undefined) {
+          throw new Error(`cannot write a null value to map field ${field.name}`)
+        }
         // A map key is always a scalar - protobuf does not permit an enum or message key.
         map.set(narrowScalar(field.mapKey, field, unwrap(k)) as any, element !== undefined
           ? asMessageValue(element, v)
@@ -147,13 +149,50 @@ function asMessageValue(desc: DescMessage, value: any): unknown {
   return nested
 }
 
-function iterate(value: any): any[] {
+/**
+ * The elements of a list result, or a rule error.
+ *
+ * A shape mismatch has to be an error, not a no-op: the message is rebuilt field by field under
+ * replace semantics, so yielding nothing left the field *empty* and reported success -
+ * `{"amounts": 1}` looked applied and came back with no elements at all. The reference rejects
+ * the same mismatch, because its message-level write-back renders the result to protobuf JSON and
+ * parses it: measured against protobuf-java, `{"amounts": 1}` is "Expected an array for amounts
+ * but found 1", and a string or an object in that position is refused the same way.
+ *
+ * A string and a map are named rather than left to the iterability test: both are iterable, so a
+ * string would spread into one element per character and a map would write its *keys* as the list
+ * - corruption rather than loss.
+ */
+function requireList(field: DescField, value: any): Iterable<any> {
   if (Array.isArray(value)) return value
-  if (value != null && typeof value[Symbol.iterator] === 'function'
-      && typeof value !== 'string') {
-    return [...value]
+  if (typeof value !== 'string' && !(value instanceof Map) && value != null
+      && typeof value[Symbol.iterator] === 'function' && typeof value.entries !== 'function') {
+    return value
   }
-  return []
+  throw new Error(`cannot write ${describe(value)} to repeated field ${field.name}`)
+}
+
+/**
+ * The entries of a map result, or a rule error - {@link requireList}'s counterpart, and the same
+ * reasoning: leaving the map empty deleted the field and reported success. Measured,
+ * `{"amount_map": 1}` on the reference is "Expect a map object but found: 1", and so are a string
+ * and an array in that position.
+ */
+function requireEntries(field: DescField, value: any): [unknown, unknown][] {
+  const entries = asEntries(value)
+  if (entries === null) {
+    throw new Error(`cannot write ${describe(value)} to map field ${field.name}`)
+  }
+  return entries
+}
+
+/** Names the offending value's shape for the two errors above. */
+function describe(value: any): string {
+  if (value === null || value === undefined) return 'null'
+  if (Array.isArray(value) || isCelList(value)) return 'a list'
+  if (value instanceof Map || isCelMap(value)) return 'a map'
+  if (isReflectMessage(value)) return value.desc.typeName
+  return typeof value
 }
 
 /**

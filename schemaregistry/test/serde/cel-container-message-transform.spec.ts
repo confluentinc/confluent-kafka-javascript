@@ -163,6 +163,39 @@ describe('a message transform returning a protobuf container', () => {
 
     expect(show(out.nested.inner.value)).toBe('4.44')
   })
+
+  // A mistyped container result used to yield nothing and leave the field *empty*, which under
+  // replace semantics is a deletion reported as a success. Each row is refused by the
+  // reference's write-back parse - measured against protobuf-java's JsonFormat:
+  //   {"amounts": 1}          Expected an array for amounts but found 1
+  //   {"amount_map": 1}       Expect a map object but found: 1
+  //   {"amounts": [null]}     Repeated field elements cannot be null in field: ...
+  //   {"amount_map": {a:null}} Map value cannot be null.
+  const refused: [string, string, RegExp][] = [
+    ['a scalar for a repeated field', '{"amounts": 1}', /cannot write bigint to repeated field amounts/],
+    ['a string for a repeated field', '{"amounts": "abc"}', /cannot write string to repeated field amounts/],
+    ['a map for a repeated field', '{"amounts": message.amount_map}', /cannot write a map to repeated field amounts/],
+    ['a scalar for a map field', '{"amount_map": 1}', /cannot write bigint to map field amount_map/],
+    ['a string for a map field', '{"amount_map": "abc"}', /cannot write string to map field amount_map/],
+    ['a list for a map field', '{"amount_map": message.amounts}', /cannot write a list to map field amount_map/],
+    ['a null list element', '{"amounts": [null]}', /cannot write null to repeated field amounts/],
+    ['a null map value', '{"amount_map": {"a": null}}', /cannot write a null value to map field amount_map/],
+  ]
+  it.each(refused)('refuses %s', async (_label, expr, message) => {
+    await expect(protoTransform(expr)).rejects.toThrow(message)
+  })
+
+  // Empty is still a legitimate way to clear either field, as it is on the reference
+  // ({"amounts": []} and {"amount_map": {}} both parse), and so is an explicit null.
+  it('clears a container with an empty one, or with null', async () => {
+    const empty = await protoTransform('{"amounts": [], "amount_map": {}, "label": "hi"}')
+    expect(empty.amounts).toEqual([])
+    expect(empty.amountMap).toEqual({})
+
+    const cleared = await protoTransform('{"amounts": null, "amount_map": null, "label": "hi"}')
+    expect(cleared.amounts).toEqual([])
+    expect(cleared.amountMap).toEqual({})
+  })
 })
 
 describe('avsc error reporting', () => {
