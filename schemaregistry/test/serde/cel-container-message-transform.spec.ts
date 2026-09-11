@@ -182,6 +182,16 @@ describe('a message transform returning a protobuf container', () => {
     expect(toBinary(ValueTypeContainersSchema, out).length).toBeGreaterThan(0)
   })
 
+  // The silent one: bytes at the root came back as a blank message with the rule's result
+  // discarded. The reference refuses the shape instead, which is what "still the bytes" leaves
+  // the serializer free to do.
+  it('does not rebuild a bytes result as an empty message', async () => {
+    const out = await protoTransform('b"abc"')
+
+    expect(out).toBeInstanceOf(Uint8Array)
+    expect(out.$typeName).toBeUndefined()
+  })
+
   // A mistyped container result used to yield nothing and leave the field *empty*, which under
   // replace semantics is a deletion reported as a success. Each row is refused by the
   // reference's write-back parse - measured against protobuf-java's JsonFormat:
@@ -198,6 +208,10 @@ describe('a message transform returning a protobuf container', () => {
     ['a list for a map field', '{"amount_map": message.amounts}', /cannot write a list to map field amount_map/],
     ['a null list element', '{"amounts": [null]}', /cannot write null to repeated field amounts/],
     ['a null map value', '{"amount_map": {"a": null}}', /cannot write a null value to map field amount_map/],
+    // A Uint8Array has an `entries()` method, so asEntries used to read CEL bytes as
+    // index/value pairs.
+    ['bytes for a map field', '{"amount_map": b"abc"}', /cannot write bytes to map field amount_map/],
+    ['bytes for a repeated field', '{"amounts": b"abc"}', /cannot write bytes to repeated field amounts/],
   ]
   it.each(refused)('refuses %s', async (_label, expr, message) => {
     await expect(protoTransform(expr)).rejects.toThrow(message)

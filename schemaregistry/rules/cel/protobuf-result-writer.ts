@@ -65,8 +65,11 @@ function asEntries(result: any): [unknown, unknown][] | null {
   if (result instanceof Map) {
     return [...result.entries()]
   }
-  if (typeof (result as any).entries === 'function') {
-    return [...(result as any).entries()]
+  // isCelMap rather than a duck-typed `entries()`: a Uint8Array has that method too, so CEL
+  // bytes were read as index/value pairs and silently blanked the message at the root. isCelMap
+  // matches both shapes CEL produces - NativeMap and ProtoMap - and not Uint8Array.
+  if (isCelMap(result)) {
+    return [...result.entries()]
   }
   return null
 }
@@ -244,6 +247,7 @@ function describe(value: any): string {
   if (value === null || value === undefined) return 'null'
   if (Array.isArray(value) || isCelList(value)) return 'a list'
   if (value instanceof Map || isCelMap(value)) return 'a map'
+  if (value instanceof Uint8Array) return 'bytes'
   if (isReflectMessage(value)) return value.desc.typeName
   return typeof value
 }
