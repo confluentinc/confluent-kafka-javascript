@@ -241,7 +241,7 @@ export function wrapAvroForCel(
     return msg
   }
   const named = collectAvroNamedAll(schema, depSchemas)
-  return avroToCel(msg, schema, named)
+  return avroToCel(msg, schema, named, "")
 }
 
 /**
@@ -258,7 +258,7 @@ export function wrapAvroFieldForCel(
   if (resolved == null) {
     return fieldValue
   }
-  return avroToCel(fieldValue, resolved.leaf, resolved.named)
+  return avroToCel(fieldValue, resolved.leaf, resolved.named, resolved.ns)
 }
 
 /**
@@ -279,7 +279,7 @@ export function wrapAvroDeclaredFieldForCel(
   if (resolved == null) {
     return fieldValue
   }
-  return avroToCel(fieldValue, resolved.node, resolved.named)
+  return avroToCel(fieldValue, resolved.node, resolved.named, resolved.ns)
 }
 
 /**
@@ -301,7 +301,7 @@ export function unwrapAvroFieldFromCel(
   if (resolved == null) {
     return result
   }
-  return celToAvro(result, resolved.leaf, resolved.named)
+  return celToAvro(result, resolved.leaf, resolved.named, resolved.ns)
 }
 
 /**
@@ -324,24 +324,22 @@ export function unwrapAvroFromCel(
     return result
   }
   const named = collectAvroNamedAll(schema, depSchemas)
-  return celToAvro(result, schema, named)
+  return celToAvro(result, schema, named, "")
 }
 
 /** Inverse of {@link avroToCel}: one CEL value back to its Avro representation. */
-function celToAvro(value: any, node: any, named: Map<string, any>): any {
+function celToAvro(value: any, node: any, named: Map<string, any>, ns: string): any {
   if (value == null) {
     return value
   }
-  if (typeof node === "string" && named.has(node)) {
-    node = named.get(node)
-  }
+  node = resolveAvroNode(node, named, ns)
   if (Array.isArray(node)) {
     // A union: pick the branch that can actually carry this value, the way Java's
     // AvroResultWriter.resolveUnion does. Taking the first non-null branch positionally sent a
     // decimal result down the "string" branch of ["null","string",{...decimal}] and left the
     // bytes unencoded.
-    const branch = pickAvroWriteBranch(node, value, named)
-    return branch != null ? celToAvro(value, branch, named) : value
+    const branch = pickAvroWriteBranch(node, value, named, ns)
+    return branch != null ? celToAvro(value, branch, named, ns) : value
   }
   if (typeof node !== "object") {
     // The short form of an integer type: CEL carries it as a bigint and avsc rejects those
@@ -373,9 +371,10 @@ function celToAvro(value: any, node: any, named: Map<string, any>): any {
         return value
       }
       const out: Record<string, any> = Object.create(null)
+      const childNs = node.name ? avroFullname(node, ns)[0] : ns
       for (const field of node.fields ?? []) {
         if (hasOwn(entries, field.name)) {
-          out[field.name] = celToAvro(entries[field.name], field.type, named)
+          out[field.name] = celToAvro(entries[field.name], field.type, named, childNs)
         }
       }
       return out
@@ -383,7 +382,7 @@ function celToAvro(value: any, node: any, named: Map<string, any>): any {
     case "array": {
       const elements = celElements(value)
       return elements != null
-        ? elements.map((v) => celToAvro(v, node.items, named))
+        ? elements.map((v) => celToAvro(v, node.items, named, ns))
         : value
     }
     case "map": {
@@ -393,7 +392,7 @@ function celToAvro(value: any, node: any, named: Map<string, any>): any {
       }
       const out: Record<string, any> = Object.create(null)
       for (const key of Object.keys(entries)) {
-        out[key] = celToAvro(entries[key], node.values, named)
+        out[key] = celToAvro(entries[key], node.values, named, ns)
       }
       return out
     }
@@ -478,7 +477,7 @@ function resolveAvroField(
   fullName: string,
   schemaStr: string,
   depSchemas: readonly string[] = [],
-): { node: any; named: Map<string, any> } | null {
+): { node: any; named: Map<string, any>; ns: string } | null {
   let schema: any
   try {
     schema = JSON.parse(schemaStr)
@@ -500,7 +499,9 @@ function resolveAvroField(
   if (field == null) {
     return null
   }
-  return { node: field.type, named }
+  // The field's type is written inside the record's namespace, so that is what an unqualified
+  // reference in it resolves against.
+  return { node: field.type, named, ns: avroFullname(record, "")[0] }
 }
 
 /**
@@ -512,17 +513,21 @@ function resolveAvroFieldLeaf(
   fullName: string,
   schemaStr: string,
   depSchemas: readonly string[] = [],
-): { leaf: any; named: Map<string, any> } | null {
+): { leaf: any; named: Map<string, any>; ns: string } | null {
   const resolved = resolveAvroField(fullName, schemaStr, depSchemas)
   if (resolved == null) {
     return null
   }
-  return { leaf: avroLeafNode(resolved.node, resolved.named), named: resolved.named }
+  return {
+    leaf: avroLeafNode(resolved.node, resolved.named, resolved.ns),
+    named: resolved.named,
+    ns: resolved.ns,
+  }
 }
 
 /** Unwraps array/map/union containers down to the leaf schema a primitive field value carries. */
-function avroLeafNode(node: any, named: Map<string, any>): any {
-  node = resolveAvroNode(node, named)
+function avroLeafNode(node: any, named: Map<string, any>, ns: string): any {
+  node = resolveAvroNode(node, named, ns)
   if (Array.isArray(node)) {
     // Only when the union has one non-null branch is the branch knowable from the schema alone.
     // With two or more, which one applies depends on the value, so the union is left intact for
@@ -532,11 +537,11 @@ function avroLeafNode(node: any, named: Map<string, any>): any {
     // in both directions; celToAvro already had this bug and already fixed it internally, and
     // this pre-empted its fix.
     const nonNull = node.filter((b) => !isNullBranch(b))
-    return nonNull.length === 1 ? avroLeafNode(nonNull[0], named) : node
+    return nonNull.length === 1 ? avroLeafNode(nonNull[0], named, ns) : node
   }
   if (node != null && typeof node === "object" && !node.logicalType) {
-    if (node.type === "array") return avroLeafNode(node.items, named)
-    if (node.type === "map") return avroLeafNode(node.values, named)
+    if (node.type === "array") return avroLeafNode(node.items, named, ns)
+    if (node.type === "map") return avroLeafNode(node.values, named, ns)
   }
   return node
 }
@@ -570,15 +575,15 @@ function setEntry(out: Record<string, any>, key: string, value: unknown): void {
   })
 }
 
-function avroToCel(value: any, node: any, named: Map<string, any>): any {
-  node = resolveAvroNode(node, named)
+function avroToCel(value: any, node: any, named: Map<string, any>, ns: string): any {
+  node = resolveAvroNode(node, named, ns)
   if (value == null || node == null) {
     return value
   }
   if (Array.isArray(node)) {
     // Union: convert against the branch the value took (the common `[null, X]` shape).
-    const branch = pickAvroUnionBranch(node, value, named)
-    return branch != null ? avroToCel(value, branch, named) : value
+    const branch = pickAvroUnionBranch(node, value, named, ns)
+    return branch != null ? avroToCel(value, branch, named, ns) : value
   }
   if (typeof node !== "object") {
     // A primitive in its short form - the bare string "int", "long", "string", ... rather than
@@ -608,21 +613,22 @@ function avroToCel(value: any, node: any, named: Map<string, any>): any {
   switch (node.type) {
     case "record": {
       const out: Record<string, any> = { ...value }
+      const childNs = node.name ? avroFullname(node, ns)[0] : ns
       for (const field of node.fields ?? []) {
         if (hasOwn(value, field.name)) {
-          setEntry(out, field.name, avroToCel(value[field.name], field.type, named))
+          setEntry(out, field.name, avroToCel(value[field.name], field.type, named, childNs))
         }
       }
       return out
     }
     case "array":
       return Array.isArray(value)
-        ? value.map((v) => avroToCel(v, node.items, named))
+        ? value.map((v) => avroToCel(v, node.items, named, ns))
         : value
     case "map": {
       const out: Record<string, any> = {}
       for (const key of Object.keys(value)) {
-        setEntry(out, key, avroToCel(value[key], node.values, named))
+        setEntry(out, key, avroToCel(value[key], node.values, named, ns))
       }
       return out
     }
@@ -700,8 +706,8 @@ function isTemporalLogicalType(logicalType: any): boolean {
  * Whether `value` can be written as `branch`, mirroring Java
  * AvroResultWriter.branchAccepts so a union resolves by value rather than by position.
  */
-function avroBranchAccepts(branch: any, value: any, named: Map<string, any>): boolean {
-  const node = resolveAvroNode(branch, named)
+function avroBranchAccepts(branch: any, value: any, named: Map<string, any>, ns: string): boolean {
+  const node = resolveAvroNode(branch, named, ns)
   if (value === null || value === undefined) {
     return isNullBranch(node)
   }
@@ -770,8 +776,8 @@ function avroBranchAccepts(branch: any, value: any, named: Map<string, any>): bo
  * accepts; a union with a single non-null branch cannot be mis-selected, so that one is used
  * regardless and any real mismatch is left to the Avro writer to report.
  */
-function pickAvroWriteBranch(branches: any[], value: any, named: Map<string, any>): any {
-  const match = branches.find((b) => avroBranchAccepts(b, value, named))
+function pickAvroWriteBranch(branches: any[], value: any, named: Map<string, any>, ns: string): any {
+  const match = branches.find((b) => avroBranchAccepts(b, value, named, ns))
   if (match !== undefined) {
     return match
   }
@@ -783,13 +789,13 @@ function pickAvroWriteBranch(branches: any[], value: any, named: Map<string, any
     `cel: transform result does not match any branch of union ${JSON.stringify(branches)}`)
 }
 
-function pickAvroUnionBranch(branches: any[], value: any, named: Map<string, any>): any {
+function pickAvroUnionBranch(branches: any[], value: any, named: Map<string, any>, ns: string): any {
   if (value === null) {
     return branches.find(isNullBranch)
   }
   // Read direction: same value-based resolution, but a value that matches nothing falls back
   // to the first non-null branch rather than failing - reading only enriches a value for CEL.
-  return branches.find((b) => avroBranchAccepts(b, value, named))
+  return branches.find((b) => avroBranchAccepts(b, value, named, ns))
     ?? branches.find((b) => !isNullBranch(b))
 }
 
@@ -811,21 +817,40 @@ function collectAvroNamedAll(root: any, depSchemas: readonly string[]): Map<stri
   return named
 }
 
-function resolveAvroNode(node: any, named: Map<string, any>): any {
-  if (typeof node === "string" && named.has(node)) {
-    return named.get(node)
+/**
+ * Resolves a by-name type reference, relative to the namespace it is written in.
+ *
+ * Avro resolves an unqualified name against the enclosing namespace first and only then against
+ * the null namespace, which is what the reference's `Schema.Names.get` does. A single
+ * repository-wide alias from the bare name instead made the resolution order decide: with both
+ * `a.Money` and `b.Money` collected, a `"Money"` written inside namespace `b` resolved to
+ * whichever was indexed first, and a rule then read the wrong decimal scale or timestamp unit.
+ */
+function resolveAvroNode(node: any, named: Map<string, any>, ns: string): any {
+  if (typeof node !== "string") {
+    return node
   }
-  return node
+  if (ns && !node.includes(".")) {
+    const qualified = named.get(`${ns}.${node}`)
+    if (qualified !== undefined) {
+      return qualified
+    }
+  }
+  return named.get(node) ?? node
 }
 
 /**
- * Indexes every named record/enum/fixed definition so a by-name type reference resolves.
+ * Indexes every named record/enum/fixed definition, by fullname, so a by-name type reference
+ * resolves.
  *
  * Nested definitions inherit the enclosing namespace, so a record `Inner` declared inside
  * namespace `a` is `a.Inner` - the fullname avsc reports and the one a field rule is keyed by.
  * Indexing only the bare `name` left those lookups unresolved, and the rule then saw raw
- * decimal bytes instead of a decoded value. The bare name is kept as an alias so a reference
- * written without the namespace still resolves.
+ * decimal bytes instead of a decoded value.
+ *
+ * An inherited namespace is written onto the node, so a definition reached through a reference
+ * from some other namespace still resolves its own children against the namespace it was
+ * declared in rather than the one that referenced it.
  */
 function collectAvroNamed(node: any, out: Map<string, any>, ns: string = ""): void {
   if (Array.isArray(node)) {
@@ -839,10 +864,10 @@ function collectAvroNamed(node: any, out: Map<string, any>, ns: string = ""): vo
   if ((node.type === "record" || node.type === "enum" || node.type === "fixed") && node.name) {
     const [nodeNs, fullName] = avroFullname(node, ns)
     childNs = nodeNs
-    out.set(fullName, node)
-    if (!out.has(node.name)) {
-      out.set(node.name, node)
+    if (nodeNs && node.namespace === undefined && !node.name.includes(".")) {
+      node.namespace = nodeNs
     }
+    out.set(fullName, node)
   }
   if (node.fields) {
     node.fields.forEach((f: any) => collectAvroNamed(f.type, out, childNs))

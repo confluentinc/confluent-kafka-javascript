@@ -1425,3 +1425,48 @@ describe('CelValidator the preferred scale cannot exceed the context precision',
     expect(await evalStr(`${expr}.scale == ${scale}`)).toBe(true)
   })
 })
+
+// cel-es resolves `string(x)` / `double(x)` against its own stdlib overloads before it consults a
+// registered function, so the Decimal extensions only run for what no stdlib overload matched.
+// That left them serving as a lenient re-implementation of the stdlib: `double(false)` was 0 and a
+// bytes/list/map/message argument became NaN, where the reference reports "found no matching
+// overload" and every other client refuses. Measured against cel-java 0.13.1 for each row.
+describe('string/double have no overload for the types CEL does not declare', () => {
+  const validator = new CelValidator()
+  const evalExpr = async (expr: string): Promise<any> => validator.execute(rule(expr), null, 0)
+
+  const refused: [string, string][] = [
+    ['double(false)', 'bool'],
+    ['double(true)', 'bool'],
+    ['double(b"12")', 'bytes'],
+    ['double([1, 2])', 'list'],
+    ['double({"a": 1})', 'map'],
+    ['double(timestamp("1970-01-01T00:00:01Z"))', 'google.protobuf.Timestamp'],
+    ['double(duration("1s"))', 'google.protobuf.Duration'],
+    ['string([1, 2])', 'list'],
+    ['string({"a": 1})', 'map'],
+  ]
+  it.each(refused)('%s is refused as (%s)', async (expr, typeName) => {
+    await expect(evalExpr(`string(${expr})`)).rejects.toThrow(
+      new RegExp(`found no matching overload for '(string|double)' applied to \\(${typeName.replace(/\./g, '\\.')}\\)`))
+  })
+
+  // The stdlib overloads the extensions must not have disturbed: each of these is handled by
+  // cel-es before the Decimal arm is reached, and each matches the reference.
+  const stdlib: [string, string][] = [
+    ['string(1)', '1'],
+    ['string(true)', 'true'],
+    ['string(b"ab")', 'ab'],
+    ['string(uint(3))', '3'],
+    ['string("x")', 'x'],
+    ['string(timestamp("2023-11-14T22:13:20.123Z"))', '2023-11-14T22:13:20.123Z'],
+    ['string(duration("1s"))', '1s'],
+    ['string(double("1.5"))', '1.5'],
+    ['string(double(uint(3)))', '3'],
+    ['string(decimal("12.30"))', '12.30'],
+    ['string(double(decimal("100.50")))', '100.5'],
+  ]
+  it.each(stdlib)('%s == %s', async (expr, expected) => {
+    expect(await evalExpr(expr)).toBe(expected)
+  })
+})
