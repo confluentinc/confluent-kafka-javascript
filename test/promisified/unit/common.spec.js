@@ -1,5 +1,12 @@
-const { Lock } = require('../../../lib/kafkajs/_common');
+const { Lock, getConnectMetadataTimeout } = require('../../../lib/kafkajs/_common');
 const { SequentialPromises } = require('../testhelpers');
+
+describe('getConnectMetadataTimeout', () => {
+  it('uses connectionTimeout + authenticationTimeout with a 1000ms minimum', () => {
+    expect(getConnectMetadataTimeout({ connectionTimeout: 1000, authenticationTimeout: 0 })).toStrictEqual(1000);
+    expect(getConnectMetadataTimeout({})).toStrictEqual(11000);
+  });
+});
 
 describe('Lock', () => {
 
