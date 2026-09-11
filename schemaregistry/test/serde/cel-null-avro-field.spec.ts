@@ -14,7 +14,7 @@
  * with presence that is unset has no value, and writing one back would materialise it.
  */
 import { describe, expect, it } from '@jest/globals'
-import { AvroSerializer } from '../../serde/avro'
+import { AvroDeserializer, AvroSerializer } from '../../serde/avro'
 import { SerdeType } from '../../serde/serde'
 import { RuleMode } from '../../schemaregistry-client'
 import { SchemaRegistryClient, type Rule, type SchemaInfo } from '../../schemaregistry-client'
@@ -84,5 +84,53 @@ describe('CEL_FIELD over a null Avro union branch', () => {
       .resolves.toBeUndefined()
     await expect(serialize('decimals.gt(decimal(value), decimal("100.00"))', present))
       .rejects.toThrow(/Expr failed/)
+  })
+})
+
+/**
+ * The same walk with avsc's *wrapped* union representation, where a union value is keyed by
+ * branch name. Re-wrapping a rule's result under the branch it arrived on gave `{null: 'x'}`,
+ * which avsc rejects; and `resolveUnion` reached `Object.keys(null)` on the null branch, which
+ * throws. The reference resolves the branch from the value, so this does too.
+ */
+const WRAPPED_SCHEMA = JSON.stringify({
+  type: 'record',
+  name: 'Wrapped',
+  fields: [
+    { name: 'note', type: ['null', 'string'], 'confluent:tags': ['NOTE'] },
+    { name: 'plain', type: 'string' },
+  ],
+})
+
+async function roundTrip(expr: string, note: any): Promise<any> {
+  const subject = `wrappedunion${n++}`
+  const client = SchemaRegistryClient.newClient({ baseURLs: ['mock://'], cacheCapacity: 1000 })
+  const rule = {
+    name: 'r', kind: 'TRANSFORM', mode: RuleMode.WRITE, type: 'CEL_FIELD',
+    tags: ['NOTE'], expr,
+  } as any as Rule
+  const info = {
+    schemaType: 'AVRO', schema: WRAPPED_SCHEMA, ruleSet: { domainRules: [rule] },
+  } as any as SchemaInfo
+  await client.register(`${subject}-value`, info, false)
+  const ser = new AvroSerializer(client, SerdeType.VALUE,
+    { useLatestVersion: true, wrapUnions: true })
+  const deser = new AvroDeserializer(client, SerdeType.VALUE, { wrapUnions: true })
+  return await deser.deserialize(subject, await ser.serialize(subject, { note, plain: 'hi' }))
+}
+
+describe('CEL_FIELD write-back into a wrapped Avro union', () => {
+  it('moves a filled null branch onto the value branch', async () => {
+    await expect(roundTrip("'recovered'", null)).resolves
+      .toMatchObject({ note: { string: 'recovered' } })
+  })
+
+  it('keeps a present value on its own branch', async () => {
+    await expect(roundTrip("value + '!'", { string: 'a' })).resolves
+      .toMatchObject({ note: { string: 'a!' } })
+  })
+
+  it('moves a nulled value branch back to the null branch', async () => {
+    await expect(roundTrip('null', { string: 'a' })).resolves.toMatchObject({ note: null })
   })
 })
