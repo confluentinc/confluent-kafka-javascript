@@ -5,6 +5,12 @@ import type { ScalarValue } from "@bufbuild/protobuf/reflect"
 import { timestampNow } from "@bufbuild/protobuf/wkt"
 import { LRUCache } from "lru-cache"
 import { RuleError, ValidationRule, ValidationRuleExecutor } from "../../serde/serde"
+import { DECIMAL_FUNCS } from "./decimal-funcs"
+import { TIMESTAMP_FUNCS } from "./timestamp-funcs"
+import { IS_FUNCS } from "./is-funcs"
+import { VARIANT_FUNCS, variantToCel } from "./variant-funcs"
+import { wrapAvroDeclaredFieldForCel, wrapAvroForCel } from "./cel-executor"
+import { Variant } from "../../confluent/type/variant-utils"
 
 /**
  * CelValidator is a validation-rule executor backed by CEL. Each rule expression is
@@ -16,7 +22,7 @@ import { RuleError, ValidationRule, ValidationRuleExecutor } from "../../serde/s
  * static type declarations, so the same plan is reusable across every value shape.
  */
 export class CelValidator implements ValidationRuleExecutor {
-  env: CelEnv = celEnv({ funcs: strings })
+  env: CelEnv = celEnv({ funcs: [...strings, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS, ...VARIANT_FUNCS] })
   cache: LRUCache<string, any> = new LRUCache({ max: 1000 })
   // Envs carrying a protobuf registry, one per descriptor file. CEL resolves field
   // access on a protobuf message through its registry, so validating one requires an env
@@ -87,7 +93,7 @@ export class CelValidator implements ValidationRuleExecutor {
       // on: the value bound to `this` may be a field's message type, a map value or a
       // list element, and its own fields have to resolve too.
       protoEnv = {
-        env: celEnv({ funcs: strings, registry: createRegistry(...filesReachableFrom(file)) }),
+        env: celEnv({ funcs: [...strings, ...DECIMAL_FUNCS, ...TIMESTAMP_FUNCS, ...IS_FUNCS, ...VARIANT_FUNCS], registry: createRegistry(...filesReachableFrom(file)) }),
         id: String(this.nextProtoEnvId++),
       }
       this.protoEnvs.set(file, protoEnv)
@@ -107,6 +113,22 @@ export class CelValidator implements ValidationRuleExecutor {
  * protobuf-es's own bridge for exactly this, and is what protovalidate-es uses.
  */
 function celValue(schema: any, msg: any): any {
+  // An Avro walker passes the raw schema text and, for a field rule, the field's full name -
+  // not a descriptor. avsc discards a decimal's scale and a timestamp's unit when it builds a
+  // Type, so only the raw schema can say what the value means, and without this the rule saw
+  // bare bytes / a bare long. Converted through the *same* helpers the domain
+  // path uses, so an inline rule and a CEL_FIELD rule on one field see the same value.
+  if (schema != null && typeof schema.avroSchema === 'string') {
+    const deps = schema.depSchemas ?? []
+    return schema.fullName != null
+      ? wrapAvroDeclaredFieldForCel(msg, schema.fullName, schema.avroSchema, deps)
+      : wrapAvroForCel(msg, schema.avroSchema, deps)
+  }
+  // A Variant (e.g. from the Avro variant logical type) can't be bound to `this` directly;
+  // bind it as its confluent.type.Variant CEL value. Reached when no schema hint is available.
+  if (msg instanceof Variant) {
+    return variantToCel(msg)
+  }
   if (schema == null || typeof schema !== 'object' || !('fieldKind' in schema)) {
     // A message-level rule: the schema is a DescMessage, and the fields inside resolve
     // through the registry, which already knows their types.
