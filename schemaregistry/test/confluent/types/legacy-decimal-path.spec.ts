@@ -11,6 +11,14 @@
 import { describe, expect, it } from '@jest/globals'
 import { createFileRegistry } from '@bufbuild/protobuf'
 import { file_confluent_types_decimal, file_confluent_type_decimal } from '../../../index'
+// Imported from the old module path on purpose - that deep import is what these assert.
+import {
+  file_confluent_types_decimal as legacyFile,
+  DecimalSchema as legacyDecimalSchema,
+  type Decimal as LegacyDecimal,
+} from '../../../confluent/types/decimal_pb'
+import { DecimalSchema } from '../../../confluent/type/decimal_pb'
+import { create } from '@bufbuild/protobuf'
 
 describe('the legacy confluent/types/decimal.proto descriptor', () => {
   it('is exported from the package root under its old name', () => {
@@ -22,6 +30,21 @@ describe('the legacy confluent/types/decimal.proto descriptor', () => {
   it('declares no messages of its own', () => {
     expect(file_confluent_types_decimal.proto.messageType).toEqual([])
     expect(file_confluent_types_decimal.proto.publicDependency).toEqual([0])
+  })
+
+  // The module that shipped at this path exported the message type and its schema as well as
+  // the descriptor. protoc-gen-es emits no symbol re-exports for a public import, so codegen.sh
+  // appends them - which `buf generate` would silently drop, hence this test. Go and Python
+  // preserve the same two names at their own old paths.
+  it('still exports Decimal and DecimalSchema for a deep import of the old path', () => {
+    expect(legacyDecimalSchema).toBe(DecimalSchema)
+    expect(legacyFile).toBe(file_confluent_types_decimal)
+
+    // `Decimal` is type-only, so it is exercised by using it: this fails to compile if the
+    // re-export is missing, which is the whole point.
+    const d: LegacyDecimal = create(legacyDecimalSchema, { scale: 2 })
+    expect(d.$typeName).toBe('confluent.type.Decimal')
+    expect(d.scale).toBe(2)
   })
 
   // And the symbol still resolves through it, to the one declaration in the canonical file.

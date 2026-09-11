@@ -12,3 +12,8 @@ import { file_confluent_type_decimal } from "../type/decimal_pb";
 export const file_confluent_types_decimal: GenFile = /*@__PURE__*/
   fileDesc("Ch1jb25mbHVlbnQvdHlwZXMvZGVjaW1hbC5wcm90b1AAYgZwcm90bzM", [file_confluent_type_decimal]);
 
+
+// Deprecated: import these from the package root, or from confluent/type/decimal_pb. Appended by
+// codegen.sh - see the note there.
+export type { Decimal } from "../type/decimal_pb";
+export { DecimalSchema } from "../type/decimal_pb";
