@@ -414,6 +414,19 @@ async function transform(ctx: RuleContext, schema: Type, msg: any, fieldTransfor
       }
       submsg = await transform(ctx, subschema, submsg, fieldTransform)
       if (schema.typeName === 'union:wrapped') {
+        // The branch a transformed value belongs to follows from the value, not from the
+        // branch it arrived on, which is how the reference resolves it. Re-wrapping a rule's
+        // result under the old key gave avsc `{null: "x"}` or `{string: null}`, both rejected.
+        if (submsg == null) {
+          return null
+        }
+        if (!subschema.isValid(submsg)) {
+          const branch = (schema as WrappedUnionType).types.find((t) => t.isValid(submsg))
+          if (branch == null) {
+            throw new Error(`no union branch accepts the value returned for ${ctx.currentField()?.fullName}`)
+          }
+          return {[branch.branchName!]: submsg}
+        }
         return {[subschema.branchName!]: submsg}
       }
       return submsg
@@ -855,6 +868,11 @@ function resolveUnion(schema: Type, msg: any): [Type | null, any] {
   } else if (schema.typeName === 'union:wrapped') {
     const union = schema as WrappedUnionType
     unionTypes = union.types.slice()
+    if (msg == null) {
+      // avsc writes the null branch as a bare null, never as {null: null}; Object.keys(null)
+      // below would throw on it.
+      return [unionTypes.find((t) => t.typeName === 'null') ?? null, msg]
+    }
     if (typeof msg === 'object') {
       let keys = Object.keys(msg)
       if (keys.length === 1) {
