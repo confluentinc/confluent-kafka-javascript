@@ -33,6 +33,17 @@ import { isReflectMessage, reflect, type ReflectMessage } from '@bufbuild/protob
  * not a map.
  */
 export function convertProtobufResult(result: any, schema: DescMessage): any {
+  if (isReflectMessage(result)) {
+    // A rule that returns a message rather than building one - `message` echoed whole, or a
+    // value type - comes back from cel-es wrapped in a ReflectMessage. Nested field positions
+    // want that wrapper (`ReflectMessage.set` takes one), but the root result goes straight to
+    // the serializer's `toBinary`, which wants the plain message: measured, an identity
+    // `message` transform failed with "cannot use field test.ValueTypeContainers.amounts with
+    // message undefined", naming a field the rule never touched. The reference has no wrapper
+    // to strip - cel-java hands back the Message itself, and ProtobufResultWriter.convert
+    // returns any non-Map result unchanged - which is what this restores.
+    return result.message
+  }
   const entries = asEntries(result)
   if (entries === null) {
     return result
