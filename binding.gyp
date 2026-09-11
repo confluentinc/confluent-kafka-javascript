@@ -8,6 +8,15 @@
   "targets": [
     {
       "target_name": "confluent-kafka-javascript",
+      "cflags!": [ "-fno-exceptions" ],
+      "cflags_cc!": [ "-fno-exceptions" ],
+      "xcode_settings": { "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
+        "CLANG_CXX_LIBRARY": "libc++",
+        "MACOSX_DEPLOYMENT_TARGET": "10.7",
+      },
+      "msvs_settings": {
+        "VCCLCompilerTool": { "ExceptionHandling": 1 },
+      },
       'sources': [
         'src/binding.cc',
         'src/callbacks.cc',
@@ -22,7 +31,7 @@
         'src/admin.cc'
       ],
       "include_dirs": [
-        "<!(node -e \"require('nan')\")",
+        "<!(node -p \"require('node-addon-api').include_dir\")",
         "<(module_root_dir)/"
       ],
       'conditions': [
@@ -70,6 +79,7 @@
               }
             },
             'include_dirs': [
+              '<!(node -p "require(\'node-addon-api\').include_dir")',
               'deps/include'
             ]
           },
@@ -81,6 +91,7 @@
                     "deps/librdkafka.gyp:librdkafka"
                   ],
                   "include_dirs": [
+                    "<!(node -p \"require('node-addon-api').include_dir\")",
                     "deps/librdkafka/src",
                     "deps/librdkafka/src-cpp"
                   ],
@@ -125,6 +136,7 @@
                 {
                   "libraries": ["-lrdkafka", "-lrdkafka++"],
                   "include_dirs": [
+                    "<!(node -p \"require('node-addon-api').include_dir\")",
                     "/usr/include/librdkafka",
                     "/usr/local/include/librdkafka",
                     "/opt/include/librdkafka",
