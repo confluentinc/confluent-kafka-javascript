@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file confluent/meta.proto.
  */
 export const file_confluent_meta: GenFile = /*@__PURE__*/
-  fileDesc("ChRjb25mbHVlbnQvbWV0YS5wcm90bxIJY29uZmx1ZW50In0KBE1ldGESCwoDZG9jGAEgASgJEisKBnBhcmFtcxgCIAMoCzIbLmNvbmZsdWVudC5NZXRhLlBhcmFtc0VudHJ5EgwKBHRhZ3MYAyADKAkaLQoLUGFyYW1zRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ATpLCglmaWxlX21ldGESHC5nb29nbGUucHJvdG9idWYuRmlsZU9wdGlvbnMYwAggASgLMg8uY29uZmx1ZW50Lk1ldGFSCGZpbGVNZXRhOlQKDG1lc3NhZ2VfbWV0YRIfLmdvb2dsZS5wcm90b2J1Zi5NZXNzYWdlT3B0aW9ucxjACCABKAsyDy5jb25mbHVlbnQuTWV0YVILbWVzc2FnZU1ldGE6TgoKZmllbGRfbWV0YRIdLmdvb2dsZS5wcm90b2J1Zi5GaWVsZE9wdGlvbnMYwAggASgLMg8uY29uZmx1ZW50Lk1ldGFSCWZpZWxkTWV0YTpLCgllbnVtX21ldGESHC5nb29nbGUucHJvdG9idWYuRW51bU9wdGlvbnMYwAggASgLMg8uY29uZmx1ZW50Lk1ldGFSCGVudW1NZXRhOlsKD2VudW1fdmFsdWVfbWV0YRIhLmdvb2dsZS5wcm90b2J1Zi5FbnVtVmFsdWVPcHRpb25zGMAIIAEoCzIPLmNvbmZsdWVudC5NZXRhUg1lbnVtVmFsdWVNZXRhQg5aDC4uL2NvbmZsdWVudGIGcHJvdG8z", [file_google_protobuf_descriptor]);
+  fileDesc("ChRjb25mbHVlbnQvbWV0YS5wcm90bxIJY29uZmx1ZW50Ip0BCgRNZXRhEgsKA2RvYxgBIAEoCRIrCgZwYXJhbXMYAiADKAsyGy5jb25mbHVlbnQuTWV0YS5QYXJhbXNFbnRyeRIMCgR0YWdzGAMgAygJEh4KBXJ1bGVzGAQgAygLMg8uY29uZmx1ZW50LlJ1bGUaLQoLUGFyYW1zRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASI8CgRSdWxlEgwKBG5hbWUYASABKAkSCwoDZG9jGAIgASgJEgwKBGV4cHIYAyABKAkSCwoDc3FsGAQgASgJOksKCWZpbGVfbWV0YRIcLmdvb2dsZS5wcm90b2J1Zi5GaWxlT3B0aW9ucxjACCABKAsyDy5jb25mbHVlbnQuTWV0YVIIZmlsZU1ldGE6VAoMbWVzc2FnZV9tZXRhEh8uZ29vZ2xlLnByb3RvYnVmLk1lc3NhZ2VPcHRpb25zGMAIIAEoCzIPLmNvbmZsdWVudC5NZXRhUgttZXNzYWdlTWV0YTpOCgpmaWVsZF9tZXRhEh0uZ29vZ2xlLnByb3RvYnVmLkZpZWxkT3B0aW9ucxjACCABKAsyDy5jb25mbHVlbnQuTWV0YVIJZmllbGRNZXRhOksKCWVudW1fbWV0YRIcLmdvb2dsZS5wcm90b2J1Zi5FbnVtT3B0aW9ucxjACCABKAsyDy5jb25mbHVlbnQuTWV0YVIIZW51bU1ldGE6WwoPZW51bV92YWx1ZV9tZXRhEiEuZ29vZ2xlLnByb3RvYnVmLkVudW1WYWx1ZU9wdGlvbnMYwAggASgLMg8uY29uZmx1ZW50Lk1ldGFSDWVudW1WYWx1ZU1ldGFCDloMLi4vY29uZmx1ZW50YgZwcm90bzM", [file_google_protobuf_descriptor]);
 
 /**
  * @generated from message confluent.Meta
@@ -32,6 +32,11 @@ export type Meta = Message<"confluent.Meta"> & {
    * @generated from field: repeated string tags = 3;
    */
   tags: string[];
+
+  /**
+   * @generated from field: repeated confluent.Rule rules = 4;
+   */
+  rules: Rule[];
 };
 
 /**
@@ -40,6 +45,38 @@ export type Meta = Message<"confluent.Meta"> & {
  */
 export const MetaSchema: GenMessage<Meta> = /*@__PURE__*/
   messageDesc(file_confluent_meta, 0);
+
+/**
+ * @generated from message confluent.Rule
+ */
+export type Rule = Message<"confluent.Rule"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string doc = 2;
+   */
+  doc: string;
+
+  /**
+   * @generated from field: string expr = 3;
+   */
+  expr: string;
+
+  /**
+   * @generated from field: string sql = 4;
+   */
+  sql: string;
+};
+
+/**
+ * Describes the message confluent.Rule.
+ * Use `create(RuleSchema)` to create a new message.
+ */
+export const RuleSchema: GenMessage<Rule> = /*@__PURE__*/
+  messageDesc(file_confluent_meta, 1);
 
 /**
  * @generated from extension: confluent.Meta file_meta = 1088;
