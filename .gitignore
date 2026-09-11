@@ -19,3 +19,5 @@ coverage
 .nyc_output/
 *lcov.info
 **/lcov-report
+examples/performance/*.json
+*.log

@@ -1,0 +1,58 @@
+# Example input for scale.py. Copy this file, fill in saslPassword, then run:
+#
+#   python3 examples/performance/scale/scale.py my-values.yaml
+#
+# Override any of the chart's defaults here. Everything not set falls back
+# to examples/performance/scale/values.yaml.
+
+# The confluent-kafka-javascript branch/tag/SHA cloned by the init container.
+# Override via `--ref <ref>` on scale.py, or by editing here.
+source:
+  repo: https://github.com/confluentinc/confluent-kafka-javascript.git
+  ref: dev_performance_test_improvements_2
+
+image:
+  repository: confluentinc/ckjs-perf-scale
+
+kafka:
+  brokers: "broker-host:9092"
+  securityProtocol: "sasl_ssl"
+  saslUsername: "REPLACE_ME"
+  saslPassword: "REPLACE_ME"
+  topic: "test-topic"
+
+producer:
+  replicas: 4
+  mode: "confluent"
+  messageCount: 50000
+  messageSize: 1536
+  batchSize: 2048
+  compression: "GZIP"
+  partitions: 1024
+  terminateTimeoutMs: 30000
+  initialDelayMs: 0
+  useCKJSProducerEverywhere: false
+  isHigherLatencyCluster: true
+  useKeys: true
+  statisticsIntervalMs: 5000
+  jsmetricsIntervalMs: 5000
+  # limitRPS: 5000
+  config: []
+
+# Optional: include this section to also run a consumer Job in parallel.
+# Omit it for a producer-only run.
+# consumer:
+#   replicas: 4
+#   mode: "confluent"
+#   terminateTimeoutMs: 30000
+#   produceToSecondTopic: false
+#   partitionsConsumedConcurrently: 1024
+#   autoCommit: 3000
+#   consumerMode: "eachBatch"
+#   consumerMaxBatchSize: -1
+#   useCKJSProducerEverywhere: false
+#   autoCommitOnBatchEnd: true
+#   isHigherLatencyCluster: true
+#   statisticsIntervalMs: 5000
+#   jsmetricsIntervalMs: 5000
+#   config: []
