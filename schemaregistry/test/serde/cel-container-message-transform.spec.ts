@@ -17,7 +17,7 @@
  * test here pins the hook against that.
  */
 import { describe, expect, it } from '@jest/globals'
-import { create, createRegistry } from '@bufbuild/protobuf'
+import { create, createRegistry, toBinary } from '@bufbuild/protobuf'
 import { TimestampSchema } from '@bufbuild/protobuf/wkt'
 import { AvroDeserializer, AvroSerializer } from '../../serde/avro'
 import { RuleContext, SerdeType } from '../../serde/serde'
@@ -162,6 +162,24 @@ describe('a message transform returning a protobuf container', () => {
       '"nested": message.nested, "label": message.label}')
 
     expect(show(out.nested.inner.value)).toBe('4.44')
+  })
+
+  // A rule that returns a message rather than building one - the identity `message`, the
+  // cheapest transform there is - comes back from cel-es wrapped in a ReflectMessage. The root
+  // result goes straight to the serializer's toBinary, which wants the plain message, so the
+  // wrapper failed with "cannot use field test.ValueTypeContainers.amounts with message
+  // undefined" - naming a field the rule never touched. Java has no wrapper to strip: cel-java
+  // hands back the Message and ProtobufResultWriter.convert returns a non-Map result unchanged.
+  // Python, Go and C# were measured returning their own plain message here too.
+  it('returns an echoed message whole, not wrapped', async () => {
+    const out = await protoTransform('message')
+
+    expect(out.$typeName).toBe('test.ValueTypeContainers')
+    expect(out.amounts.map((d: any) => show(d.value))).toEqual(['1.11', '2.22'])
+    expect(show(out.amountMap.a.value)).toBe('3.33')
+    expect(out.label).toBe('hi')
+    // The discriminator: a ReflectMessage has no $typeName and would not survive toBinary.
+    expect(toBinary(ValueTypeContainersSchema, out).length).toBeGreaterThan(0)
   })
 
   // A mistyped container result used to yield nothing and leave the field *empty*, which under
