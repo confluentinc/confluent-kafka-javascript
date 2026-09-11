@@ -71,19 +71,61 @@ function asEntries(result: any): [unknown, unknown][] | null {
   return null
 }
 
+/**
+ * Applies a result map to `out`, one entry per declared field.
+ *
+ * Two entries can name the same slot, and applying both leaves the outcome to whatever order
+ * the rule happened to write them in. `JsonFormat` refuses both shapes, and the two have
+ * *opposite* null handling, which is the part worth stating:
+ *
+ * - **The same field twice.** {@link findField} accepts a field's declared name and its JSON
+ *   name, so `total_amount` and `totalAmount` are one field. `mergeField` tests
+ *   `builder.hasField` before its null early-return, so a null after a value is refused
+ *   ("Field p.M.total_amount has already been set.") while a null after a null is not.
+ * - **Two members of one oneof.** Setting a member clears its siblings, so applying both kept
+ *   whichever came last - `{a: 1, b: 2}` kept b and `{b: 2, a: 1}` kept a. `mergeOneofField`
+ *   refuses this ("Cannot set field p.M.b because another field p.M.a belonging to the same
+ *   oneof has already been set"), but only after returning early for a null, so a null does
+ *   *not* count - which agrees with this writer's own rule that a null clears rather than sets.
+ *
+ * Measured against protobuf-java. A proto3 `optional` field sits in a synthetic oneof of
+ * exactly one member, which protobuf-es leaves out of `field.oneof` entirely, so it can never
+ * collide with a sibling.
+ */
 function fill(out: ReflectMessage, entries: [unknown, unknown][]): void {
+  // field number -> the result key that set it; oneof -> the member that filled it.
+  const setBy = new Map<number, string>()
+  const oneofBy = new Map<string, string>()
   for (const [key, value] of entries) {
-    const field = findField(out.desc, String(key))
+    const name = String(key)
+    const field = findField(out.desc, name)
     if (field === undefined) {
       // A key the schema does not declare has nowhere to go. Dropping it matches the JVM
       // client, whose JSON parse ignores unknown fields.
       continue
+    }
+    // Before the null branch, because that is where the JVM's hasField test sits.
+    const alreadySet = setBy.get(field.number)
+    if (alreadySet !== undefined) {
+      const [a, b] = [alreadySet, name].sort()
+      throw new Error(`result names field ${field.name} twice, as ${a} and ${b}`)
     }
     if (value === null || value === undefined) {
       // An explicit null clears the field, which is how a rule preserves an absent value
       // across a transform that echoes it.
       out.clear(field)
       continue
+    }
+    setBy.set(field.number, name)
+    const oneof = field.oneof
+    if (oneof !== undefined) {
+      const sibling = oneofBy.get(oneof.name)
+      if (sibling !== undefined && sibling !== field.name) {
+        const [a, b] = [sibling, field.name].sort()
+        throw new Error(
+          `result sets more than one member of oneof ${oneof.name}: ${a} and ${b}`)
+      }
+      oneofBy.set(oneof.name, field.name)
     }
     setField(out, field, value)
   }
