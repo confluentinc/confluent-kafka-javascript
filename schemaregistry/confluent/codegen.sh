@@ -21,3 +21,16 @@ protoc -Iproto --es_out=schemaregistry --es_opt=target=ts \
   confluent/type/decimal.proto \
   confluent/type/variant.proto \
   confluent/types/decimal.proto
+
+# The old module exported the Decimal message type and its schema as well as the descriptor, and
+# protoc-gen-es emits no symbol re-exports for a public import - only the descriptor constant. So
+# they are appended, keeping a deep import of the old module resolving. The Go and Python clients
+# preserve the same two names at their own old paths (a Go type alias, Python's `import *`), and
+# without this JavaScript would be the only one of the three to drop them.
+cat >> schemaregistry/confluent/types/decimal_pb.ts <<'TS'
+
+// Deprecated: import these from the package root, or from confluent/type/decimal_pb. Appended by
+// codegen.sh - see the note there.
+export type { Decimal } from "../type/decimal_pb";
+export { DecimalSchema } from "../type/decimal_pb";
+TS
