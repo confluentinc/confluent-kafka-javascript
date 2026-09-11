@@ -17,7 +17,6 @@ import {
   SchemaMetadata
 } from "../schemaregistry-client";
 import {
-  clone,
   createFileRegistry, createMutableRegistry,
   DescField,
   DescFile,
@@ -51,6 +50,7 @@ import {field_meta, file_confluent_meta, Meta, message_meta, Rule as MetaRule} f
 import {RuleRegistry} from "./rule-registry";
 import {file_confluent_type_decimal} from "../confluent/type/decimal_pb";
 import {file_confluent_type_variant} from "../confluent/type/variant_pb";
+import {file_confluent_types_decimal} from "../confluent/types/decimal_pb";
 import {file_google_type_calendar_period} from "../google/type/calendar_period_pb";
 import {file_google_type_color} from "../google/type/color_pb";
 import {file_google_type_date} from "../google/type/date_pb";
@@ -72,11 +72,14 @@ const builtinDeps = new Map<string, DescFile>([
   ['confluent/meta.proto',                 file_confluent_meta],
   ['confluent/type/decimal.proto',         file_confluent_type_decimal],
   ['confluent/type/variant.proto',         file_confluent_type_variant],
-  // The plural spelling stays readable for schemas registered before the confluent value types
-  // moved to their canonical confluent/type/... path. Both declare `package confluent.type`, so
-  // either resolves to the same confluent.type.Decimal. Read-only: this client emits canonical.
-  ['confluent/types/decimal.proto',        file_confluent_type_decimal],
-  ['confluent/types/variant.proto',        file_confluent_type_variant],
+  // The path confluent.type.Decimal used to occupy. A schema importing it is never sent with a
+  // reference - isBuiltin matches the whole confluent/ prefix - so this table is the only place
+  // a reader can resolve it from. The stub declares nothing and publicly imports the canonical
+  // file, so it re-exports confluent.type.Decimal without a second declaration of the symbol.
+  // Every entry here must be keyed by the file's own name: createFileRegistry matches a
+  // dependency edge by that name, so a key that disagrees resolves and then fails as
+  // "Cannot find <import>". Variant needs no such entry - it had not shipped under this path.
+  ['confluent/types/decimal.proto',        file_confluent_types_decimal],
   ['google/type/calendar_period.proto',    file_google_type_calendar_period],
   ['google/type/color.proto',              file_google_type_color],
   ['google/type/date.proto',               file_google_type_date],
@@ -571,14 +574,6 @@ export function newFileRegistry(fileDesc: FileDescriptorProto, deps: Map<string,
       const dep = builtinDeps.get(depName)
       if (dep == null) {
         throw new SerializationError(`dependency ${depName} not found`)
-      }
-      // createFileRegistry matches a dependency edge by the file's own name, not by the name it
-      // was looked up under, so an alias would resolve here and then fail as "Cannot find
-      // <import>". Hand back a copy renamed to the import, as the registry branch below does.
-      if (dep.proto.name !== depName) {
-        const renamed = clone(FileDescriptorProtoSchema, dep.proto)
-        renamed.name = depName
-        return renamed
       }
       return dep
     } else {

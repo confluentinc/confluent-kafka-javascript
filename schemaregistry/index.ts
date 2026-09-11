@@ -1,4 +1,11 @@
 export * from './confluent/type/decimal_pb'
+/**
+ * @deprecated Use `file_confluent_type_decimal`. This is the descriptor for
+ * confluent/types/decimal.proto, the path confluent.type.Decimal occupied before it moved
+ * to its canonical confluent/type/... location. The file it describes declares nothing and
+ * publicly imports the canonical one, so it resolves to the same confluent.type.Decimal.
+ */
+export { file_confluent_types_decimal } from './confluent/types/decimal_pb'
 export * from './confluent/type/variant_pb'
 export * from './confluent/type/variant-utils'
 export * from './confluent/meta_pb'

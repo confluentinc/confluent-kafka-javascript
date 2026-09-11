@@ -18,21 +18,23 @@ function schemaImporting(dep: string, typeName: string) {
   });
 }
 
-// Both spellings have to load. The canonical import path is confluent/type/... - what the Java
-// client registers and what ProtobufSchema declares - and the generated descriptors here were
-// named confluent/types/... after the directory the Go client needs (`type` is a keyword
-// there), which this client copied. Neither spelling worked then: the canonical one was found
-// in builtinDeps and *then* failed as "Cannot find confluent/type/decimal.proto, imported by
-// test.proto", because createFileRegistry matches a dependency edge by the file's own name
-// rather than the name it was looked up under, and the plural one was never a key at all. The
-// descriptors are canonical now and the plural name is kept as a read alias, which is why the
-// resolve step renames a built-in to whatever was imported.
+// The canonical import path is confluent/type/... - what the Java client registers and what
+// ProtobufSchema declares - and the generated descriptors here were named confluent/types/...
+// after the directory the Go client needs (`type` is a keyword there), which this client
+// copied. Neither spelling worked then: the canonical one was found in builtinDeps and *then*
+// failed as "Cannot find confluent/type/decimal.proto, imported by test.proto", because
+// createFileRegistry matches a dependency edge by the file's own name rather than the name it
+// was looked up under, and the plural one was never a key at all.
+//
+// Both are real files now: the descriptors are canonical, and decimal's old path is a
+// public-import stub whose own name is that path - so no renaming is needed on resolve, and no
+// second declaration of confluent.type.Decimal exists to conflict. Variant has no stub: it had
+// not shipped under the old path, which the unknown-built-in cases below pin.
 describe('built-in confluent dependencies', () => {
   const cases: [string, string, string][] = [
     ['confluent/type/decimal.proto', '.confluent.type.Decimal', 'confluent.type.Decimal'],
     ['confluent/type/variant.proto', '.confluent.type.Variant', 'confluent.type.Variant'],
     ['confluent/types/decimal.proto', '.confluent.type.Decimal', 'confluent.type.Decimal'],
-    ['confluent/types/variant.proto', '.confluent.type.Variant', 'confluent.type.Variant'],
   ]
 
   it.each(cases)('resolves %s', (dep, typeName, expected) => {
@@ -45,6 +47,7 @@ describe('built-in confluent dependencies', () => {
   it.each([
     'confluent/type/nope.proto',
     'confluent/types/nope.proto',
+    'confluent/types/variant.proto',
   ])('reports %s as an unknown built-in', (dep) => {
     expect(() => newFileRegistry(schemaImporting(dep, '.confluent.type.Decimal'), new Map()))
       .toThrow(`dependency ${dep} not found`)
