@@ -11,6 +11,12 @@ import {celFromScalar} from "@bufbuild/cel";
 import type {DescField} from "@bufbuild/protobuf";
 import type {ScalarValue} from "@bufbuild/protobuf/reflect";
 
+/** The record half of a `record.field` full name, or undefined when there is no record part. */
+function containingRecordName(fullName: string): string | undefined {
+  const dot = fullName.lastIndexOf('.')
+  return dot > 0 ? fullName.substring(0, dot) : undefined
+}
+
 /**
  * The field value as CEL should see it, converted through the field's declared scalar type
  * when the walk supplied the field. celFromScalar is protobuf-es's own bridge for this.
@@ -88,8 +94,10 @@ export class CelFieldExecutorTransform implements FieldTransform {
       // The containing message needs the same boundary as `value`: the reference converts
       // *every* binding through `toCelValue`, whose Avro arm walks the record field by field
       // against its schema. Left raw, `message.amount` was unscaled bytes and `message.ts` a
-      // bare epoch, while `value` on the same field was a Decimal/Timestamp.
-      message: this.executor.wrapForCel(ctx, fieldCtx.containingMessage)
+      // bare epoch, while `value` on the same field was a Decimal/Timestamp. The record is
+      // named by `fullName` (`record.field`), and for a nested field that is not the root.
+      message: this.executor.wrapForCel(
+        ctx, fieldCtx.containingMessage, containingRecordName(fieldCtx.fullName))
     }
     // execute() encodes the result back to the field's Avro form itself - a returned
     // Decimal/Timestamp to bytes/epoch at the schema's scale/unit - picking the field's schema

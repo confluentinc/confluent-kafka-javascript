@@ -699,14 +699,23 @@ export interface AvroValidationHint {
    * a record the root text does not define, so the name resolution needs these too.
    */
   depSchemas?: string[]
+  /**
+   * For a record-level rule, the record `this` actually is. The walk recurses into nested
+   * records, and without it their logical types were converted against the *root* node, which
+   * matched none of their fields. Absent for a field rule, whose `fullName` already names one.
+   */
+  recordName?: string
 }
 
 function avroHint(
-  avroSchema: string, depSchemas: string[], fullName?: string,
+  avroSchema: string, depSchemas: string[], fullName?: string, recordName?: string,
 ): AvroValidationHint {
-  return fullName == null
+  if (fullName != null) {
+    return { avroSchema, fullName, depSchemas }
+  }
+  return recordName == null
     ? { avroSchema, depSchemas }
-    : { avroSchema, fullName, depSchemas }
+    : { avroSchema, depSchemas, recordName }
 }
 
 /**
@@ -771,7 +780,8 @@ async function validate(
       // Record-level rules: this = the record value.
       for (const rule of rules.recordRules.get(recordName) ?? []) {
         await evaluateValidationRule(
-          executor, rule, avroHint(rules.schemaJson, rules.depSchemas), msg, path, out)
+          executor, rule,
+          avroHint(rules.schemaJson, rules.depSchemas, undefined, recordName), msg, path, out)
         if (failFast && out.length > 0) {
           return
         }

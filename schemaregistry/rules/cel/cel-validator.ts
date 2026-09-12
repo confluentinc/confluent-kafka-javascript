@@ -9,7 +9,7 @@ import { DECIMAL_FUNCS } from "./decimal-funcs"
 import { TIMESTAMP_FUNCS } from "./timestamp-funcs"
 import { IS_FUNCS } from "./is-funcs"
 import { VARIANT_FUNCS, variantToCel } from "./variant-funcs"
-import { wrapAvroDeclaredFieldForCel, wrapAvroForCel } from "./cel-executor"
+import { wrapAvroDeclaredFieldForCel, wrapAvroForCel, wrapAvroRecordForCel } from "./cel-executor"
 import { Variant } from "../../confluent/type/variant-utils"
 
 /**
@@ -120,8 +120,12 @@ function celValue(schema: any, msg: any): any {
   // path uses, so an inline rule and a CEL_FIELD rule on one field see the same value.
   if (schema != null && typeof schema.avroSchema === 'string') {
     const deps = schema.depSchemas ?? []
-    return schema.fullName != null
-      ? wrapAvroDeclaredFieldForCel(msg, schema.fullName, schema.avroSchema, deps)
+    if (schema.fullName != null) {
+      return wrapAvroDeclaredFieldForCel(msg, schema.fullName, schema.avroSchema, deps)
+    }
+    // A nested record is not the root, so it has to be converted against its own node.
+    return schema.recordName != null
+      ? wrapAvroRecordForCel(msg, schema.recordName, schema.avroSchema, deps)
       : wrapAvroForCel(msg, schema.avroSchema, deps)
   }
   // A Variant (e.g. from the Avro variant logical type) can't be bound to `this` directly;
