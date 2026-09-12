@@ -85,7 +85,11 @@ export class CelFieldExecutorTransform implements FieldTransform {
       name: fieldCtx.name,
       typeName: fieldCtx.typeName(),
       tags: Array.from(fieldCtx.tags),
-      message: fieldCtx.containingMessage
+      // The containing message needs the same boundary as `value`: the reference converts
+      // *every* binding through `toCelValue`, whose Avro arm walks the record field by field
+      // against its schema. Left raw, `message.amount` was unscaled bytes and `message.ts` a
+      // bare epoch, while `value` on the same field was a Decimal/Timestamp.
+      message: this.executor.wrapForCel(ctx, fieldCtx.containingMessage)
     }
     // execute() encodes the result back to the field's Avro form itself - a returned
     // Decimal/Timestamp to bytes/epoch at the schema's scale/unit - picking the field's schema
