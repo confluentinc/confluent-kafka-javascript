@@ -55,11 +55,16 @@ export class CelExecutor implements RuleExecutor {
    * Protobuf messages are passed through unchanged; their fields resolve through the
    * registry-carrying env built in {@link envFor}.
    */
-  wrapForCel(ctx: RuleContext, msg: any): any {
+  wrapForCel(ctx: RuleContext, msg: any, recordName?: string): any {
     if (msg == null || typeof msg !== "object") {
       return msg
     }
     if (ctx.target?.schemaType === "AVRO" && ctx.target.schema) {
+      // `recordName` names the record `msg` actually is, which for a nested field is not the
+      // root. Without it the conversion is attempted against the root node and matches nothing.
+      if (recordName != null && recordName !== '') {
+        return wrapAvroRecordForCel(msg, recordName, ctx.target.schema, ctx.depSchemas ?? [])
+      }
       // The dependency texts are needed on the way *in* as well as on the way out: a decimal or
       // timestamp field declared in a referenced schema cannot be recognised without the
       // schema that declares it, so a message-level rule saw raw bytes and epochs where a
@@ -242,6 +247,31 @@ export function wrapAvroForCel(
   }
   const named = collectAvroNamedAll(schema, depSchemas)
   return avroToCel(msg, schema, named, "")
+}
+
+/**
+ * Converts a *record* value for CEL against the node of the record it actually is.
+ *
+ * {@link wrapAvroForCel} converts against the root, which is only right for the root record. A
+ * rule on a nested field binds `message` to the nested record, and matching that against the root
+ * node found none of its fields, so its logical types stayed raw. The reference has no such
+ * problem: its converter reads `record.getSchema()` off the record itself.
+ */
+export function wrapAvroRecordForCel(
+  msg: any, recordName: string, schemaStr: string, depSchemas: readonly string[] = [],
+): any {
+  let schema: any
+  try {
+    schema = JSON.parse(schemaStr)
+  } catch {
+    return msg
+  }
+  const named = collectAvroNamedAll(schema, depSchemas)
+  const record = named.get(recordName)
+  if (record == null) {
+    return avroToCel(msg, schema, named, "")
+  }
+  return avroToCel(msg, record, named, avroFullname(record, "")[0])
 }
 
 /**
