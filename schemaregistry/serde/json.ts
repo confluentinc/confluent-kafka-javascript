@@ -450,18 +450,13 @@ async function transform(ctx: RuleContext, schema: DereferencedJSONSchema, path:
       }
     }
     if (schema.items != null && Array.isArray(msg)) {
-      for (let i = 0; i < msg.length; i++) {
-        msg[i] = await transform(ctx, schema.items, path, msg[i], fieldTransform)
-      }
+      msg = await transformItems(ctx, schema.items, path, msg, fieldTransform)
     }
     return msg
   }
   if (schema.items != null) {
     if (Array.isArray(msg)) {
-      for (let i = 0; i < msg.length; i++) {
-        msg[i] = await transform(ctx, schema.items, path, msg[i], fieldTransform)
-      }
-      return msg
+      return await transformItems(ctx, schema.items, path, msg, fieldTransform)
     }
   }
   if (schema.$ref != null) {
@@ -490,6 +485,23 @@ async function transform(ctx: RuleContext, schema: DereferencedJSONSchema, path:
   }
 
   return msg
+}
+
+/**
+ * Maps an array's items into a *new* array rather than assigning in place.
+ *
+ * For a `CEL_FIELD` condition the caller drops what comes back - a list of verdicts is never
+ * `false`, so a condition does not apply to a container field - but assigning into the input
+ * had already replaced the items with booleans by then. The reference builds a new list here
+ * for the same reason.
+ */
+async function transformItems(ctx: RuleContext, items: DereferencedJSONSchema, path: string,
+                              msg: any[], fieldTransform: FieldTransform): Promise<any[]> {
+  const result: any[] = []
+  for (let i = 0; i < msg.length; i++) {
+    result.push(await transform(ctx, items, path, msg[i], fieldTransform))
+  }
+  return result
 }
 
 async function transformField(ctx: RuleContext, path: string, propName: string, msg: any,
