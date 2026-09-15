@@ -1,0 +1,21 @@
+{
+  "name": "logical-types-checker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Syntax checker for the LogicalTypes DDL grammar, usable as an embeddable module or via the browser demo page.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "generate": "bash scripts/generate-parser.sh",
+    "build:demo": "esbuild demo/main.ts --bundle --outfile=demo/bundle.js --format=iife",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "antlr4ng": "^3.0.16"
+  },
+  "devDependencies": {
+    "antlr-ng": "^1.0.10",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.9.2"
+  }
+}
