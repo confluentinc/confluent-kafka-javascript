@@ -20,3 +20,4 @@ function render(): void {
 }
 
 checkButton.addEventListener("click", render);
+render();
