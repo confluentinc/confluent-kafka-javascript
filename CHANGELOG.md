@@ -5,6 +5,7 @@
 2. Add support for saving Azure key version with DEK (#507)
 3. Pass context when clients make KEK calls to DEK Registry (#508)
 4. Add support for inline validation rules (#522)
+5. Add Variant, Decimal, and Timestamp CEL functions (#524)
 
 ## Fixes
 1. Preserve HTTP status on Schema Registry error responses (#519)
