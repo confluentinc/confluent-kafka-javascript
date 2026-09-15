@@ -5,6 +5,7 @@
 2. Add support for saving Azure key version with DEK (#507)
 3. Pass context when clients make KEK calls to DEK Registry (#508)
 4. Add support for inline validation rules (#522)
+5. Add Variant, Decimal, and Timestamp CEL functions (#524)
 
 
 # confluent-kafka-javascript 1.10.1
