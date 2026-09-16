@@ -60,10 +60,33 @@ Yarn and pnpm support is experimental.
 
 Below is a simple produce example using the promisified API.
 
+Production applications should serialize with Schema Registry. Producing plain string
+values leads to data-quality issues, broken consumers, and ungovernable data. This
+example uses the companion [@confluentinc/schemaregistry](https://www.npmjs.com/package/@confluentinc/schemaregistry)
+package, which is installed separately.
+
+Replace each `<fill>` with your own values. The example talks to two endpoints —
+a Kafka cluster and a Schema Registry — and on Confluent Cloud each has its own
+API key and secret.
+
 ```javascript
 const { Kafka } = require('@confluentinc/kafka-javascript').KafkaJS;
+const { SchemaRegistryClient, SerdeType, JsonSerializer } = require('@confluentinc/schemaregistry');
 
 async function producerStart() {
+    // autoRegisterSchemas registers the schema on first produce. Use
+    // useLatestVersion instead when the schema is already registered.
+    const registry = new SchemaRegistryClient({
+        baseURLs: ['<fill>'],
+        basicAuthCredentials: {
+            credentialsSource: 'USER_INFO',
+            // Schema Registry API key and secret, as '<key>:<secret>'. These
+            // are a separate credential from the Kafka API key used below.
+            userInfo: '<fill>:<fill>',
+        },
+    });
+    const serializer = new JsonSerializer(registry, SerdeType.VALUE, { autoRegisterSchemas: true });
+
     const producer = new Kafka().producer({
         'bootstrap.servers': '<fill>',
         'security.protocol': 'SASL_SSL',
@@ -75,16 +98,13 @@ async function producerStart() {
     await producer.connect();
     console.log("Connected successfully");
 
-    const res = []
-    for (let i = 0; i < 50; i++) {
-        res.push(producer.send({
-            topic: 'test-topic',
-            messages: [
-                { value: 'v', partition: 0, key: 'x' },
-            ]
-        }));
-    }
-    await Promise.all(res);
+    const user = { name: 'Confluent', favoriteNumber: 42 };
+    await producer.send({
+        topic: 'test-topic',
+        messages: [
+            { value: await serializer.serialize('test-topic', user), key: 'user1' },
+        ],
+    });
 
     await producer.disconnect();
     console.log("Disconnected successfully");
@@ -92,6 +112,8 @@ async function producerStart() {
 
 producerStart();
 ```
+
+For an Avro example that also consumes and deserializes, see [sr.js](examples/kafkajs/sr.js).
 
 There are two variants of the API offered by this library. A promisified API and a callback-based API.
 
