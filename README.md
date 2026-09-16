@@ -65,6 +65,10 @@ values leads to data-quality issues, broken consumers, and ungovernable data. Th
 example uses the companion [@confluentinc/schemaregistry](https://www.npmjs.com/package/@confluentinc/schemaregistry)
 package, which is installed separately.
 
+Replace each `<fill>` with your own values. The example talks to two endpoints —
+a Kafka cluster and a Schema Registry — and on Confluent Cloud each has its own
+API key and secret.
+
 ```javascript
 const { Kafka } = require('@confluentinc/kafka-javascript').KafkaJS;
 const { SchemaRegistryClient, SerdeType, JsonSerializer } = require('@confluentinc/schemaregistry');
@@ -72,7 +76,15 @@ const { SchemaRegistryClient, SerdeType, JsonSerializer } = require('@confluenti
 async function producerStart() {
     // autoRegisterSchemas registers the schema on first produce. Use
     // useLatestVersion instead when the schema is already registered.
-    const registry = new SchemaRegistryClient({ baseURLs: ['http://localhost:8081'] });
+    const registry = new SchemaRegistryClient({
+        baseURLs: ['<fill>'],
+        basicAuthCredentials: {
+            credentialsSource: 'USER_INFO',
+            // Schema Registry API key and secret, as '<key>:<secret>'. These
+            // are a separate credential from the Kafka API key used below.
+            userInfo: '<fill>:<fill>',
+        },
+    });
     const serializer = new JsonSerializer(registry, SerdeType.VALUE, { autoRegisterSchemas: true });
 
     const producer = new Kafka().producer({
