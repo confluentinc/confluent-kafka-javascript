@@ -475,6 +475,95 @@ blocks:
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
             - artifact push workflow "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}" --destination "releases/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
 
+  - name: "Linux s390x: Release"
+    dependencies: [ ]
+    run:
+      when: "tag =~ '^v[0-9]\\.'"
+    task:
+      agent:
+        machine:
+          type: s1-ubuntu-24-s390x-4
+      env_vars:
+        - name: ARCHITECTURE
+          value: "s390x"
+        - name: PLATFORM
+          value: "linux"
+        - name: LIBC
+          value: "glibc"
+      jobs:
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18.19.0,108
+                - 20.11.0,115
+                - 21.6.1,120
+                - 22.2.0,127
+                - 23.2.0,131
+                - 24.3.0,137
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:20.04 /v/.semaphore/build-docker-s390x.sh
+            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
+            # `artifact push` gives up after ~55s, which is not enough to ride out the
+            # intermittent DNS resolution failures seen from this pool. Losing a build
+            # that takes a quarter of an hour to a brief resolver hiccup is a poor trade.
+            - |
+              for attempt in 1 2 3 4 5; do
+                artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" && break
+                if [ $attempt -eq 5 ]; then echo "artifact push failed after 5 attempts"; exit 1; fi
+                echo "artifact push failed (attempt $attempt), retrying in $((attempt * 30))s"
+                sleep $((attempt * 30))
+              done
+
+  - name: "Linux s390x musl: Release"
+    dependencies: [ ]
+    run:
+      when: "tag =~ '^v[0-9]\\.'"
+    task:
+      # Native s390x agent, same as the glibc s390x block. The build reuses the shared
+      # build-docker-alpine.sh (node:*-alpine ships s390x for every ABI and bundles Node,
+      # so no separate build script is needed); the s390x zlib CC workaround lives behind
+      # a uname guard in that script.
+      agent:
+        machine:
+          type: s1-ubuntu-24-s390x-4
+      env_vars:
+        - name: ARCHITECTURE
+          value: "s390x"
+        - name: PLATFORM
+          value: "linux"
+        - name: LIBC
+          value: "musl"
+      jobs:
+        - name: "Release"
+          matrix:
+            - env_var: NODE_VERSION_ABI
+              values:
+                - 18,108
+                - 20,115
+                - 21,120
+                - 22,127
+                - 23,131
+                - 24,137
+          commands:
+            - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
+            - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
+            - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
+            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
+            - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
+            # Same DNS-flakiness mitigation as the glibc s390x block: artifact push gives
+            # up too fast for this pool's intermittent resolver.
+            - |
+              for attempt in 1 2 3 4 5; do
+                artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" && break
+                if [ $attempt -eq 5 ]; then echo "artifact push failed after 5 attempts"; exit 1; fi
+                echo "artifact push failed (attempt $attempt), retrying in $((attempt * 30))s"
+                sleep $((attempt * 30))
+              done
+
   - name: 'Packaging: tar all release artifacts'
     dependencies:
       - 'Linux amd64: Release'
@@ -484,6 +573,8 @@ blocks:
       - 'macOS arm64/m1: Release'
       - 'macOS Intel: Release'
       - 'Windows x64: Release'
+      - 'Linux s390x: Release'
+      - 'Linux s390x musl: Release'
     run:
       when: "tag =~ '^v[0-9]\\.'"
     task:
