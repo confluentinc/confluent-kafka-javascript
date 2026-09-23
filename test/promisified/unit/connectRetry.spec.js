@@ -2,8 +2,9 @@ jest.setTimeout(10000);
 
 const {
     isConnectRetriable,
-    connectRetryParams,
+    connectRetries,
     moreInformativeConnectError,
+    kafkaJSToRdKafkaConfig,
 } = require('../../../lib/kafkajs/_common');
 const { ErrorCodes } = require('../../../lib/kafkajs/_error');
 
@@ -30,29 +31,34 @@ describe('isConnectRetriable', () => {
     });
 });
 
-describe('connectRetryParams', () => {
-    it('defaults to KafkaJS values when nothing is supplied', () => {
-        expect(connectRetryParams(undefined)).toEqual({
-            retries: 5,
-            initialRetryTime: 300,
-            maxRetryTime: 30000,
-        });
+describe('connectRetries', () => {
+    it('defaults to the KafkaJS value of 5 when nothing is supplied', () => {
+        expect(connectRetries(undefined)).toBe(5);
+        expect(connectRetries({})).toBe(5);
     });
 
-    it('honors user-supplied retry fields', () => {
-        expect(connectRetryParams({ retries: 2, initialRetryTime: 100, maxRetryTime: 5000 })).toEqual({
-            retries: 2,
-            initialRetryTime: 100,
-            maxRetryTime: 5000,
-        });
+    it('honors a user-supplied retries value', () => {
+        expect(connectRetries({ retries: 2 })).toBe(2);
     });
 
-    it('fills in defaults for individually-missing fields', () => {
-        expect(connectRetryParams({ retries: 0 })).toEqual({
-            retries: 0,
-            initialRetryTime: 300,
-            maxRetryTime: 30000,
-        });
+    it('honors an explicit zero', () => {
+        expect(connectRetries({ retries: 0 })).toBe(0);
+    });
+});
+
+describe('reconnect.backoff mapping', () => {
+    it('maps retry.initialRetryTime/maxRetryTime onto reconnect.backoff.* like retry.backoff.*', () => {
+        const c = kafkaJSToRdKafkaConfig({ brokers: ['x:9092'], retry: { initialRetryTime: 250, maxRetryTime: 12345 } });
+        expect(c['reconnect.backoff.ms']).toBe(250);
+        expect(c['reconnect.backoff.max.ms']).toBe(12345);
+        expect(c['retry.backoff.ms']).toBe(250);
+        expect(c['retry.backoff.max.ms']).toBe(12345);
+    });
+
+    it('uses KafkaJS defaults when retry is not supplied', () => {
+        const c = kafkaJSToRdKafkaConfig({ brokers: ['x:9092'] });
+        expect(c['reconnect.backoff.ms']).toBe(300);
+        expect(c['reconnect.backoff.max.ms']).toBe(30000);
     });
 });
 
