@@ -19,7 +19,7 @@
    to restore the single-attempt behavior. As in KafkaJS, connect() retries by
    default and only genuinely terminal errors are not retried — authentication,
    authorization, misconfiguration, unsupported protocol/feature, and fatal errors
-   fail fast. Transactional/idempotent producers are not retried.
+   fail fast.
 
 
 # confluent-kafka-javascript 1.10.1
