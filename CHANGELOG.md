@@ -7,10 +7,14 @@
 4. Add support for inline validation rules (#522)
 5. The promisified (KafkaJS-compatible) `producer.connect()` and `consumer.connect()`
    now retry on transient connection errors instead of failing on the first one,
-   controlled by the `retry` config (`retries`, `initialRetryTime`, `maxRetryTime`).
-   Note: this changes the default behavior of `connect()` — with the default
-   `retries` of 5, a `connect()` against a persistently-unreachable broker now
-   blocks across several attempts (each bounded by the ~30s metadata timeout) before
+   controlled by `retry.retries` (default 5). Each attempt is bounded by the
+   connection-setup timeout (`connectionTimeout` + `authenticationTimeout`) plus a
+   small margin rather than a fixed 30s, and the reconnection backoff between the
+   underlying bootstrap attempts is driven by librdkafka using the `retry`
+   config (`retry.initialRetryTime`/`retry.maxRetryTime` now also map to
+   `reconnect.backoff.ms`/`reconnect.backoff.max.ms`).
+   Note: this changes the default behavior of `connect()` — against a
+   persistently-unreachable broker it now makes up to `retries` + 1 attempts before
    rejecting, instead of rejecting after a single attempt. Set `retry: { retries: 0 }`
    to restore the single-attempt behavior. Auth and configuration errors still fail
    fast, and transactional/idempotent producers are not retried.
