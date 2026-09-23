@@ -87,6 +87,18 @@ describe('moreInformativeConnectError', () => {
         expect(moreInformativeConnectError(primary, fallback)).toBe(fallback);
     });
 
+    it('falls back when the primary error has no code but the fallback does', () => {
+        const primary = { message: 'no code' };
+        const fallback = { code: ErrorCodes.ERR__TRANSPORT };
+        expect(moreInformativeConnectError(primary, fallback)).toBe(fallback);
+    });
+
+    it('keeps the primary when neither has a specific code', () => {
+        const primary = { message: 'no code' };
+        const fallback = { code: ErrorCodes.ERR_UNKNOWN };
+        expect(moreInformativeConnectError(primary, fallback)).toBe(primary);
+    });
+
     it('returns whichever error is present when one is missing', () => {
         const err = { code: ErrorCodes.ERR__TRANSPORT };
         expect(moreInformativeConnectError(null, err)).toBe(err);
