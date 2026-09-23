@@ -15,6 +15,7 @@ describe('isConnectRetriable', () => {
         expect(isConnectRetriable({ code: ErrorCodes.ERR__TIMED_OUT })).toBe(true);
         expect(isConnectRetriable({ code: ErrorCodes.ERR__TIMED_OUT_QUEUE })).toBe(true);
         expect(isConnectRetriable({ code: ErrorCodes.ERR__RESOLVE })).toBe(true);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR__SSL })).toBe(true);
     });
 
     it('treats auth, config and unknown errors as non-retriable', () => {
