@@ -1,19 +1,29 @@
 import {
-  JsonSerializer, JsonSerializerConfig, SerdeType,
-  BearerAuthCredentials, ClientConfig,
-  SchemaRegistryClient, SchemaInfo
+  ClientConfig,
+  SchemaRegistryClient, SchemaInfo,
+  kafkaJsonSerializerBuilder
 } from "@confluentinc/schemaregistry";
 import { CreateAxiosDefaults } from "axios";
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import {
   basicAuthCredentials,
-  clusterApiKey, clusterApiSecret,
+  clusterApiKey,
+  clusterApiSecret,
   clusterBootstrapUrl,
   baseUrl
 } from "./constants";
 
-async function kafkaProducerJson() {
+class User {
+  name: string;
+  age: number;
 
+  constructor(name: string, age: number) {
+    this.name = name;
+    this.age = age;
+  }
+}
+
+async function kafkaProducerJson() {
 
   const createAxiosDefaults: CreateAxiosDefaults = {
     timeout: 10000
@@ -28,26 +38,6 @@ async function kafkaProducerJson() {
   };
 
   const schemaRegistryClient = new SchemaRegistryClient(clientConfig);
-
-  const kafka: KafkaJS.Kafka = new KafkaJS.Kafka({
-    kafkaJS: {
-      brokers: [clusterBootstrapUrl],
-      ssl: true,
-      sasl: {
-        mechanism: 'plain',
-        username: clusterApiKey,
-        password: clusterApiSecret,
-      },
-    },
-  });
-
-  const producer: KafkaJS.Producer = kafka.producer({
-    kafkaJS: {
-      allowAutoTopicCreation: true,
-      acks: 1,
-      compression: KafkaJS.CompressionTypes.GZIP,
-    }
-  });
 
   const schemaString: string = JSON.stringify({
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -72,15 +62,34 @@ async function kafkaProducerJson() {
   const userTopic = 'example-user-topic';
   await schemaRegistryClient.register(userTopic + "-value", schemaInfo);
 
-  const userInfo = { name: 'Alice N Bob', age: 30 };
+  const kafka: KafkaJS.Kafka = new KafkaJS.Kafka({
+    kafkaJS: {
+      brokers: [clusterBootstrapUrl],
+      ssl: true,
+      sasl: {
+        mechanism: 'plain',
+        username: clusterApiKey,
+        password: clusterApiSecret,
+      },
+    },
+  });
 
-  const jsonSerializerConfig: JsonSerializerConfig = { useLatestVersion: true };
+  const valueSerializerBuilder = kafkaJsonSerializerBuilder<User>()
+    .setClientConfig(clientConfig)
+    .setJsonSerializerConfig({ useLatestVersion: true });
+    
+  const producer: KafkaJS.Producer<string, User> = kafka.producer<string, User>({
+    kafkaJS: {
+      allowAutoTopicCreation: true,
+      acks: 1,
+      compression: KafkaJS.CompressionTypes.GZIP,
+    },
+    'js.value.serializer.builder': valueSerializerBuilder
+  });
 
-  const serializer: JsonSerializer = new JsonSerializer(schemaRegistryClient, SerdeType.VALUE, jsonSerializerConfig);
-
-  const outgoingMessage = {
+  const outgoingMessage : KafkaJS.Message<string, User> = {
     key: "1",
-    value: await serializer.serialize(userTopic, userInfo)
+    value: new User('Alice N Bob', 30)
   };
 
   console.log("Outgoing message: ", outgoingMessage);

@@ -13,6 +13,7 @@ import {
   Client, RuleMode, RulePhase,
   SchemaInfo
 } from "../schemaregistry-client";
+import {buildKafkaSerde} from "./kafka-builder";
 import Ajv, {ErrorObject} from "ajv";
 import Ajv2019 from "ajv/dist/2019";
 import Ajv2020 from "ajv/dist/2020";
@@ -32,7 +33,8 @@ import { validateJSON } from '@criteria/json-schema-validation'
 import { LRUCache } from "lru-cache";
 import { generateSchema } from "./json-util";
 import {RuleRegistry} from "./rule-registry";
-import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
+import type {ConsumerConstructorConfig, IHeaders, ProducerConstructorConfig} from "@confluentinc/kafka-javascript/types/kafkajs";
+import { ClientConfig } from "rest-service";
 
 export const JSON_TYPE = "JSON"
 
@@ -210,6 +212,61 @@ export class JsonSerializer extends Serializer implements JsonSerde {
   }
 }
 
+export class KafkaJsonSerializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #schemaRegistryClient?: Client | null = null
+  #jsonSerializeConfig?: JsonSerializerConfig | null = null
+  #serializerInitializer?: ((serializer: JsonSerializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  /**
+   * Configuration for a Schema Registry client the serializer creates and owns.
+   * Mutually exclusive with setSchemaRegistryClient.
+   */
+  setClientConfig(clientConfig: ClientConfig): KafkaJsonSerializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  /**
+   * A Schema Registry client the application owns; it is never closed by the serializer.
+   * Mutually exclusive with setClientConfig.
+   */
+  setSchemaRegistryClient(client: Client): KafkaJsonSerializerBuilder<T> {
+    this.#schemaRegistryClient = client
+    return this
+  }
+
+  setJsonSerializerConfig(jsonSerializerConfig: JsonSerializerConfig): KafkaJsonSerializerBuilder<T> {
+    this.#jsonSerializeConfig = jsonSerializerConfig
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaJsonSerializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  setSerializerInitializer(initializer: (serializer: JsonSerializer) => void): KafkaJsonSerializerBuilder<T> {
+    this.#serializerInitializer = initializer
+    return this
+  }
+
+  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): JsonSerializer {
+    const jsonSerializeConfig = this.#jsonSerializeConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    return buildKafkaSerde(
+      this.#clientConfig,
+      this.#schemaRegistryClient,
+      (client) => new JsonSerializer(client, serdeType, jsonSerializeConfig, this.#ruleRegistry ?? undefined),
+      this.#serializerInitializer)
+  }
+}
+
+export function kafkaJsonSerializerBuilder<T>(): KafkaJsonSerializerBuilder<T> {
+  return new KafkaJsonSerializerBuilder<T>()
+}
+
 /**
  * JsonDeserializerConfig is the configuration for the JsonDeserializer.
  */
@@ -326,6 +383,62 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
     return ''
   }
 }
+
+export class KafkaJsonDeserializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #schemaRegistryClient?: Client | null = null
+  #jsonDeserializeConfig?: JsonDeserializerConfig | null = null
+  #deserializerInitializer?: ((deserializer: JsonDeserializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  /**
+   * Configuration for a Schema Registry client the deserializer creates and owns.
+   * Mutually exclusive with setSchemaRegistryClient.
+   */
+  setClientConfig(clientConfig: ClientConfig): KafkaJsonDeserializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  /**
+   * A Schema Registry client the application owns; it is never closed by the deserializer.
+   * Mutually exclusive with setClientConfig.
+   */
+  setSchemaRegistryClient(client: Client): KafkaJsonDeserializerBuilder<T> {
+    this.#schemaRegistryClient = client
+    return this
+  }
+
+  setJsonDeserializerConfig(jsonDeserializerConfig: JsonDeserializerConfig): KafkaJsonDeserializerBuilder<T> {
+    this.#jsonDeserializeConfig = jsonDeserializerConfig
+    return this
+  }
+
+  setDeserializerInitializer(initializer: (deserializer: JsonDeserializer) => void): KafkaJsonDeserializerBuilder<T> {
+    this.#deserializerInitializer = initializer
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaJsonDeserializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): JsonDeserializer {
+    const jsonDeserializeConfig = this.#jsonDeserializeConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    return buildKafkaSerde(
+      this.#clientConfig,
+      this.#schemaRegistryClient,
+      (client) => new JsonDeserializer(client, serdeType, jsonDeserializeConfig, this.#ruleRegistry ?? undefined),
+      this.#deserializerInitializer)
+  }
+}
+
+export function kafkaJsonDeserializerBuilder<T>(): KafkaJsonDeserializerBuilder<T> {
+  return new KafkaJsonDeserializerBuilder<T>()
+}
+
 
 async function toValidateFunction(
   client: Client,

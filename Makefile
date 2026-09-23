@@ -1,9 +1,6 @@
 NODE-GYP ?= node_modules/.bin/node-gyp
 
-PYTHON = python
-ifeq (, $(shell command -v python))
-  PYTHON = python3
-endif
+PYTHON = python3
 NODE ?= node
 CPPLINT ?= cpplint.py
 BUILDTYPE ?= Release

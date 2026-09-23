@@ -2555,6 +2555,68 @@ describe('AvroSerdeWithAssociatedNameStrategy', () => {
     await client.deleteAssociations('lkc-123:topic1', 'topic', ['value'], true)
   })
 
+  /* The Kafka client hands the serde a resolver for the connected cluster's id
+   * once connected; the strategy invokes it lazily and looks the association
+   * up under that id, so no cluster id needs configuring. */
+  it('resolves the cluster id lazily through the resolver handed over by the Kafka client', async () => {
+    const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
+    const client = SchemaRegistryClient.newClient(conf)
+
+    const info: SchemaInfo = { schemaType: 'AVRO', schema: demoSchema }
+    const id = await client.register('my-resolved-subject', info, false)
+    expect(id).toBeGreaterThan(0)
+
+    const request: AssociationCreateOrUpdateRequest = {
+      resourceName: 'topic1',
+      resourceNamespace: 'lkc-resolved',
+      resourceId: 'lkc-resolved:topic1',
+      resourceType: 'topic',
+      associations: [{ subject: 'my-resolved-subject', associationType: 'value', lifecycle: LifecyclePolicy.STRONG }]
+    }
+    await client.createAssociation(request)
+
+    let resolverCalls = 0
+    const resolver = async () => { resolverCalls++; return 'lkc-resolved' }
+
+    const ser = new AvroSerializer(client, SerdeType.VALUE, {
+      autoRegisterSchemas: false,
+      useLatestVersion: true,
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    })
+    ser.setClusterIdResolver(resolver)
+    expect(resolverCalls).toBe(0)
+
+    const obj = {
+      intField: 123,
+      doubleField: 45.67,
+      stringField: 'hi',
+      boolField: true,
+      bytesField: Buffer.from([1, 2]),
+    }
+    const bytes = await ser.serialize(topic, obj)
+    /* The first message needs the id (once per distinct subject lookup). */
+    expect(resolverCalls).toBeGreaterThanOrEqual(1)
+    const callsAfterFirstMessage = resolverCalls
+    /* The lookups are cached: a second message does not resolve again. */
+    await ser.serialize(topic, obj)
+    expect(resolverCalls).toBe(callsAfterFirstMessage)
+
+    /* The subject came from the association, not from the topic name. */
+    const subjects = await client.getAllSubjects()
+    expect(subjects).toContain('my-resolved-subject')
+    expect(subjects).not.toContain(`${topic}-value`)
+
+    const deser = new AvroDeserializer(client, SerdeType.VALUE, {
+      subjectNameStrategyType: SubjectNameStrategyType.ASSOCIATED
+    })
+    deser.setClusterIdResolver(resolver)
+    const obj2 = await deser.deserialize(topic, bytes)
+    expect(obj2.intField).toEqual(obj.intField)
+    expect(obj2.stringField).toEqual(obj.stringField)
+
+    await client.deleteAssociations('lkc-resolved:topic1', 'topic', ['value'], true)
+  })
+
   it('falls back to topic name strategy when no association found', async () => {
     const conf: ClientConfig = { baseURLs: [baseURL], cacheCapacity: 1000 }
     const client = SchemaRegistryClient.newClient(conf)
