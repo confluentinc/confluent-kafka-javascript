@@ -1,15 +1,27 @@
 import {
-  AvroSerializer, AvroSerializerConfig, SerdeType,
- ClientConfig, SchemaRegistryClient, SchemaInfo
+  ClientConfig,
+  SchemaRegistryClient, SchemaInfo,
+  kafkaAvroSerializerBuilder
 } from "@confluentinc/schemaregistry";
 import { CreateAxiosDefaults } from "axios";
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import {
   basicAuthCredentials,
-  clusterApiKey, clusterApiSecret,
+  clusterApiKey,
+  clusterApiSecret,
   clusterBootstrapUrl,
   baseUrl
 } from "./constants";
+
+class User {
+  name: string;
+  age: number;
+
+  constructor(name: string, age: number) {
+    this.name = name;
+    this.age = age;
+  }
+}
 
 async function kafkaProducerAvro() {
 
@@ -26,26 +38,6 @@ async function kafkaProducerAvro() {
   };
 
   const schemaRegistryClient = new SchemaRegistryClient(clientConfig);
-
-  const kafka: KafkaJS.Kafka = new KafkaJS.Kafka({
-    kafkaJS: {
-      brokers: [clusterBootstrapUrl],
-      ssl: true,
-      sasl: {
-        mechanism: 'plain',
-        username: clusterApiKey,
-        password: clusterApiSecret,
-      },
-    },
-  });
-
-  const producer: KafkaJS.Producer = kafka.producer({
-    kafkaJS: {
-      allowAutoTopicCreation: true,
-      acks: 1,
-      compression: KafkaJS.CompressionTypes.GZIP,
-    }
-  });
 
   const schemaString: string = JSON.stringify({
     type: 'record',
@@ -64,15 +56,36 @@ async function kafkaProducerAvro() {
   const userTopic = 'example-user-topic';
   await schemaRegistryClient.register(userTopic + "-value", schemaInfo);
 
-  const userInfo = { name: 'Alice N Bob', age: 30 };
+  const kafka: KafkaJS.Kafka = new KafkaJS.Kafka({
+    kafkaJS: {
+      brokers: [clusterBootstrapUrl],
+      ssl: true,
+      sasl: {
+        mechanism: 'plain',
+        username: clusterApiKey,
+        password: clusterApiSecret,
+      },
+    },
+  });
 
-  const avroSerializerConfig: AvroSerializerConfig = { useLatestVersion: true };
+  /* The serializer is built by the producer while it connects, and applied to
+   * every message value from then on. */
+  const valueSerializerBuilder = kafkaAvroSerializerBuilder<User>()
+    .setClientConfig(clientConfig)
+    .setAvroSerializerConfig({ useLatestVersion: true });
 
-  const serializer: AvroSerializer = new AvroSerializer(schemaRegistryClient, SerdeType.VALUE, avroSerializerConfig);
+  const producer: KafkaJS.Producer<string, User> = kafka.producer<string, User>({
+    kafkaJS: {
+      allowAutoTopicCreation: true,
+      acks: 1,
+      compression: KafkaJS.CompressionTypes.GZIP,
+    },
+    'js.value.serializer.builder': valueSerializerBuilder
+  });
 
-  const outgoingMessage = {
+  const outgoingMessage: KafkaJS.Message<string, User> = {
     key: "1",
-    value: await serializer.serialize(userTopic, userInfo)
+    value: new User('Alice N Bob', 30)
   };
 
   console.log("Outgoing message: ", outgoingMessage);

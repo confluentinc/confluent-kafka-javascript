@@ -38,9 +38,16 @@ module.exports = {
       });
     },
     'has necessary methods from superclass': function() {
-      var methods = ['connect', 'disconnect', 'getMetadata'];
+      var methods = ['connect', 'disconnect', 'getMetadata', 'clusterId'];
       methods.forEach(function(m) {
         t.equal(typeof(client[m]), 'function', 'Client is missing ' + m + ' method');
+      });
+    },
+    'clusterId errors when disconnected': function(done) {
+      client.clusterId(1000, function(err) {
+        t.ok(err);
+        t.equal(err.message, 'Client is disconnected');
+        done();
       });
     },
     'has "_disconnect" override': function() {
