@@ -16,8 +16,10 @@
    Note: this changes the default behavior of `connect()` — against a
    persistently-unreachable broker it now makes up to `retries` + 1 attempts before
    rejecting, instead of rejecting after a single attempt. Set `retry: { retries: 0 }`
-   to restore the single-attempt behavior. Auth and configuration errors still fail
-   fast, and transactional/idempotent producers are not retried.
+   to restore the single-attempt behavior. As in KafkaJS, connect() retries by
+   default and only genuinely terminal errors are not retried — authentication,
+   authorization, misconfiguration, unsupported protocol/feature, and fatal errors
+   fail fast. Transactional/idempotent producers are not retried.
 
 
 # confluent-kafka-javascript 1.10.1
