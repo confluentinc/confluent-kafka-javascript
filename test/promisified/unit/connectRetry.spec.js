@@ -9,7 +9,7 @@ const {
 const { ErrorCodes } = require('../../../lib/kafkajs/_error');
 
 describe('isConnectRetriable', () => {
-    it('treats transient connection errors as retriable', () => {
+    it('retries transient connection errors', () => {
         expect(isConnectRetriable({ code: ErrorCodes.ERR__TRANSPORT })).toBe(true);
         expect(isConnectRetriable({ code: ErrorCodes.ERR__ALL_BROKERS_DOWN })).toBe(true);
         expect(isConnectRetriable({ code: ErrorCodes.ERR__TIMED_OUT })).toBe(true);
@@ -18,17 +18,28 @@ describe('isConnectRetriable', () => {
         expect(isConnectRetriable({ code: ErrorCodes.ERR__SSL })).toBe(true);
     });
 
-    it('treats auth, config and unknown errors as non-retriable', () => {
-        expect(isConnectRetriable({ code: ErrorCodes.ERR__AUTHENTICATION })).toBe(false);
-        expect(isConnectRetriable({ code: ErrorCodes.ERR__STATE })).toBe(false);
-        expect(isConnectRetriable({ code: ErrorCodes.ERR__INVALID_ARG })).toBe(false);
-        expect(isConnectRetriable({ code: ErrorCodes.ERR_UNKNOWN })).toBe(false);
+    it('retries by default, including unknown or unexpected errors (KafkaJS-style)', () => {
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_UNKNOWN })).toBe(true);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_LEADER_NOT_AVAILABLE })).toBe(true);
+        expect(isConnectRetriable({})).toBe(true);
     });
 
-    it('is safe for missing errors', () => {
+    it('does not retry terminal errors: auth, authorization, config, unsupported, fatal', () => {
+        expect(isConnectRetriable({ code: ErrorCodes.ERR__AUTHENTICATION })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_SASL_AUTHENTICATION_FAILED })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_UNSUPPORTED_SASL_MECHANISM })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_TOPIC_AUTHORIZATION_FAILED })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_CLUSTER_AUTHORIZATION_FAILED })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR__INVALID_ARG })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_INVALID_CONFIG })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_UNSUPPORTED_VERSION })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR__FATAL })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR__STATE })).toBe(false);
+    });
+
+    it('is safe for a missing error object', () => {
         expect(isConnectRetriable(undefined)).toBe(false);
         expect(isConnectRetriable(null)).toBe(false);
-        expect(isConnectRetriable({})).toBe(false);
     });
 });
 
