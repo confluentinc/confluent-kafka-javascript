@@ -439,14 +439,20 @@ export class KafkaProtobufSerializerBuilder<T> {
     return this
   }
 
-  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): ProtobufSerializer {
+  /**
+   * Builds the serializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): [ProtobufSerializer, ProducerConstructorConfig<unknown, unknown>] {
     const protobufSerializerConfig = this.#protobufSerializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    return buildKafkaSerde(
+    const serde = buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new ProtobufSerializer(client, serdeType, protobufSerializerConfig, this.#ruleRegistry ?? undefined),
       this.#serializerInitializer)
+    return [serde, config]
   }
 }
 
@@ -652,14 +658,20 @@ export class KafkaProtobufDeserializerBuilder<T> {
     return this
   }
 
-  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): ProtobufDeserializer {
+  /**
+   * Builds the deserializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): [ProtobufDeserializer, ConsumerConstructorConfig<unknown, unknown>] {
     const protobufDeserializerConfig = this.#protobufDeserializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    return buildKafkaSerde(
+    const serde = buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new ProtobufDeserializer(client, serdeType, protobufDeserializerConfig, this.#ruleRegistry ?? undefined),
       this.#deserializerInitializer)
+    return [serde, config]
   }
 }
 

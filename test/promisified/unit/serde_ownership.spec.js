@@ -16,7 +16,7 @@ const makeSerde = (closeImpl = async () => { }) => {
     return serde;
 };
 
-const builderFor = (serde) => ({ build: jest.fn(() => serde) });
+const builderFor = (serde) => ({ build: jest.fn((config) => [serde, config]) });
 
 const throwingBuilder = (message) => ({
     build: jest.fn(() => { throw new Error(message); }),

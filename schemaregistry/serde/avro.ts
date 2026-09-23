@@ -230,14 +230,20 @@ export class KafkaAvroSerializerBuilder<T> {
     return this
   }
 
-  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): AvroSerializer {
+  /**
+   * Builds the serializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): [AvroSerializer, ProducerConstructorConfig<unknown, unknown>] {
     const avroSerializerConfig = this.#avroSerializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    return buildKafkaSerde(
+    const serde = buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new AvroSerializer(client, serdeType, avroSerializerConfig, this.#ruleRegistry ?? undefined),
       this.#serializerInitializer)
+    return [serde, config]
   }
 }
 
@@ -403,14 +409,20 @@ export class KafkaAvroDeserializerBuilder<T> {
     return this
   }
 
-  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): AvroDeserializer {
+  /**
+   * Builds the deserializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): [AvroDeserializer, ConsumerConstructorConfig<unknown, unknown>] {
     const avroDeserializerConfig = this.#avroDeserializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    return buildKafkaSerde(
+    const serde = buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new AvroDeserializer(client, serdeType, avroDeserializerConfig, this.#ruleRegistry ?? undefined),
       this.#deserializerInitializer)
+    return [serde, config]
   }
 }
 

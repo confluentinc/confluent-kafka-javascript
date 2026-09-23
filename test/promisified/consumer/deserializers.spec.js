@@ -55,8 +55,8 @@ describe('Consumer > deserializers', () => {
             groupId: `group-${secureRandom()}`,
             fromBeginning: true,
         }, {
-            'js.key.deserializer.builder': { build: () => keySerde },
-            'js.value.deserializer.builder': { build: () => valueSerde },
+            'js.key.deserializer.builder': { build: (config) => [keySerde, config] },
+            'js.value.deserializer.builder': { build: (config) => [valueSerde, config] },
         });
     };
 

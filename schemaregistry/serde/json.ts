@@ -252,14 +252,20 @@ export class KafkaJsonSerializerBuilder<T> {
     return this
   }
 
-  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): JsonSerializer {
+  /**
+   * Builds the serializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): [JsonSerializer, ProducerConstructorConfig<unknown, unknown>] {
     const jsonSerializeConfig = this.#jsonSerializeConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    return buildKafkaSerde(
+    const serde = buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new JsonSerializer(client, serdeType, jsonSerializeConfig, this.#ruleRegistry ?? undefined),
       this.#serializerInitializer)
+    return [serde, config]
   }
 }
 
@@ -424,14 +430,20 @@ export class KafkaJsonDeserializerBuilder<T> {
     return this
   }
 
-  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): JsonDeserializer {
+  /**
+   * Builds the deserializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): [JsonDeserializer, ConsumerConstructorConfig<unknown, unknown>] {
     const jsonDeserializeConfig = this.#jsonDeserializeConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    return buildKafkaSerde(
+    const serde = buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new JsonDeserializer(client, serdeType, jsonDeserializeConfig, this.#ruleRegistry ?? undefined),
       this.#deserializerInitializer)
+    return [serde, config]
   }
 }
 
