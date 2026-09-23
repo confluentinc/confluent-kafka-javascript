@@ -4,6 +4,7 @@ const {
     isConnectRetriable,
     connectRetries,
     moreInformativeConnectError,
+    connectMetadataTimeout,
     kafkaJSToRdKafkaConfig,
 } = require('../../../lib/kafkajs/_common');
 const { ErrorCodes } = require('../../../lib/kafkajs/_error');
@@ -60,6 +61,19 @@ describe('connectRetries', () => {
 
     it('honors an explicit zero', () => {
         expect(connectRetries({ retries: 0 })).toBe(0);
+    });
+});
+
+describe('connectMetadataTimeout', () => {
+    it('adds a margin to the configured connection-setup timeout', () => {
+        expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': 11000 })).toBe(12000);
+        expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': 1000 })).toBe(2000);
+    });
+
+    it('falls back to the librdkafka default when the setup timeout is absent', () => {
+        // Raw librdkafka config (no kafkaJS block) never sets this key; must not be NaN/0.
+        expect(connectMetadataTimeout({})).toBe(31000);
+        expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': undefined })).toBe(31000);
     });
 });
 
