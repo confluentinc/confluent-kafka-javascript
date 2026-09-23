@@ -34,7 +34,22 @@ const makeSerde = (prefix, { poison = null, closeImpl = async () => { } } = {}) 
     return serde;
 };
 
-const builderFor = (serde) => ({ build: jest.fn(() => serde) });
+/* A builder hands back the serde and the configuration it did not consume. */
+const builderFor = (serde) => ({ build: jest.fn((config) => [serde, config]) });
+
+/* A builder consuming the given properties and recording the configuration it saw. */
+const consumingBuilder = (serde, ...props) => {
+    const builder = {
+        seen: null,
+        build: jest.fn((config) => {
+            builder.seen = { ...config };
+            const remaining = Object.fromEntries(
+                Object.entries(config).filter(([k]) => !props.includes(k)));
+            return [serde, remaining];
+        }),
+    };
+    return builder;
+};
 
 describe('Producer > serializers', () => {
     let producer, consumer, topicName, keySerde, valueSerde, keyBuilder, valueBuilder;
@@ -75,6 +90,51 @@ describe('Producer > serializers', () => {
         /* The builder keys themselves are consumed by the producer. */
         expect(keyConfig).not.toHaveProperty(['js.key.serializer.builder']);
         expect(keyConfig).not.toHaveProperty(['js.value.serializer.builder']);
+        /* Each builder gets its own copy. */
+        expect(keyConfig).not.toBe(valueConfig);
+        expect(keyConfig).toEqual(valueConfig);
+    });
+
+    it('hands every builder the full config and creates the producer with the intersection of the leftovers', async () => {
+        /* As in Go and Python: a property both serdes need must reach both
+         * builders, and a property consumed by either must not reach
+         * librdkafka. None of the three is a librdkafka property, so the
+         * producer only connects if all of them were filtered out. */
+        keyBuilder = consumingBuilder(keySerde, 'shared.prop', 'key.only.prop');
+        valueBuilder = consumingBuilder(valueSerde, 'shared.prop', 'value.only.prop');
+        producer = createProducer({}, {
+            'shared.prop': 'both',
+            'key.only.prop': 'k',
+            'value.only.prop': 'v',
+            'js.key.serializer.builder': keyBuilder,
+            'js.value.serializer.builder': valueBuilder,
+        });
+        await producer.connect();
+
+        expect(keyBuilder.seen).toMatchObject({ 'shared.prop': 'both', 'key.only.prop': 'k', 'value.only.prop': 'v' });
+        expect(valueBuilder.seen).toMatchObject({ 'shared.prop': 'both', 'key.only.prop': 'k', 'value.only.prop': 'v' });
+        expect(keyBuilder.seen).toHaveProperty(['bootstrap.servers']);
+    });
+
+    it('does not let a builder leak a property into the other builder or the producer', async () => {
+        /* The mutation lands on the builder's own copy only: the producer
+         * would fail to construct if it reached librdkafka, and the value
+         * builder must not see it. */
+        keyBuilder = {
+            build: jest.fn((config) => {
+                config['not.a.kafka.prop'] = true;
+                const remaining = { ...config };
+                delete remaining['not.a.kafka.prop'];
+                return [keySerde, remaining];
+            }),
+        };
+        valueBuilder = consumingBuilder(valueSerde);
+        producer = createProducer({}, {
+            'js.key.serializer.builder': keyBuilder,
+            'js.value.serializer.builder': valueBuilder,
+        });
+        await producer.connect();
+        expect(valueBuilder.seen).not.toHaveProperty(['not.a.kafka.prop']);
     });
 
     it('hands both serializers a cluster id resolver on connect, without invoking it', async () => {

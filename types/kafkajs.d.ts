@@ -160,8 +160,23 @@ export interface Serializer<T> {
   close?(): Promise<void> | void
 }
 
+/**
+ * Builds a serializer for a producer while it connects, which lets the
+ * serializer take the producer's own configuration into account.
+ */
 export interface KafkaSerializerBuilder<T> {
-  build(config: ProducerConstructorConfig<unknown, unknown>, isKey: boolean): Serializer<T>
+  /**
+   * @param config - the producer's configuration, with the builder properties
+   *   removed. Every builder is handed its own copy of the full configuration.
+   *   A builder may consume properties meant for it and must leave the rest in
+   *   place.
+   * @param isKey - whether the serializer is for message keys.
+   * @returns the serializer and the configuration left over for the producer.
+   *   The producer is created with the properties that every builder left in
+   *   place, so a property consumed by any builder never reaches librdkafka.
+   */
+  build(config: ProducerConstructorConfig<unknown, unknown>, isKey: boolean):
+    [Serializer<T>, ProducerConstructorConfig<unknown, unknown>]
 }
 
 interface JSProducerConfig<K, V> {
@@ -291,8 +306,23 @@ export interface Deserializer<T> {
   close?(): Promise<void> | void
 }
 
+/**
+ * Builds a deserializer for a consumer while it connects, which lets the
+ * deserializer take the consumer's own configuration into account.
+ */
 export interface KafkaDeserializerBuilder<T> {
-  build(config: ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): Deserializer<T>
+  /**
+   * @param config - the consumer's configuration, with the builder properties
+   *   removed. Every builder is handed its own copy of the full configuration.
+   *   A builder may consume properties meant for it and must leave the rest in
+   *   place.
+   * @param isKey - whether the deserializer is for message keys.
+   * @returns the deserializer and the configuration left over for the consumer.
+   *   The consumer is created with the properties that every builder left in
+   *   place, so a property consumed by any builder never reaches librdkafka.
+   */
+  build(config: ConsumerConstructorConfig<unknown, unknown>, isKey: boolean):
+    [Deserializer<T>, ConsumerConstructorConfig<unknown, unknown>]
 }
 
 export interface JSConsumerConfig<K = Buffer, V = Buffer> {
