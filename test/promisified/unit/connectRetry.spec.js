@@ -112,6 +112,14 @@ describe('moreInformativeConnectError', () => {
         expect(moreInformativeConnectError(primary, fallback)).toBe(fallback);
     });
 
+    it('prefers an error flagged fatal over one with a more specific code', () => {
+        const fatal = { code: ErrorCodes.ERR_UNKNOWN, isFatal: true };
+        const specific = { code: ErrorCodes.ERR__TRANSPORT };
+        expect(moreInformativeConnectError(fatal, specific)).toBe(fatal);
+        expect(moreInformativeConnectError(specific, fatal)).toBe(fatal);
+        expect(isConnectRetriable(moreInformativeConnectError(fatal, specific))).toBe(false);
+    });
+
     it('keeps the primary when neither has a specific code', () => {
         const primary = { message: 'no code' };
         const fallback = { code: ErrorCodes.ERR_UNKNOWN };
