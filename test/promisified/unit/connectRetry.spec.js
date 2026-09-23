@@ -37,6 +37,11 @@ describe('isConnectRetriable', () => {
         expect(isConnectRetriable({ code: ErrorCodes.ERR__STATE })).toBe(false);
     });
 
+    it('does not retry an error flagged fatal even with an unlisted code', () => {
+        expect(isConnectRetriable({ code: ErrorCodes.ERR__TRANSPORT, isFatal: true })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_UNKNOWN, fatal: true })).toBe(false);
+    });
+
     it('is safe for a missing error object', () => {
         expect(isConnectRetriable(undefined)).toBe(false);
         expect(isConnectRetriable(null)).toBe(false);
