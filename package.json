@@ -70,7 +70,7 @@
   "overrides": {
     "serialize-javascript": "^7.0.5",
     "uuid": "^11.1.1",
-    "diff": "^8.0.3",
+    "diff": "^9.0.0",
     "node-releases": "2.0.47",
     "browserslist": "4.29.0",
     "baseline-browser-mapping": "2.11.25",
