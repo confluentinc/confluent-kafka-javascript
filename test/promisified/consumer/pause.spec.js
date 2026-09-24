@@ -251,6 +251,62 @@ describe('Consumer', () => {
             expect(messagesConsumed).toContainEqual({ topic: 1, message: 3 });
         }, 10000);
 
+        it('resumes from the first unprocessed message when pausing with prefetched batches', async () => {
+            /* Regression test: pause() discards prefetched messages from the
+             * message cache (markStale) and relies on #lastConsumedOffsets to
+             * seek back to the first unconsumed message. The eachBatch
+             * resolveOffset path did not populate that map, so any messages
+             * already prefetched into the cache beyond the current batch were
+             * permanently lost after pause()/resume(). Needs enough messages
+             * that the fetch delivers batches beyond the one being processed
+             * when pause() is called. */
+            const topic = topics[0];
+            const messageCount = 120;
+            const messages = Array.from({ length: messageCount }, (_, i) => ({
+                key: `key-${i}`,
+                value: `value-${i}`,
+                partition: 0,
+            }));
+
+            await consumer.connect();
+            await producer.connect();
+            await producer.send({ topic, messages });
+            await consumer.subscribe({ topic });
+
+            let batchesProcessed = 0;
+            let pausedOnce = false;
+            const consumedValues = new Set();
+            consumer.run({
+                eachBatchAutoResolve: false,
+                eachBatch: async event => {
+                    const { batch, resolveOffset } = event;
+                    batchesProcessed++;
+                    for (const message of batch.messages) {
+                        consumedValues.add(String(message.value));
+                        /* Resolve everything: the post-batch repair seek must
+                         * not fire; recovery of the discarded prefetched
+                         * messages depends solely on the pause() seek. */
+                        resolveOffset(message.offset);
+                    }
+                    /* Pause once the cache is warm so later batches are
+                     * already prefetched and get discarded by pause(). */
+                    if (!pausedOnce && batchesProcessed >= 4) {
+                        pausedOnce = true;
+                        const resume = event.pause();
+                        setTimeout(resume, 500);
+                    }
+                },
+            });
+
+            await waitForConsumerToJoinGroup(consumer);
+            /* Bounded wait: without the fix consumption wedges permanently,
+             * and an unbounded waitFor would hang the suite (the wedged
+             * consumer also hangs disconnect()). */
+            const deadline = Date.now() + 20000;
+            await waitFor(() => consumedValues.size >= messageCount || Date.now() > deadline, () => null, { delay: 100 });
+            expect(consumedValues.size).toEqual(messageCount);
+        }, 30000);
+
         it('does not fetch messages for the paused topic', async () => {
             await consumer.connect();
             await producer.connect();
