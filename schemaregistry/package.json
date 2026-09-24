@@ -13,7 +13,7 @@
     "@bufbuild/protoc-gen-es": "^2.0.0",
     "@confluentinc/kafka-javascript": "file:..",
     "@eslint/js": "^9.9.0",
-    "@types/eslint__js": "^8.42.3",
+    "@types/eslint__js": "^9.0.0",
     "@types/node": "^20.16.1",
     "@types/uuid": "^10.0.0",
     "bluebird": "^3.5.3",
