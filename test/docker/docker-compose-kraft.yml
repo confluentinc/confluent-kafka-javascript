@@ -12,3 +12,19 @@ services:
     environment:
       KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_jaas.conf"
 
+  # Schema Registry 8.x: the associations API used by the ASSOCIATED subject
+  # name strategy tests (schemaregistry/e2e/associated-cluster-id.spec.ts)
+  # requires it. The broker advertises PLAINTEXT://kafka:9092 on the compose
+  # network, which is what the registry connects to.
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.3.1
+    restart: unless-stopped
+    container_name: schema-registry
+    depends_on:
+      - kafka
+    ports:
+      - 8081:8081
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
