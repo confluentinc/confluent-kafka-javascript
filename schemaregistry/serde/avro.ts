@@ -13,6 +13,8 @@ import {
   Client, RuleMode, RulePhase,
   SchemaInfo
 } from "../schemaregistry-client";
+import {ClientConfig} from "../rest-service";
+import {buildKafkaSerde} from "./kafka-builder";
 import avro, {ForSchemaOptions, Type, types} from "avsc";
 import UnwrappedUnionType = types.UnwrappedUnionType
 import WrappedUnionType = types.WrappedUnionType
@@ -23,7 +25,7 @@ import Field = types.Field
 import { LRUCache } from 'lru-cache'
 import {RuleRegistry} from "./rule-registry";
 import stringify from "json-stringify-deterministic";
-import type {IHeaders} from "@confluentinc/kafka-javascript/types/kafkajs";
+import type {ConsumerConstructorConfig, IHeaders, ProducerConstructorConfig} from "@confluentinc/kafka-javascript/types/kafkajs";
 
 export const AVRO_TYPE = "AVRO"
 
@@ -188,6 +190,67 @@ export class AvroSerializer extends Serializer implements AvroSerde {
   }
 }
 
+export class KafkaAvroSerializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #schemaRegistryClient?: Client | null = null
+  #avroSerializerConfig?: AvroSerializerConfig | null = null
+  #serializerInitializer?: ((serializer: AvroSerializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  /**
+   * Configuration for a Schema Registry client the serializer creates and owns.
+   * Mutually exclusive with setSchemaRegistryClient.
+   */
+  setClientConfig(clientConfig: ClientConfig): KafkaAvroSerializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  /**
+   * A Schema Registry client the application owns; it is never closed by the serializer.
+   * Mutually exclusive with setClientConfig.
+   */
+  setSchemaRegistryClient(client: Client): KafkaAvroSerializerBuilder<T> {
+    this.#schemaRegistryClient = client
+    return this
+  }
+
+  setAvroSerializerConfig(avroSerializerConfig: AvroSerializerConfig): KafkaAvroSerializerBuilder<T> {
+    this.#avroSerializerConfig = avroSerializerConfig
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaAvroSerializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  setSerializerInitializer(initializer: (serializer: AvroSerializer) => void): KafkaAvroSerializerBuilder<T> {
+    this.#serializerInitializer = initializer
+    return this
+  }
+
+  /**
+   * Builds the serializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): [AvroSerializer, ProducerConstructorConfig<unknown, unknown>] {
+    const avroSerializerConfig = this.#avroSerializerConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    const serde = buildKafkaSerde(
+      this.#clientConfig,
+      this.#schemaRegistryClient,
+      (client) => new AvroSerializer(client, serdeType, avroSerializerConfig, this.#ruleRegistry ?? undefined),
+      this.#serializerInitializer)
+    return [serde, config]
+  }
+}
+
+export function kafkaAvroSerializerBuilder<T>(): KafkaAvroSerializerBuilder<T> {
+  return new KafkaAvroSerializerBuilder<T>()
+}
+
 /**
  * AvroDeserializerConfig is used to configure the AvroDeserializer.
  */
@@ -304,6 +367,67 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
     }
     return ''
   }
+}
+
+export class KafkaAvroDeserializerBuilder<T> {
+  #clientConfig?: ClientConfig | null = null
+  #schemaRegistryClient?: Client | null = null
+  #avroDeserializerConfig?: AvroDeserializerConfig | null = null
+  #deserializerInitializer?: ((deserializer: AvroDeserializer) => void) | null = null
+  #ruleRegistry?: RuleRegistry | null = null
+
+  /**
+   * Configuration for a Schema Registry client the deserializer creates and owns.
+   * Mutually exclusive with setSchemaRegistryClient.
+   */
+  setClientConfig(clientConfig: ClientConfig): KafkaAvroDeserializerBuilder<T> {
+    this.#clientConfig = clientConfig
+    return this
+  }
+
+  /**
+   * A Schema Registry client the application owns; it is never closed by the deserializer.
+   * Mutually exclusive with setClientConfig.
+   */
+  setSchemaRegistryClient(client: Client): KafkaAvroDeserializerBuilder<T> {
+    this.#schemaRegistryClient = client
+    return this
+  }
+
+  setAvroDeserializerConfig(avroDeserializerConfig: AvroDeserializerConfig): KafkaAvroDeserializerBuilder<T> {
+    this.#avroDeserializerConfig = avroDeserializerConfig
+    return this
+  }
+
+  setDeserializerInitializer(initializer: (deserializer: AvroDeserializer) => void): KafkaAvroDeserializerBuilder<T> {
+    this.#deserializerInitializer = initializer
+    return this
+  }
+
+  setRuleRegistry(ruleRegistry: RuleRegistry): KafkaAvroDeserializerBuilder<T> {
+    this.#ruleRegistry = ruleRegistry
+    return this
+  }
+
+  /**
+   * Builds the deserializer for a Kafka client. No Schema Registry
+   * property is read from the client configuration today, so it is handed
+   * back unchanged.
+   */
+  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): [AvroDeserializer, ConsumerConstructorConfig<unknown, unknown>] {
+    const avroDeserializerConfig = this.#avroDeserializerConfig ?? {};
+    const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
+    const serde = buildKafkaSerde(
+      this.#clientConfig,
+      this.#schemaRegistryClient,
+      (client) => new AvroDeserializer(client, serdeType, avroDeserializerConfig, this.#ruleRegistry ?? undefined),
+      this.#deserializerInitializer)
+    return [serde, config]
+  }
+}
+
+export function kafkaAvroDeserializerBuilder<T>(): KafkaAvroDeserializerBuilder<T> {
+  return new KafkaAvroDeserializerBuilder<T>()
 }
 
 async function toType(

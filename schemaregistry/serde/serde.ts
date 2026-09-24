@@ -193,9 +193,13 @@ export class SchemaId {
  * SerializationError represents a serialization error
  */
 export class SerializationError extends Error {
+  cause?: unknown
 
-  constructor(message?: string) {
+  constructor(message?: string, options?: { cause?: unknown }) {
     super(message)
+    if (options?.cause !== undefined) {
+      this.cause = options.cause
+    }
   }
 }
 
@@ -205,6 +209,20 @@ export enum SubjectNameStrategyType {
   RECORD = 'RECORD',
   TOPIC_RECORD = 'TOPIC_RECORD',
   ASSOCIATED = 'ASSOCIATED',
+}
+
+/**
+ * ClusterIdResolver returns the id of the Kafka cluster a client is connected to.
+ * It is handed to a serde by the Kafka client that owns it, and may wait on
+ * broker metadata, so a serde must only invoke it when it actually needs the id.
+ * Concurrent invocations share a single resolution in the client, so a serde
+ * need not deduplicate them itself.
+ */
+export type ClusterIdResolver = () => Promise<string>
+
+interface SubjectNameStrategyInterface {
+  setClusterIdResolver(resolver: ClusterIdResolver): void
+  subjectNameStrategy(topic: string, serdeType: SerdeType, info?: SchemaInfo): Promise<string>
 }
 
 export interface SerdeConfig {
@@ -237,6 +255,8 @@ export abstract class Serde {
   conf: SerdeConfig
   fieldTransformer: FieldTransformer | null = null
   ruleRegistry: RuleRegistry
+  private subjectNameStrategyInterface: SubjectNameStrategyInterface | null = null
+  private ownsClient = false
 
   protected constructor(client: Client, serdeType: SerdeType, conf: SerdeConfig, ruleRegistry?: RuleRegistry) {
     this.client = client
@@ -247,8 +267,37 @@ export abstract class Serde {
 
   abstract config(): SerdeConfig
 
-  close(): void {
-    return
+  /**
+   * Marks the Schema Registry client as owned by this serde, so that it is
+   * closed together with it. Only meant to be called by the Kafka serde
+   * builders, for a client they created themselves.
+   */
+  ownSchemaRegistryClient(): void {
+    this.ownsClient = true
+  }
+
+  /**
+   * Releases the resources this serde created for itself. A Schema Registry
+   * client supplied by the application is left alone. Safe to call more than once.
+   */
+  async close(): Promise<void> {
+    if (!this.ownsClient) {
+      return
+    }
+    this.ownsClient = false
+    await this.client.close()
+  }
+
+  /**
+   * Hands over the resolver for the id of the Kafka cluster this serde is used
+   * with. Only the associated subject name strategy needs it; other strategies
+   * ignore it. The resolver is not invoked here: the strategy calls it lazily,
+   * on the first subject lookup that misses its cache.
+   */
+  setClusterIdResolver(resolver: ClusterIdResolver): void {
+    if (this.subjectNameStrategyInterface != null) {
+      this.subjectNameStrategyInterface.setClusterIdResolver(resolver)
+    }
   }
 
   /**
@@ -285,7 +334,9 @@ export abstract class Serde {
     const effectiveType = strategyType ?? SubjectNameStrategyType.ASSOCIATED
     // ASSOCIATED requires special handling with client and config
     if (effectiveType === SubjectNameStrategyType.ASSOCIATED) {
-      this.conf.subjectNameStrategy = AssociatedNameStrategy(this.client, config, getRecordName)
+      this.subjectNameStrategyInterface =
+        new AssociatedNameStrategyImpl(this.client, config, getRecordName);
+      this.conf.subjectNameStrategy = this.subjectNameStrategyInterface.subjectNameStrategy.bind(this.subjectNameStrategyInterface);
       return
     }
     const strategy = strategyFromType(effectiveType, getRecordName)
@@ -908,66 +959,90 @@ export const FALLBACK_TYPE = 'subject.name.strategy.fallback.type'
  */
 const DEFAULT_CACHE_CAPACITY = 1000
 
-/**
- * AssociatedNameStrategy returns a strategy that retrieves the associated subject name from schema registry.
- * The topic is passed as the resource name to schema registry. If there is a configuration property
- * named "subject.name.strategy.kafka.cluster.id", then its value will be passed as the resource namespace;
- * otherwise the value "-" will be passed as the resource namespace.
- * If more than one subject is returned from the query, an exception will be thrown.
- * If no subjects are returned from the query, then the behavior will fall back to TopicNameStrategy,
- * unless the configuration property "subject.name.strategy.fallback.type" is set to "RECORD",
- * "TOPIC_RECORD", or "NONE".
- *
- * @param client - the schema registry client
- * @param config - configuration options
- * @param getRecordName - optional function to extract record name from schema (required for RECORD/TOPIC_RECORD fallback)
- */
-export const AssociatedNameStrategy = (
-  client: Client,
-  config: { [key: string]: string },
-  getRecordName?: RecordNameFunc
-): SubjectNameStrategyFunc => {
-  // Parse configuration
-  const kafkaClusterId = config[KAFKA_CLUSTER_ID] ?? null
-  const fallbackTypeStr = config[FALLBACK_TYPE]?.toUpperCase() ?? 'TOPIC'
+class AssociatedNameStrategyImpl implements SubjectNameStrategyInterface {
+  private subjectNameCache: LRUCache<string, string>
+  private client: Client
+  private fallbackStrategy: SubjectNameStrategyFunc | null
+  private kafkaClusterId: string | null
+  private clusterIdResolver: ClusterIdResolver | null = null
 
-  // Parse fallback type string to enum
-  const fallbackTypeEnum = SubjectNameStrategyType[fallbackTypeStr as keyof typeof SubjectNameStrategyType]
-  if (fallbackTypeEnum == null) {
-    throw new SerializationError(
-      `Invalid value for ${FALLBACK_TYPE}: ${fallbackTypeStr}`
-    )
+  constructor(
+      client: Client,
+      config: { [key: string]: string },
+      getRecordName?: RecordNameFunc) {
+    // Parse configuration. An empty cluster id counts as not configured.
+    const configuredClusterId = config[KAFKA_CLUSTER_ID]
+    this.kafkaClusterId = configuredClusterId != null && configuredClusterId !== '' ? configuredClusterId : null
+    const fallbackTypeStr = config[FALLBACK_TYPE]?.toUpperCase() ?? 'TOPIC'
+
+    // Parse fallback type string to enum
+    const fallbackTypeEnum = SubjectNameStrategyType[fallbackTypeStr as keyof typeof SubjectNameStrategyType]
+    if (fallbackTypeEnum == null) {
+      throw new SerializationError(
+        `Invalid value for ${FALLBACK_TYPE}: ${fallbackTypeStr}`
+      )
+    }
+    if (fallbackTypeEnum === SubjectNameStrategyType.ASSOCIATED) {
+      throw new SerializationError(
+        `ASSOCIATED cannot be used as fallback strategy`
+      )
+    }
+
+    // Determine fallback strategy using helper
+    this.fallbackStrategy = strategyFromType(fallbackTypeEnum, getRecordName)
+    this.client = client
+    this.subjectNameCache = new LRUCache<string, string>({ max: DEFAULT_CACHE_CAPACITY })
   }
-  if (fallbackTypeEnum === SubjectNameStrategyType.ASSOCIATED) {
-    throw new SerializationError(
-      `ASSOCIATED cannot be used as fallback strategy`
-    )
-  }
 
-  // Determine fallback strategy using helper
-  const fallbackStrategy = strategyFromType(fallbackTypeEnum, getRecordName)
-
-  const subjectNameCache = new LRUCache<string, string>({
-    max: DEFAULT_CACHE_CAPACITY
-  })
-
-  const makeCacheKey = (topic: string, isKey: boolean, schema?: SchemaInfo): string => {
+  private makeCacheKey(topic: string, isKey: boolean, schema?: SchemaInfo): string {
     return stringify({ topic, isKey, schema: schema?.schema })
   }
 
-  // Helper function to load subject name from registry
-  const loadSubjectName = async (
+  /**
+   * Resolves the namespace the topic is looked up under: the configured cluster
+   * id when there is one, otherwise the one the Kafka client reports, otherwise
+   * the wildcard. The resolved id is not cached here on purpose: the subject
+   * name cache already keeps lookups rare, librdkafka caches the id itself, and a
+   * failed resolution is retried on the next lookup.
+   */
+  private async resolveClusterId(): Promise<string> {
+    if (this.kafkaClusterId != null) {
+      return this.kafkaClusterId
+    }
+    const resolver = this.clusterIdResolver
+    if (resolver == null) {
+      return NAMESPACE_WILDCARD
+    }
+    let clusterId: string
+    try {
+      clusterId = await resolver()
+    } catch (err) {
+      throw new SerializationError(
+        'associated name strategy: could not resolve the Kafka cluster id, which typically means ' +
+        `the client has not reached a broker yet; set ${KAFKA_CLUSTER_ID} to supply it explicitly: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+        { cause: err })
+    }
+    if (clusterId == null || clusterId === '') {
+      throw new SerializationError(
+        'associated name strategy: the Kafka cluster id resolved to an empty string; ' +
+        `set ${KAFKA_CLUSTER_ID} to supply it explicitly`)
+    }
+    return clusterId
+  }
+
+  private async loadSubjectName(
     topic: string,
     serdeType: SerdeType,
     schema?: SchemaInfo
-  ): Promise<string> => {
+  ): Promise<string> {
     const isKey = serdeType === SerdeType.KEY
-    const resourceNamespace = kafkaClusterId ?? NAMESPACE_WILDCARD
+    const resourceNamespace = await this.resolveClusterId()
     const associationType = isKey ? 'key' : 'value'
 
-    let associations: Awaited<ReturnType<typeof client.getAssociationsByResourceName>>
+    let associations: Awaited<ReturnType<typeof this.client.getAssociationsByResourceName>>
     try {
-      associations = await client.getAssociationsByResourceName(
+      associations = await this.client.getAssociationsByResourceName(
         topic,
         resourceNamespace,
         'topic',
@@ -988,30 +1063,61 @@ export const AssociatedNameStrategy = (
       throw new SerializationError(`Multiple associated subjects found for topic ${topic}`)
     } else if (associations.length === 1) {
       return associations[0].subject
-    } else if (fallbackStrategy != null) {
-      return await fallbackStrategy(topic, serdeType, schema)
+    } else if (this.fallbackStrategy != null) {
+      return await this.fallbackStrategy(topic, serdeType, schema)
     } else {
       throw new SerializationError(`No associated subject found for topic ${topic}`)
     }
   }
 
-  return async (topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> => {
+  async subjectNameStrategy(topic: string, serdeType: SerdeType, schema?: SchemaInfo): Promise<string> {
     if (topic == null) {
       throw new SerializationError('Topic cannot be null')
     }
 
     const isKey = serdeType === SerdeType.KEY
-    const cacheKey = makeCacheKey(topic, isKey, schema)
+    const cacheKey = this.makeCacheKey(topic, isKey, schema)
 
-    const cached = subjectNameCache.get(cacheKey)
+    const cached = this.subjectNameCache.get(cacheKey)
     if (cached != null) {
       return cached
     }
 
-    const subjectName = await loadSubjectName(topic, serdeType, schema)
-    subjectNameCache.set(cacheKey, subjectName)
+    const subjectName = await this.loadSubjectName(topic, serdeType, schema)
+    this.subjectNameCache.set(cacheKey, subjectName)
     return subjectName
   }
+
+  /* An explicitly configured cluster id wins; otherwise the latest resolver is kept. */
+  setClusterIdResolver(resolver: ClusterIdResolver): void {
+    if (this.kafkaClusterId != null) {
+      return
+    }
+    this.clusterIdResolver = resolver
+  }
+}
+
+/**
+ * AssociatedNameStrategy returns a strategy that retrieves the associated subject name from schema registry.
+ * The topic is passed as the resource name to schema registry. If there is a configuration property
+ * named "subject.name.strategy.kafka.cluster.id", then its value will be passed as the resource namespace;
+ * otherwise the value "-" will be passed as the resource namespace.
+ * If more than one subject is returned from the query, an exception will be thrown.
+ * If no subjects are returned from the query, then the behavior will fall back to TopicNameStrategy,
+ * unless the configuration property "subject.name.strategy.fallback.type" is set to "RECORD",
+ * "TOPIC_RECORD", or "NONE".
+ *
+ * @param client - the schema registry client
+ * @param config - configuration options
+ * @param getRecordName - optional function to extract record name from schema (required for RECORD/TOPIC_RECORD fallback)
+ */
+export const AssociatedNameStrategy = (
+  client: Client,
+  config: { [key: string]: string },
+  getRecordName?: RecordNameFunc
+): SubjectNameStrategyFunc => {
+  const ret = new AssociatedNameStrategyImpl(client, config, getRecordName);
+  return ret.subjectNameStrategy.bind(ret);
 }
 
 /**

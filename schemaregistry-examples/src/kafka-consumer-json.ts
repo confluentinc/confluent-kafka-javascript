@@ -1,7 +1,6 @@
 import {
-    SerdeType,
-    JsonDeserializer, ClientConfig,
-    SchemaRegistryClient
+    ClientConfig,
+    kafkaJsonDeserializerBuilder
   } from "@confluentinc/schemaregistry";
   import { CreateAxiosDefaults } from "axios";
   import { KafkaJS } from '@confluentinc/kafka-javascript';
@@ -11,7 +10,17 @@ import {
     clusterBootstrapUrl, baseUrl
   } from "./constants";
   
-  async function kafkaProducerJson() {
+class User {
+  name: string;
+  age: number;
+
+  constructor(name: string, age: number) {
+    this.name = name;
+    this.age = age;
+  }
+}
+  
+  async function kafkaConsumerJson() {
   
     const createAxiosDefaults: CreateAxiosDefaults = {
       timeout: 10000
@@ -24,8 +33,6 @@ import {
       cacheLatestTtlSecs: 60,
       basicAuthCredentials: basicAuthCredentials
     };
-  
-    const schemaRegistryClient = new SchemaRegistryClient(clientConfig);
   
     const kafka: KafkaJS.Kafka = new KafkaJS.Kafka({
       kafkaJS: {
@@ -41,14 +48,15 @@ import {
   
     const userTopic = 'example-user-topic';
   
-    const deserializer: JsonDeserializer = new JsonDeserializer(schemaRegistryClient, SerdeType.VALUE, {});
-  
-    const consumer: KafkaJS.Consumer = kafka.consumer({
+    const consumer: KafkaJS.Consumer<string, User> = kafka.consumer<string, User>({
       kafkaJS: {
         groupId: 'example-group',
         fromBeginning: true,
         partitionAssigners: [KafkaJS.PartitionAssigners.roundRobin],
       },
+      'js.value.deserializer.builder':
+        kafkaJsonDeserializerBuilder<User>()
+        .setClientConfig(clientConfig)
     });
   
     await consumer.connect();
@@ -57,12 +65,14 @@ import {
     let messageRcvd = false;
     await consumer.run({
       eachMessage: async ({ message }) => {
+        /* The raw bytes are still available alongside the decoded value, and a
+         * deserializer that failed reports its error here rather than throwing. */
         console.log("Message value", message.value);
-        const decodedMessage = {
-          ...message,
-          value: await deserializer.deserialize(userTopic, message.value as Buffer)
-        };
-        console.log("Decoded message", decodedMessage);
+        if (message.deserializedValue.error) {
+          console.error("Could not decode value", message.deserializedValue.error);
+        } else {
+          console.log("Decoded value", message.deserializedValue.value);
+        }
         messageRcvd = true;
       },
     });
@@ -74,5 +84,5 @@ import {
     await consumer.disconnect();
   }
   
-  kafkaProducerJson();
+  kafkaConsumerJson();
   

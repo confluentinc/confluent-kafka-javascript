@@ -5,6 +5,11 @@
 2. Add support for saving Azure key version with DEK (#507)
 3. Pass context when clients make KEK calls to DEK Registry (#508)
 4. Add support for inline validation rules (#522)
+5. Integrate the Schema Registry serdes with the promisified Kafka clients (#543).
+   - Add `clusterId` to the producer, consumer and admin clients to fetch the id of the cluster the client is connected to. It is available on both the node-rdkafka API and the promisified API.
+   - Add the `js.key.serializer.builder` / `js.value.serializer.builder` producer properties and the `js.key.deserializer.builder` / `js.value.deserializer.builder` consumer properties, taking the new `kafka{Avro,Json,Protobuf}{Serializer,Deserializer}Builder()` builders. The client builds the serdes while connecting, applies them to every key and value, and closes them when it disconnects. A builder can either create a Schema Registry client from a `ClientConfig` (owned and closed together with the serde) or be given one with `setSchemaRegistryClient` (never closed by the serde). `build(config, isKey)` is handed a copy of the full client configuration and returns the serde together with the configuration it did not consume; the client is created with the properties every builder left in place, so a property consumed by any builder never reaches librdkafka.
+   - The ASSOCIATED subject name strategy (the default of the builders) resolves the Kafka cluster id lazily, on the first subject lookup, through a resolver the client hands the serde once connected (`setClusterIdResolver`): connecting no longer waits on it and an explicit `subject.name.strategy.kafka.cluster.id` still takes precedence. Concurrent resolutions share a single call into librdkafka, so however many serdes or in-flight sends need the id at once, only one native worker waits on it.
+   - `send()` rejects an invalid topic or messages list before serializing, and reports serializer failures as `KeySerializationError` / `ValueSerializationError` (with the original error as `cause`). Deserializer failures are reported on the message, as `deserializedKey.error` / `deserializedValue.error` (`KeyDeserializationError` / `ValueDeserializationError`), so that the record is still delivered.
 
 
 # confluent-kafka-javascript 1.10.1
