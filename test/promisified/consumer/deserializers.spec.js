@@ -60,6 +60,27 @@ describe('Consumer > deserializers', () => {
         });
     };
 
+    it('shares a single cluster id call among concurrent resolver invocations', async () => {
+        consumer = makeConsumer();
+        await consumer.connect();
+        const clusterIdSpy = jest.spyOn(consumer, 'clusterId');
+
+        const results = await Promise.all([
+            keySerde.resolvers[0](), valueSerde.resolvers[0](),
+            keySerde.resolvers[0](), valueSerde.resolvers[0](),
+        ]);
+        expect(clusterIdSpy).toHaveBeenCalledTimes(1);
+        expect(clusterIdSpy).toHaveBeenCalledWith({ timeout: 60000 });
+        expect(new Set(results).size).toBe(1);
+        expect(results[0]).toBe(await consumer.clusterId());
+
+        /* The resolver does not cache the outcome; librdkafka does. */
+        clusterIdSpy.mockClear();
+        await expect(valueSerde.resolvers[0]()).resolves.toBe(results[0]);
+        expect(clusterIdSpy).toHaveBeenCalledTimes(1);
+        clusterIdSpy.mockRestore();
+    });
+
     it('hands both deserializers a cluster id resolver on connect, without invoking it', async () => {
         consumer = makeConsumer();
         await consumer.connect();

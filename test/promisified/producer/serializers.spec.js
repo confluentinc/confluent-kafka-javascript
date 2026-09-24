@@ -151,6 +151,37 @@ describe('Producer > serializers', () => {
         await expect(valueSerde.resolvers[0]()).resolves.toBe(clusterId);
     });
 
+    it('shares a single cluster id call among concurrent resolver invocations', async () => {
+        await producer.connect();
+        const clusterIdSpy = jest.spyOn(producer, 'clusterId');
+
+        /* Both serializers and several in-flight sends resolving at once ask
+         * librdkafka once. Each call would otherwise block a libuv thread pool
+         * thread for up to the timeout. */
+        const results = await Promise.all([
+            keySerde.resolvers[0](), valueSerde.resolvers[0](),
+            keySerde.resolvers[0](), valueSerde.resolvers[0](),
+        ]);
+        expect(clusterIdSpy).toHaveBeenCalledTimes(1);
+        expect(clusterIdSpy).toHaveBeenCalledWith({ timeout: 60000 });
+        expect(new Set(results).size).toBe(1);
+        expect(results[0]).toBe(await producer.clusterId());
+
+        /* The resolver does not cache the outcome; librdkafka does. */
+        clusterIdSpy.mockClear();
+        await expect(keySerde.resolvers[0]()).resolves.toBe(results[0]);
+        expect(clusterIdSpy).toHaveBeenCalledTimes(1);
+        clusterIdSpy.mockRestore();
+    });
+
+    it('rejects a resolver invocation once disconnected', async () => {
+        await producer.connect();
+        const resolver = keySerde.resolvers[0];
+        await producer.disconnect();
+        producer = null;
+        await expect(resolver()).rejects.toHaveProperty('code', ErrorCodes.ERR__STATE);
+    });
+
     it('closes both serializers once on disconnect', async () => {
         await producer.connect();
         await producer.disconnect();

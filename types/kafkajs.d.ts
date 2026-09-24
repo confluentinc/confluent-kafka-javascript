@@ -141,7 +141,10 @@ export interface ProducerConfig {
 /**
  * A function the client hands to a serde once connected, which resolves the id
  * of the Kafka cluster it is connected to. It is invoked lazily, by the serde,
- * only when it needs the cluster id.
+ * only when it needs the cluster id. Concurrent invocations share a single
+ * resolution, so however many serdes or in-flight sends need the id at once,
+ * the client asks librdkafka once. The outcome is not cached by the resolver:
+ * a failed resolution is retried on the next invocation.
  */
 export type ClusterIdResolver = () => Promise<string>
 

@@ -213,8 +213,10 @@ export enum SubjectNameStrategyType {
 
 /**
  * ClusterIdResolver returns the id of the Kafka cluster a client is connected to.
- * It is handed to a serde by the Kafka client that owns it, and may block on
+ * It is handed to a serde by the Kafka client that owns it, and may wait on
  * broker metadata, so a serde must only invoke it when it actually needs the id.
+ * Concurrent invocations share a single resolution in the client, so a serde
+ * need not deduplicate them itself.
  */
 export type ClusterIdResolver = () => Promise<string>
 
