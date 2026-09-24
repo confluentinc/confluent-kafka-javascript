@@ -518,7 +518,7 @@ blocks:
             # case the Semaphore API is degraded.
             - >-
               timeout 60 sem-trigger -p appsec-semaphore-workflows -t mend-source-scan
-              -i "REPO:confluent-kafka-js"
+              -i "REPO:confluent-kafka-javascript"
               -i "REF:${SEMAPHORE_GIT_TAG_NAME}"
               -i "VERSION:${SEMAPHORE_GIT_TAG_NAME}"
               -i "PRODUCT_FAMILY:COSS"
