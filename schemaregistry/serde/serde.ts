@@ -308,14 +308,16 @@ export abstract class Serde {
 
   async executeRules(subject: string, topic: string, ruleMode: RuleMode,
                      source: SchemaInfo | null, target: SchemaInfo | null, msg: any,
-                     inlineTags: Map<string, Set<string>> | null): Promise<any> {
+                     inlineTags: Map<string, Set<string>> | null,
+                     depSchemas?: string[]): Promise<any> {
     return await this.executeRulesWithPhase(
-      subject, topic, RulePhase.DOMAIN, ruleMode, source, target, msg, inlineTags)
+      subject, topic, RulePhase.DOMAIN, ruleMode, source, target, msg, inlineTags, depSchemas)
   }
 
   async executeRulesWithPhase(subject: string, topic: string, rulePhase: RulePhase, ruleMode: RuleMode,
                               source: SchemaInfo | null, target: SchemaInfo | null, msg: any,
-                              inlineTags: Map<string, Set<string>> | null): Promise<any> {
+                              inlineTags: Map<string, Set<string>> | null,
+                              depSchemas?: string[]): Promise<any> {
     if (msg == null || target == null) {
       return msg
     }
@@ -350,7 +352,7 @@ export abstract class Serde {
       let rule = rules[i]
       let ctx = new RuleContext(enabledEnv, source, target, subject, topic,
         this.serdeType === SerdeType.KEY, ruleMode, rule, i, rules, inlineTags, this.fieldTransformer!,
-        this.protoRegistry())
+        this.protoRegistry(), depSchemas)
       if (this.isDisabled(ctx, rule)) {
         continue
       }
@@ -1136,12 +1138,24 @@ export class RuleContext {
    * messages, whose field access is resolved through the registry.
    */
   registry?: Registry
+  /**
+   * The schema texts the target's references resolve to, when the format has references.
+   *
+   * A field's *declared* type is what the Avro CEL conversions need - a decimal's scale and a
+   * timestamp's unit live in the schema, not in the value - and a tagged field can be declared
+   * in a referenced schema: `getInlineTags` collects tags from the dependencies, so the walk
+   * reaches such a field. With only the root text to look it up in, the lookup missed and the
+   * field arrived as raw bytes or a raw epoch, so `decimal(value)` failed on it. The inline
+   * validation path already carried these (`wrapAvroDeclaredFieldForCel` takes `depSchemas`);
+   * this is the same information for the `CEL_FIELD` walk.
+   */
+  depSchemas?: string[]
   private fieldContexts: FieldContext[]
 
   constructor(enabledEnv: string | undefined, source: SchemaInfo | null, target: SchemaInfo, subject: string, topic: string,
               isKey: boolean, ruleMode: RuleMode, rule: Rule, index: number, rules: Rule[],
               inlineTags: Map<string, Set<string>> | null, fieldTransformer: FieldTransformer,
-              registry?: Registry) {
+              registry?: Registry, depSchemas?: string[]) {
     this.enabledEnv = enabledEnv
     this.source = source
     this.target = target
@@ -1155,6 +1169,7 @@ export class RuleContext {
     this.inlineTags = inlineTags
     this.fieldTransformer = fieldTransformer
     this.registry = registry
+    this.depSchemas = depSchemas
     this.fieldContexts = []
   }
 
