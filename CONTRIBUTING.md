@@ -240,6 +240,9 @@ If it's needed to change librdkafka version, see the **Updating librdkafka versi
 1. Create a PR and merge the above changes, and tag the merged commit with the new version. This should be the same string as `version` in `package.json`.
 
 1. The CI will run on the tag, which will create the release artifacts in Semaphore CI.
+   This also triggers a release time SBOM and SAST scan using Mend (via the
+   `mend-source-scan` task in `appsec-semaphore-workflows`); no manual
+   action is needed for this.
 
 1. Create a new GitHub release with the tag, and upload the release artifacts from Semaphore CI.
    The release title should be the same string as `version` in `package.json`.

@@ -497,6 +497,33 @@ blocks:
             - tar -czvf releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz releases
             - artifact push project "releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz"
 
+  - name: "Release time SBOM and SAST scan using Mend"
+    dependencies: [ ]
+    run:
+      when: "tag =~ '^v[0-9]\\.'"
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu24-04-amd64-1
+      jobs:
+        - name: "Trigger release time SBOM and SAST scan using Mend"
+          commands:
+            # Mend SCA+SAST scanning for this release runs out-of-band: this
+            # triggers the standalone mend-source-scan task
+            # (appsec-semaphore-workflows), on its own agent, rather than
+            # scanning locally in this job. See
+            # https://github.com/confluentinc/appsec-semaphore-workflows/pull/608.
+            # Fire-and-forget (no -w) so a slow or failing trigger can never
+            # block or fail this release pipeline; bound with a timeout in
+            # case the Semaphore API is degraded.
+            - >-
+              timeout 60 sem-trigger -p appsec-semaphore-workflows -t mend-source-scan
+              -i "REPO:confluent-kafka-js"
+              -i "REF:${SEMAPHORE_GIT_TAG_NAME}"
+              -i "VERSION:${SEMAPHORE_GIT_TAG_NAME}"
+              -i "PRODUCT_FAMILY:COSS"
+              || echo "WARNING: failed to trigger Mend SCA+SAST scan (or timed out after 60s); continuing without failing the release" >&2
+
 after_pipeline:
   task:
     agent:
