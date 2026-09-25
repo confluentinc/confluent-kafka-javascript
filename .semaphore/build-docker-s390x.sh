@@ -31,11 +31,12 @@ update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
 
 # Download the Node tarball and verify it against the official published SHA-256 sum
 # before extracting, rather than piping the download straight into tar.
+# --proto '=https' keeps both downloads, including any redirect -L follows, on HTTPS.
 NODE_DIST="https://nodejs.org/dist/v${NODE_VERSION}"
 NODE_TARBALL="node-v${NODE_VERSION}-linux-s390x.tar.xz"
 cd /tmp
-curl -fsSLO "${NODE_DIST}/${NODE_TARBALL}"
-curl -fsSL "${NODE_DIST}/SHASUMS256.txt" | grep " ${NODE_TARBALL}\$" | sha256sum -c -
+curl --proto '=https' -fsSLO "${NODE_DIST}/${NODE_TARBALL}"
+curl --proto '=https' -fsSL "${NODE_DIST}/SHASUMS256.txt" | grep " ${NODE_TARBALL}\$" | sha256sum -c -
 tar xJf "${NODE_TARBALL}" -C /opt
 export PATH="/opt/node-v${NODE_VERSION}-linux-s390x/bin:$PATH"
 
