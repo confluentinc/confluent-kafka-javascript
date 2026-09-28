@@ -40,6 +40,7 @@ The following configurations are supported:
 
 Other distributions will probably work given a modern version of gcc/glibc, but we don't test the pre-built binaries with them.
 
+* Linux (s390x/IBM Z) - glibc and musl based distributions, Node versions 18, 20, 21, 22, 23 and 24. The pre-built binaries are tested on Ubuntu 20.04, 22.04, 24.04 and 26.04, Debian Trixie, Alpine Linux, and AlmaLinux 9/Rocky Linux 9/CentOS Stream 9.
 * macOS - arm64/m1. macOS (Intel) is supported on a best-effort basis. Node versions 18, 20, 21, 22, 23 and 24 are supported.
 * Windows - x64. Node versions 18, 20, 21, 22, 23 and 24 are supported.
 
