@@ -12,10 +12,9 @@ import {
   FieldDescriptorProtoSchema,
   FileDescriptorProtoSchema,
 } from '@bufbuild/protobuf/wkt';
-import { isCelError } from '@bufbuild/cel';
 import type { Registry } from '@bufbuild/protobuf';
 import { CelExecutor } from '../../../rules/cel/cel-executor';
-import { RuleContext } from '../../../serde/serde';
+import { RuleContext, RuleError } from '../../../serde/serde';
 import { RuleMode } from '../../../schemaregistry-client';
 import { ValidationInnerSchema } from '../../serde/test/validation_widget_pb';
 
@@ -68,11 +67,10 @@ describe('CelExecutor program cache', () => {
     const evolvedMsg = { $typeName: evolved.typeName, x: 1, extra: 7 } as any
 
     // A registry that does not know `extra` cannot resolve it. CEL returns its errors as
-    // values rather than throwing them.
-    const unresolved = await executor.transform(
+    // values rather than throwing them; the executor turns one into a RuleError.
+    await expect(executor.transform(
       ctxFor(expr, createRegistry(ValidationInnerSchema)),
-      create(ValidationInnerSchema, { x: 1 }))
-    expect(isCelError(unresolved)).toBe(true)
+      create(ValidationInnerSchema, { x: 1 }))).rejects.toThrow(RuleError)
 
     // The registry that does know it must still resolve it, rather than inheriting the
     // plan cached above.

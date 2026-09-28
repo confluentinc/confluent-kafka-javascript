@@ -1,4 +1,13 @@
-export * from './confluent/types/decimal_pb'
+export * from './confluent/type/decimal_pb'
+/**
+ * @deprecated Use `file_confluent_type_decimal`. This is the descriptor for
+ * confluent/types/decimal.proto, the path confluent.type.Decimal occupied before it moved
+ * to its canonical confluent/type/... location. The file it describes declares nothing and
+ * publicly imports the canonical one, so it resolves to the same confluent.type.Decimal.
+ */
+export { file_confluent_types_decimal } from './confluent/types/decimal_pb'
+export * from './confluent/type/variant_pb'
+export * from './confluent/type/variant-utils'
 export * from './confluent/meta_pb'
 export * from './rules/cel/cel-executor'
 export * from './rules/cel/cel-field-executor'
@@ -24,6 +33,10 @@ export * from './schemaregistry-client'
 // them explicitly so the data contract rule keeps the unqualified name.
 export type { Rule } from './schemaregistry-client'
 export type { Rule as MetaRule } from './confluent/meta_pb'
+// Likewise `Variant`: the variant-utils class is the one users construct and read, so it
+// keeps the unqualified name; the protobuf wire message is aliased.
+export { Variant } from './confluent/type/variant-utils'
+export type { Variant as ProtoVariant } from './confluent/type/variant_pb'
 export {
   BasicAuthCredentials,
   BearerAuthCredentials,

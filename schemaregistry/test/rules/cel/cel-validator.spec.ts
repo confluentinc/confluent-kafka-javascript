@@ -6,7 +6,12 @@ import {
   FieldDescriptorProtoSchema,
   FileDescriptorProtoSchema,
 } from '@bufbuild/protobuf/wkt';
+import avro from 'avsc';
 import { CelValidator } from '../../../rules/cel/cel-validator';
+import { VariantLogicalType } from '../../../serde/avro';
+import { Variant, VariantBuilder, parseJson } from '../../../confluent/type/variant-utils';
+import { VariantSchema } from '../../../confluent/type/variant_pb';
+import { DecimalSchema } from '../../../confluent/type/decimal_pb';
 import { RuleError, ValidationRule } from '../../../serde/serde';
 import {
   ValidationInnerSchema,
@@ -218,5 +223,1250 @@ describe('CelValidator caching', () => {
     }
     await validator.execute(rule('this <= 100'), null, 1)
     expect(validator.cache.size).toBe(2)
+  })
+})
+
+describe('CelValidator is* format validators', () => {
+  const cases: [string, string, boolean][] = [
+    ['this.isEmail()', 'foo@bar.com', true],
+    ['this.isEmail()', 'not-an-email', false],
+    ['this.isHostname()', 'example.com', true],
+    ['this.isIpv4()', '192.168.0.1', true],
+    ['this.isIpv4()', '::1', false],
+    ['this.isIpv6()', '::1', true],
+    ['this.isUri()', 'https://example.com/x', true],
+    ['this.isUriRef()', './foo/bar', true],
+    ['this.isUuid()', '12345678-1234-1234-1234-123456789012', true],
+    ['this.isUuid()', 'nope', false],
+  ]
+
+  it.each(cases)('evaluates %s on %s', async (expr, value, expected) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, value)).toBe(expected)
+  })
+
+  // Decimal/timestamp functions are now available in the validator env too.
+  it('supports decimal functions in validation rules', async () => {
+    const validator = new CelValidator()
+    expect(await validator.execute(
+      rule('decimals.gt(decimal(this), decimal("10.00"))'), null, '12.34')).toBe(true)
+  })
+})
+
+// Rounding/scale parity with Java BigDecimal (schema-rules BuiltinOverload/DecimalUtils).
+// `string(...)` renders a Decimal at its stored scale (BigDecimal.toPlainString), so these
+// assert both the rounded value and its resulting scale in one shot.
+describe('CelValidator decimal round/trunc scale (Java BigDecimal parity)', () => {
+  // expr must return a string; `this` is unused so any scalar works.
+  const evalStr = async (expr: string): Promise<any> => {
+    const validator = new CelValidator()
+    return validator.execute(rule(expr), null, 0)
+  }
+
+  // ITEM B: negative scale rounds/truncates left of the decimal point. decimal.js toDP throws
+  // on a negative scale; these exercise the toNearest fallback. Java: setScale(-n, HALF_UP/DOWN).
+  const negativeScaleCases: [string, string][] = [
+    ['string(decimals.round(decimal("1234.5"), -2))', '1200'],
+    ['string(decimals.round(decimal("1250"), -2))', '1300'],   // HALF_UP rounds the tie away from 0
+    ['string(decimals.round(decimal("-1234.5"), -2))', '-1200'],
+    ['string(decimals.round(decimal("-1250"), -2))', '-1300'],
+    ['string(decimals.round(decimal("1234.5"), -1))', '1230'],
+    ['string(decimals.round(decimal("5678"), -4))', '10000'],  // ties up to the nearest 10000
+    ['string(decimals.trunc(decimal("1234.5"), -2))', '1200'],
+    ['string(decimals.trunc(decimal("1299"), -2))', '1200'],   // DOWN = toward zero
+    ['string(decimals.trunc(decimal("-1234.5"), -2))', '-1200'],
+    ['string(decimals.trunc(decimal("-1299"), -2))', '-1200'],
+    ['string(decimals.trunc(decimal("1234.5"), -1))', '1230'],
+  ]
+  it.each(negativeScaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // ITEM B / round: a positive scale keeps exactly that scale (setScale pads trailing zeros).
+  const positiveScaleCases: [string, string][] = [
+    ['string(decimals.round(decimal("2.5"), 2))', '2.50'],
+    ['string(decimals.round(decimal("2.567"), 2))', '2.57'],
+    ['string(decimals.round(decimal("2.4"), 0))', '2'],
+    ['string(decimals.round(decimal("2.5"), 0))', '3'],
+  ]
+  it.each(positiveScaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // A scale wider than int32 is a rule error, matching Java's requireIntScale
+  // ("scale out of int range") and the Go, C#, C++, Rust and Python clients. Before this,
+  // decimals.round leaked a decimal.js `[DecimalError]`, decimal(bytes, scale) leaked an
+  // "Invalid string length", and decimals.trunc silently returned the operand unchanged -
+  // the last being the reason this asserts the message and not merely that it throws.
+  const outOfRangeScaleCases: string[] = [
+    'string(decimals.round(decimal("12.345"), 1099511627776))',
+    'string(decimals.trunc(decimal("12.345"), 1099511627776))',
+    'string(decimal(b"\\x04\\xd2", 1099511627776))',
+  ]
+  it.each(outOfRangeScaleCases)('%s rejects an out-of-int-range scale', async (expr) => {
+    await expect(evalStr(expr)).rejects.toThrow(/scale out of int range: 1099511627776/)
+  })
+
+  // The width ceiling. This client is the one where a width failure is *process death* rather
+  // than an exception - `new Decimal.clone({precision:1e9})('1e2147483647').toFixed()` exits
+  // 134 on a V8 heap OOM and the surrounding try/catch never runs - so there is nothing to
+  // turn into a rule error after the fact and the bound has to be checked before the work.
+  //
+  // The dividing line is not arithmetic vs. rescale, it is whether the operation has to build a
+  // positional form. Measured on the shared libmpdec in the Python client, peak RSS on operands
+  // 1e2147483647 and 3: mul, div, `<`, `==`, `min`, `neg`, `abs` all 13 MB; add 1738 MB, sub
+  // 1738 MB, remainder 1733 MB; add(1e2147483647, 1e-2147483647) 3125 MB. So three of six
+  // arithmetic operations reach a multi-GB allocation from one expression over two operands
+  // each cheap to construct, and the other three cost nothing at any width.
+  // A note on the operands. This client encodes a decimal into its proto form as part of
+  // *constructing* the CEL value, so `decimal("1e2147483647")` cannot exist here at all - the
+  // encode would need a 2 GB plain form. That used to be the process death above; it is now a
+  // rule error at the constructor. Everything below therefore uses exponents around 1e9000000,
+  // which are constructible (plain form under the ceiling, one-digit coefficient) and whose
+  // *combination* is not.
+  const widthRejectedCases: [string, RegExp][] = [
+    // The constructor itself, which is where this client's ceiling bites first.
+    ['decimal("1e2147483647")', /the plain form/],
+    ['decimal("1e-2147483647")', /the plain form/],
+    // Alignment: add/sub expand the narrower operand into the wider one's frame.
+    ['decimals.add(decimal("1e9000000"), decimal("1e-9000000"))', /aligning the operands/],
+    ['decimals.sub(decimal("1e9000000"), decimal("1e-9000000"))', /aligning the operands/],
+    // mod, via the integral quotient it has to produce on the way.
+    ['decimals.mod(decimal("1e9000000"), decimal("1e-9000000"))', /the integral quotient/],
+    // Expanding a rescale, including the one-argument forms - which target scale 0, so a large
+    // positive exponent is what makes them expand. Three of the five call sites did not go
+    // through a guarded helper, each reachable from a rule that names no scale at all.
+    ['decimals.round(decimal("1.23"), 100000000)', /a scale of 100000000/],
+    // Coarsening is *not* free in this client, unlike the others: decimal.js has no negative
+    // toDP, so a negative target goes through `toNearest(10^-target)` and materialises that
+    // power of ten. Measured, these leaked decimal.js's "Maximum BigInt size exceeded".
+    ['decimals.round(decimal("1.23"), -100000000)', /a scale of -100000000/],
+    ['decimals.round(decimal("1.23"), -1000000000)', /a scale of -1000000000/],
+    ['decimals.round(decimal("1e20000000"))', /the plain form|a scale of 0/],
+    ['decimals.floor(decimal("1e20000000"))', /the plain form|a scale of 0/],
+    ['decimals.ceil(decimal("1e20000000"))', /the plain form|a scale of 0/],
+    // The coefficient, bounded far lower than a computation because the wire form is the
+    // unscaled integer in base 256 and decimal <-> binary radix conversion is quadratic. 4300
+    // is CPython's own int_max_str_digits, adopted here and in the C++ client so all three
+    // agree on which decimals can be written.
+    ['decimals.round(decimal("1.23"), 5000)', /the coefficient/],
+    ['decimal(b"' + '\\x01'.repeat(2000) + '", 0)', /the coefficient/],
+  ]
+  it.each(widthRejectedCases)('%s is refused on width', async (expr, message) => {
+    await expect(evalStr(`string(${expr})`)).rejects.toThrow(message)
+  })
+
+  // Expanding a *zero* is free, so the aligned frame is set by the operands that actually have
+  // digits - several of these turn on which operand expands rather than on how far apart the
+  // scales are. A zero also keeps whatever scale it was built with, so its adjusted exponent
+  // says nothing about the cost, which is what an earlier estimate got wrong. Rows measured on
+  // libmpdec and the JDK, which agree: `0E+9e6 + 0E-9e6`, `0E+9e6 + 1` and
+  // `0E+9e6 mod 1E-9e6` are free at one digit, while a *nonzero* operand expanding into a
+  // zero's scale is not. (9e6 rather than 2e9 because this client's constructor encodes, so
+  // the operands themselves have to be constructible - see the note above.)
+  // Asserted on the *value*, not on `string(...)`: the result of adding two zeros nine million
+  // decimal places apart is a zero at scale 9000000, and rendering that is legitimately nine
+  // million characters. The reference does the same - `0E+2e9 + 0E-2e9` is precision 1 at
+  // scale 2000000000 there - so what matters is that the operation is cheap and the value is
+  // zero, not that it prints short.
+  const zeroOperandCases: [string, string][] = [
+    ['string(decimals.eq(decimals.add(decimal("0E+9000000"), decimal("0E-9000000")), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.sub(decimal("0E+9000000"), decimal("0E-9000000")), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.add(decimal("0E+9000000"), decimal("1")), decimal("1")))', 'true'],
+    ['string(decimals.eq(decimals.mod(decimal("0E+9000000"), decimal("1E-9000000")), decimal("0")))', 'true'],
+    ['string(decimals.mod(decimal("0"), decimal("3")))', '0'],
+  ]
+  it.each(zeroOperandCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // The row that must still be refused: here the *one* expands into the zero's scale, so a
+  // blanket zero exemption would have let it through.
+  it('a nonzero operand expanding into a zero scale is refused', async () => {
+    // 2e7 rather than 9e6 so the *alignment* guard is what fires: at 9e6 the frame is under
+    // the 1e7 ceiling and it is the coefficient guard that catches the result instead. Either
+    // way it is refused - the point is that a blanket zero exemption would let it through.
+    await expect(evalStr('string(decimals.add(decimal("1"), decimal("0E-20000000")))'))
+      .rejects.toThrow(/aligning the operands/)
+    await expect(evalStr('string(decimals.add(decimal("1"), decimal("0E-9000000")))'))
+      .rejects.toThrow(/the coefficient/)
+  })
+
+  // The must-fail twin. Everything that does not align, does not expand and does not render
+  // wide stays unbounded - and *coarsening* a scale is free at any distance, which an
+  // `abs(shift) + digits` estimate refused wrongly. Measured on libmpdec, all instant and all
+  // one digit wide: 1.23 at scale -1000000 / -100000000 / -2000000000, and 1e-1000000 and
+  // 1e-100000000 at scale 0. Java agrees: BigDecimal("1.23").setScale(-100000000) is
+  // precision 1.
+  const widthAcceptedCases: [string, string][] = [
+    // mul and div at the widest constructible operands.
+    ['string(decimals.mul(decimal("1e9000000"), decimal("1e-9000000")))', '1'],
+    ['string(decimals.div(decimal("1e9000000"), decimal("1e9000000")))', '1'],
+    // Comparison of two operands at opposite ends.
+    ['string(decimals.lt(decimal("1e-9000000"), decimal("1e9000000")))', 'true'],
+    // Alignment that stays narrow because the exponents are equal, however extreme both are.
+    ['string(decimals.sub(decimal("1e9000000"), decimal("1e9000000")))', '0'],
+    // remainder whose integral quotient is small, however far apart the operands are.
+    ['string(decimals.mod(decimal("1e-9000000"), decimal("1e9000000")))', 'SMALL'],
+    // Coarsening a value's own exponent is free - that path is toDP, not toNearest - so only
+    // the explicit negative *scale* above pays.
+    ['string(decimals.round(decimal("1.23"), -1000000))', '0'],
+    ['string(decimals.round(decimal("1e-9000000")))', '0'],
+    ['string(decimals.floor(decimal("1e-9000000")))', '0'],
+    ['string(decimals.ceil(decimal("1e-9000000")))', '1'],
+    ['string(decimals.trunc(decimal("1e-9000000")))', '0'],
+    // Zero is exempt from the rescale bound: rescaling it never expands anything and its
+    // result stays compact, as `new BigDecimal(BigInteger.ZERO, n)` does.
+    ['string(decimals.round(decimal("0"), 4000))', 'SMALL'],
+    // ...and the exemption has to be honest all the way down, not just in the guard. The
+    // encoder multiplied by `10n ** scale` regardless of what it was multiplying, so a zero
+    // still paid for the power: measured, 0.221 s and 49 MB at scale 10^7, and
+    // `RangeError: Maximum BigInt size exceeded` at 2^31. And decimal.js cannot even express
+    // the rounding at that target - `toDP` rejects a scale above 1e9 with
+    // `[DecimalError] Invalid argument: 2147483647` - so a zero is taken directly at the
+    // requested scale. The reference holds all of these at precision 1
+    // (`new BigDecimal(BigInteger.ZERO, 2147483647)`).
+    ['string(decimals.eq(decimal(b"", 2147483647), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimal(b"", 10000000), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.round(decimal("0"), 2147483647), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.round(decimal("0"), -2147483648), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.trunc(decimal("0"), 2147483647), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.floor(decimal(b"", 2147483647)), decimal("0")))', 'true'],
+    ['string(decimals.eq(decimals.ceil(decimal(b"", 2147483647)), decimal("0")))', 'true'],
+    // And ordinary values, unchanged.
+    ['string(decimals.round(decimal("1.23"), 4000))', 'LONG'],
+    ['string(decimals.add(decimal("12.34"), decimal("1.5")))', '13.84'],
+    ['string(decimals.mod(decimal("1E40"), decimal("3")))', '1'],
+    // `mod` must be exact at any width. The Rust client computed it as `trunc(a/b) * b`
+    // through a division capped at its library's default 100-digit precision and returned a
+    // silently wrong residual past that - 1e101 mod 3 came back as 10. decimal.js's `mod` in
+    // the unbounded context is exact, so this client was never affected; pinned so it stays
+    // that way, and because the coverage above stopped at 1E40 (41 digits). Measured on the
+    // JDK: 10^k mod 3 is 1 for every k, and 10^200 mod 7 is 2.
+    ['string(decimals.mod(decimal("1e99"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e101"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e200"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e10000"), decimal("3")))', '1'],
+    ['string(decimals.mod(decimal("1e200"), decimal("7")))', '2'],
+    ['string(decimals.mod(decimal("-1e101"), decimal("3")))', '-1'],
+  ]
+  it.each(widthAcceptedCases)('%s stays unbounded', async (expr, expected) => {
+    const got = await evalStr(expr)
+    if (expected === 'LONG') {
+      expect(got.length).toBeGreaterThan(4000)
+    } else if (expected === 'SMALL') {
+      expect(got.length).toBeGreaterThan(0)
+    } else {
+      expect(got).toBe(expected)
+    }
+  })
+
+  // A producer-controlled int32 scale used to be expanded into a positional string on *read*,
+  // before any width guard: `decimalPlainString` pads with "0".repeat(scale), so scale 3e8
+  // allocated a 300000002-character string (301 MB) and past V8's maximum string length threw
+  // `RangeError: Invalid string length` - a rule error, but from the string builder rather than
+  // from anything that names the decimal. Constructing from exponent notation is O(1), so an
+  // extreme scale is now cheap to hold and refused only where the digits are actually needed.
+  const extremeScaleCases: [string, RegExp][] = [
+    // Held cheaply, then refused by the rendering guard - which names the plain form.
+    ['string(decimal(b"\\x01", 2147483647))', /the plain form/],
+    ['string(decimal(b"\\x01", -2147483647))', /the plain form/],
+    ['string(decimal(b"\\x01", 300000000))', /the plain form/],
+  ]
+  it.each(extremeScaleCases)('%s is held cheaply and refused on render', async (expr, message) => {
+    await expect(evalStr(expr)).rejects.toThrow(message)
+  })
+
+  // Note what is *not* here: a comparison against an extreme-scale operand. In this client the
+  // constructor itself encodes to the proto form, so `decimal(b"\x01", 2147483647)` is refused
+  // by the coefficient/plain-form guard before any operator sees it - the same reason
+  // `decimal("1e2147483647")` cannot exist here. Exponent notation removes the eager 301 MB
+  // allocation on the way to that refusal; it does not widen the domain.
+  //
+  // And the value is still exact once it is small enough to look at, which is what the plain
+  // string was there for - `.mul(10^-scale)` would have rounded to decimal.js's global
+  // 20-digit precision. These all go through the same exponent-notation construction.
+  const exactAfterExponentNotation: [string, string][] = [
+    ['string(decimal(b"\\x07\\xc6", 2))', '19.90'],
+    ['string(decimal(b"\\x04\\xd2", 2))', '12.34'],
+    ['string(decimal(b"\\x0c", -2))', '1200'],
+    // 30 significant digits, well past decimal.js's global precision.
+    ['string(decimal("123456789012345678901234567890"))', '123456789012345678901234567890'],
+  ]
+  it.each(exactAfterExponentNotation)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // `==` on two Variants is equality of the encoding, so cel-es's structural message equality
+  // is left in place. Sound but incomplete: equal bytes mean equal values, but one value has
+  // many encodings. Decimal is the one message type this client deliberately makes numeric
+  // instead, so the two are asserted together.
+  const variantEqualityCases: [string, string][] = [
+    ['string(variants.parseJson("1") == variants.parseJson("1"))', 'true'],
+    ['string(variants.parseJson("1") != variants.parseJson("1"))', 'false'],
+    ['string(variants.parseJson("{}") == variants.parseJson("{}"))', 'true'],
+    ['string(variants.parseJson("{\\"a\\":1}") == variants.parseJson("{\\"a\\":1}"))', 'true'],
+    ['string(variants.parseJson("1") == variants.parseJson("2"))', 'false'],
+    // The documented incompleteness - one value, many encodings - is asserted at the builder
+    // level instead: this client's parseJson cannot produce the pair, because JSON.parse("1.0")
+    // yields the number 1 and the fractional form is lost, so "1" and "1.0" encode identically
+    // here where Java reads the second as a double.
+    // A Variant nested in a list follows, since list equality recurses through the same helper.
+    ['string([variants.parseJson("1")] == [variants.parseJson("1")])', 'true'],
+    ['string([variants.parseJson("1")] == [variants.parseJson("2")])', 'false'],
+    // Navigation: a field reached the same way from the same document.
+    ['string(variants.field(variants.parseJson("{\\"a\\":1}"), "a") == ' +
+      'variants.field(variants.parseJson("{\\"a\\":1}"), "a"))', 'true'],
+    // Decimal stays numeric, and every other message type stays structural.
+    ['string(decimal("2.0") == decimal(b"\\x14", 1))', 'true'],
+    ['string(decimal("2.0") == decimal("2.00"))', 'true'],
+  ]
+  it.each(variantEqualityCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // ITEM E (localized): decimal(bytes, scale) preserves the given scale, and string() renders it,
+  // so a trailing-zero scale survives (Java new BigDecimal(unscaled, scale).toPlainString()).
+  const bytesScaleCases: [string, string][] = [
+    ['string(decimal(b"\\x07\\xc6", 2))', '19.90'],  // unscaled 1990, scale 2
+    ['string(decimal(b"\\x04\\xd2", 2))', '12.34'],  // unscaled 1234, scale 2
+    ['string(decimal(b"\\x0c", -2))', '1200'],       // unscaled 12, scale -2
+  ]
+  it.each(bytesScaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // decimal(<uint>) must convert exactly across the whole unsigned range. CEL surfaces uint
+  // (proto uint32/uint64 fields and uint literals) as a CelUint wrapper, not a bare bigint, so
+  // this exercises the CelUint arm of toDecimal. The uint64 max is above the signed int64 max,
+  // which a naive int64 cast would wrap to a negative — Java handles it via UnsignedLong.
+  const uintCases: [string, string][] = [
+    ['string(decimal(5u))', '5'],
+    ['string(decimal(4294967295u))', '4294967295'],              // uint32 max
+    ['string(decimal(9223372036854775808u))', '9223372036854775808'],   // 2^63, just past int64 max
+    ['string(decimal(18446744073709551615u))', '18446744073709551615'], // uint64 max
+  ]
+  it.each(uintCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  it('decimal(uint64 max) is exact (no wrap to negative)', async () => {
+    expect(await evalStr(
+      'decimals.eq(decimal(18446744073709551615u), decimal("18446744073709551615")) ? "ok" : "wrong"'
+    )).toBe('ok')
+  })
+
+  // FIX 1: decimal.js's global precision is 20 significant digits and its arithmetic rounds to it,
+  // so the old `new Decimal(unscaled).mul(10^-scale)` construction silently truncated unscaled
+  // values above 20 digits (Java BigDecimal is exact to 38). These reach the constructor,
+  // decimal(bytes, scale), and the fromProtoDecimal reader with a 23-digit unscaled value.
+  describe('exact above 20 significant digits (no precision rounding)', () => {
+    // unscaled 12345678901234567890123 (23 digits), scale 5 -> 123456789012345678.90123.
+    const bytes = 'b"\\x02\\x9d\\x42\\xb6\\x4e\\x76\\x71\\x42\\x44\\xcb"'
+    it('decimal(bytes, scale) preserves all 23 digits', async () => {
+      expect(await evalStr(`string(decimal(${bytes}, 5))`)).toBe('123456789012345678.90123')
+    })
+    it('string(decimal("<23 digits>")) is exact', async () => {
+      expect(await evalStr('string(decimal("123456789012345678.90123"))'))
+        .toBe('123456789012345678.90123')
+    })
+    it('decimals.eq distinguishes values differing beyond the 20th digit', async () => {
+      // If construction rounded to 20 sig digits both would collapse to the same value.
+      expect(await evalStr(
+        'decimals.eq(decimal("123456789012345678.90123"), decimal("123456789012345678.90124")) ? "eq" : "ne"'
+      )).toBe('ne')
+    })
+    it('decimals.eq matches bytes-read and string-parsed 23-digit values', async () => {
+      expect(await evalStr(
+        `decimals.eq(decimal(${bytes}, 5), decimal("123456789012345678.90123")) ? "eq" : "ne"`
+      )).toBe('eq')
+    })
+  })
+
+  // FIX 2: `==` on two Decimals is numeric (value-equal, scale-insensitive), matching decimals.eq,
+  // rather than cel-es's field-by-field message equality (which would treat a scale-1 2.0 and a
+  // scale-0 2.0 as unequal). `!=` negates.
+  describe('== is numeric for Decimals', () => {
+    const eqCases: [string, boolean][] = [
+      ['decimal("2.0") == decimal("2.00")', true],
+      ['decimal("2.0") == decimal("2.0")', true],
+      ['decimal("2.0") == decimal("2.1")', false],
+      ['decimal("2.0") != decimal("2.1")', true],
+      ['decimal("2.0") != decimal("2.00")', false],
+      // Differing stored scale: decimal(bytes=0x14=20, scale=1) = 2.0 vs the normalized literal.
+      ['decimal(b"\\x14", 1) == decimal("2.0")', true],
+      ['decimal(b"\\x14", 1) == decimal("2")', true],
+      ['decimal(b"\\x14", 1) != decimal("2.1")', true],
+      // Both scale-preserving via bytes: unscaled 200 scale 2 (2.00) vs unscaled 20 scale 1 (2.0).
+      ['decimal(b"\\x00\\xc8", 2) == decimal(b"\\x14", 1)', true],
+    ]
+    it.each(eqCases)('%s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+
+    // Non-Decimal == must still behave exactly as the stdlib (the override falls through to a
+    // faithful port of cel-es equality for every other operand pair).
+    const stdlibCases: [string, boolean][] = [
+      ['1 == 1', true],
+      ['1 == 2', false],
+      ['1 == 1u', true],
+      ['1.0 == 1', true],
+      ["'a' == 'a'", true],
+      ["'a' == 'b'", false],
+      ['[1, 2] == [1, 2]', true],
+      ['[1, 2] == [1, 3]', false],
+      ['{"a": 1} == {"a": 1}', true],
+      ['type(1) == int', true],
+      ['1 != 2', true],
+    ]
+    it.each(stdlibCases)('stdlib: %s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+
+    // Numeric Decimal `==` must also apply to Decimals nested in a container: the list/map
+    // recursion inside the equality port routes back through the Decimal-aware entry point rather
+    // than cel-es's field-by-field message equality.
+    //
+    // These MUST use the bytes constructor to discriminate scale: decimal("2.0") and
+    // decimal("2.00") both normalize to scale 0 in decimal.js (string(...) == "2" for both), so a
+    // string-literal version of these cases would pass vacuously. decimal(b"\x14", 1) is 2.0
+    // (unscaled 20, scale 1) and decimal(b"\x00\xc8", 2) is 2.00 (unscaled 200, scale 2) — equal in
+    // value, different in stored scale.
+    describe('== is numeric for Decimals nested in containers', () => {
+      const D20_S1 = 'decimal(b"\\x14", 1)'        // 2.0
+      const D200_S2 = 'decimal(b"\\x00\\xc8", 2)'  // 2.00
+      const D21_S1 = 'decimal(b"\\x15", 1)'        // 2.1
+
+      const nestedCases: [string, boolean][] = [
+        // Top-level control (already covered above; repeated as the baseline for the nested cases).
+        [`${D20_S1} == ${D200_S2}`, true],
+        // List elements.
+        [`[${D20_S1}] == [${D200_S2}]`, true],
+        [`[${D20_S1}] != [${D200_S2}]`, false],
+        [`[${D20_S1}, ${D21_S1}] == [${D200_S2}, ${D21_S1}]`, true],
+        // Map values.
+        [`{"k": ${D20_S1}} == {"k": ${D200_S2}}`, true],
+        [`{"k": ${D20_S1}} != {"k": ${D200_S2}}`, false],
+        [`{"a": ${D20_S1}, "b": ${D21_S1}} == {"a": ${D200_S2}, "b": ${D21_S1}}`, true],
+        // Nested containers: list in list, map in list, list in map.
+        [`[[${D20_S1}]] == [[${D200_S2}]]`, true],
+        [`[[${D20_S1}]] != [[${D200_S2}]]`, false],
+        [`[{"k": ${D20_S1}}] == [{"k": ${D200_S2}}]`, true],
+        [`{"k": [${D20_S1}]} == {"k": [${D200_S2}]}`, true],
+        [`{"k": [${D20_S1}]} != {"k": [${D200_S2}]}`, false],
+        [`[[[${D20_S1}]]] == [[[${D200_S2}]]]`, true],
+        // Non-equal controls: numerically different Decimals stay unequal at every nesting level.
+        [`[decimal("2.0")] == [decimal("2.1")]`, false],
+        [`[decimal("2.0")] != [decimal("2.1")]`, true],
+        [`[${D20_S1}] == [${D21_S1}]`, false],
+        [`{"k": ${D20_S1}} == {"k": ${D21_S1}}`, false],
+        [`[[${D20_S1}]] == [[${D21_S1}]]`, false],
+        // Structural inequality still short-circuits (size / key mismatch).
+        [`[${D20_S1}] == [${D200_S2}, ${D200_S2}]`, false],
+        [`{"a": ${D20_S1}} == {"b": ${D200_S2}}`, false],
+      ]
+      it.each(nestedCases)('%s -> %s', async (expr, expected) => {
+        expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+      })
+
+      // Container equality for every non-Decimal element type must be byte-for-byte unchanged by
+      // the recursion re-point (it only adds a Decimal-pair short-circuit ahead of the fall-through
+      // to the cel-es equality port).
+      const nonDecimalContainerCases: [string, boolean][] = [
+        ['[1, 2, 3] == [1, 2, 3]', true],
+        ['[1, 2, 3] == [1, 2, 4]', false],
+        ['[1] == [1u]', true],              // cross-type numeric equality inside a list
+        ['[1] == [1.0]', true],
+        ['["a", "b"] == ["a", "b"]', true],
+        ['["a", "b"] == ["a", "c"]', false],
+        ['[true, false] == [true, false]', true],
+        ['[true] == [false]', false],
+        ['[b"\\x01\\x02"] == [b"\\x01\\x02"]', true],
+        ['[b"\\x01\\x02"] == [b"\\x01\\x03"]', false],
+        ['[[1, 2], [3]] == [[1, 2], [3]]', true],
+        ['[[1, 2], [3]] == [[1, 2], [4]]', false],
+        ['[] == []', true],
+        ['[1] == ["1"]', false],            // no cross-kind coercion
+        ['{"a": 1, "b": 2} == {"a": 1, "b": 2}', true],
+        ['{"a": 1} == {"a": 2}', false],
+        ['{"a": "x"} == {"a": "x"}', true],
+        ['{"a": true} == {"a": true}', true],
+        ['{"a": b"\\x01"} == {"a": b"\\x01"}', true],
+        ['{"a": [1, 2]} == {"a": [1, 2]}', true],
+        ['{"a": [1, 2]} == {"a": [1, 3]}', false],
+        ['{"a": {"b": 1}} == {"a": {"b": 1}}', true],
+        ['{"a": {"b": 1}} == {"a": {"b": 2}}', false],
+        ['{} == {}', true],
+        ['{1: "a"} == {1: "a"}', true],     // non-string map keys
+        ['[type(1)] == [int]', true],
+        ['[1, 2] != [1, 3]', true],
+        ['{"a": 1} != {"a": 2}', true],
+      ]
+      it.each(nonDecimalContainerCases)('non-Decimal container: %s -> %s', async (expr, expected) => {
+        expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+      })
+    })
+  })
+
+  // FIX 3: `in` over a list is numeric for Decimals too. `@in` is a separate stdlib overload whose
+  // impl calls cel-es's internal `equals` directly, so it never consulted the `_==_` override
+  // above: before the DECIMAL_FUNCS `@in(dyn,list)` registration,
+  // `decimal(b"\x14", 1) in [decimal(b"\x00\xc8", 2)]` was FALSE while `==` on the same pair was
+  // already TRUE.
+  //
+  // Same trap as the nested-`==` cases above: these MUST use the bytes constructor to discriminate
+  // scale. decimal("2.0") and decimal("2.00") both normalize to scale 0 (string(...) == "2" for
+  // both), so a string-literal version of these cases would pass vacuously.
+  describe('in is numeric for Decimals', () => {
+    const D20_S1 = 'decimal(b"\\x14", 1)'        // 2.0  (unscaled 20,  scale 1)
+    const D200_S2 = 'decimal(b"\\x00\\xc8", 2)'  // 2.00 (unscaled 200, scale 2)
+    const D21_S1 = 'decimal(b"\\x15", 1)'        // 2.1  (unscaled 21,  scale 1)
+
+    const inCases: [string, boolean][] = [
+      // The regression itself: differing stored scale, equal value.
+      [`${D20_S1} in [${D200_S2}]`, true],
+      [`${D200_S2} in [${D20_S1}]`, true],
+      // Baseline: `==` on the same pair (was already true; asserted here so the two agree).
+      [`${D20_S1} == ${D200_S2}`, true],
+      // Same scale, equal value.
+      [`${D20_S1} in [${D20_S1}]`, true],
+      // Unequal values stay out, at either scale.
+      [`${D20_S1} in [${D21_S1}]`, false],
+      [`${D20_S1} in [${D21_S1}, decimal(b"\\x16", 1)]`, false],
+      // Found among several candidates, only one of which matches.
+      [`${D20_S1} in [${D21_S1}, ${D200_S2}]`, true],
+      // Empty list.
+      [`${D20_S1} in []`, false],
+      // Negation / `!=` forms.
+      [`!(${D20_S1} in [${D21_S1}])`, true],
+      [`!(${D20_S1} in [${D200_S2}])`, false],
+      [`(${D20_S1} in [${D200_S2}]) != false`, true],
+      // Decimals nested one level down: the membership test recurses through the same
+      // Decimal-aware equality, so a list-of-lists matches on value rather than on scale.
+      [`[${D20_S1}] in [[${D200_S2}]]`, true],
+      [`[${D20_S1}] in [[${D21_S1}]]`, false],
+      [`[${D20_S1}] in [[${D21_S1}], [${D200_S2}]]`, true],
+      [`{"k": ${D20_S1}} in [{"k": ${D200_S2}}]`, true],
+      [`{"k": ${D20_S1}} in [{"k": ${D21_S1}}]`, false],
+    ]
+    it.each(inCases)('%s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+
+    // Non-Decimal `in` must be byte-for-byte unchanged: the list form falls through to the
+    // cel-es equality port, and the `@in(<scalar>, map)` overloads are not registered over at all.
+    const stdlibInCases: [string, boolean][] = [
+      ['1 in [1, 2]', true],
+      ['3 in [1, 2]', false],
+      ['1 in []', false],
+      ['1 in [1u]', true],              // cross-type numeric membership
+      ['1 in [1.0]', true],
+      ["'a' in ['a']", true],
+      ["'a' in ['b', 'c']", false],
+      ['true in [true, false]', true],
+      ['false in [true]', false],
+      ['1.5 in [1.5]', true],
+      ['1u in [1u]', true],
+      ['b"\\x01" in [b"\\x01"]', true],
+      ['b"\\x01" in [b"\\x02"]', false],
+      ['[1] in [[1], [2]]', true],
+      ['[1] in [[2], [3]]', false],
+      ['{"a": 1} in [{"a": 1}]', true],
+      ['1 in ["1"]', false],            // no cross-kind coercion
+      // The map overloads (`@in(string,map)` etc.) are untouched.
+      ["'a' in {'a': 1}", true],
+      ["'b' in {'a': 1}", false],
+      ['1 in {1: "a"}', true],
+      ['2 in {1: "a"}', false],
+      ['true in {true: "a"}', true],
+      ['1.0 in {1.0: "a"}', true],
+      ['1u in {1u: "a"}', true],
+    ]
+    it.each(stdlibInCases)('stdlib: %s -> %s', async (expr, expected) => {
+      expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+    })
+  })
+})
+
+// FIX 4: the bare `timestamp(int)` argument is epoch SECONDS, not millis. @bufbuild/cel's stdlib
+// reads it as millis (`timestampFromMs`); the CEL spec and every other Schema Registry client read
+// it as seconds, so `timestamp(this.epoch) < now` used to be 1000x wrong in JS. TIMESTAMP_FUNCS
+// registers a same-id `timestamp(int)` overload that displaces the stdlib one.
+//
+// Before the fix: `int(timestamp(1700000000))` was 1700000 and
+// `timestamp(1700000000) == timestamp("2023-11-14T22:13:20Z")` was false (it equalled
+// "1970-01-20T16:13:20Z" instead).
+describe('CelValidator timestamp(int) is epoch seconds', () => {
+  const evalStr = async (expr: string): Promise<any> => {
+    const validator = new CelValidator()
+    return validator.execute(rule(expr), null, 0)
+  }
+
+  // `string(timestamp)` renders RFC 3339 and `int(timestamp)` yields the epoch seconds, so these
+  // pin the reading directly rather than only via a comparison.
+  const renderCases: [string, string][] = [
+    ['string(timestamp(1700000000))', '2023-11-14T22:13:20Z'],
+    ['string(int(timestamp(1700000000)))', '1700000000'],
+    ['string(timestamp(0))', '1970-01-01T00:00:00Z'],
+    ['string(timestamp(1))', '1970-01-01T00:00:01Z'],
+    // Negative epoch seconds (pre-1970).
+    ['string(timestamp(-1))', '1969-12-31T23:59:59Z'],
+    // The old millis reading would have rendered 1970-01-20T16:13:20Z here.
+    ['string(timestamp(1700000))', '1970-01-20T16:13:20Z'],
+  ]
+  it.each(renderCases)('%s -> %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  const boolCases: [string, boolean][] = [
+    ['timestamp(1700000000) == timestamp("2023-11-14T22:13:20Z")', true],
+    // The old millis reading; must NOT match any more.
+    ['timestamp(1700000000) == timestamp("1970-01-20T16:13:20Z")', false],
+    ['timestamp(1700000000) != timestamp("1970-01-20T16:13:20Z")', true],
+    ['timestamp(0) == timestamp("1970-01-01T00:00:00Z")', true],
+    ['timestamp(-1) == timestamp("1969-12-31T23:59:59Z")', true],
+    // Ordering, the shape a real rule uses.
+    ['timestamp(1700000000) < timestamp(1700000001)', true],
+    ['timestamp(1700000000) > timestamp("2000-01-01T00:00:00Z")', true],
+    ['now > timestamp(0)', true],
+    // Timestamp accessors see the seconds-based instant.
+    ['timestamp(1700000000).getFullYear() == 2023', true],
+    ['timestamp(1700000000).getHours() == 22', true],
+
+    // ---- MUST NOT REGRESS: the other stdlib `timestamp` overloads ----
+    // timestamp(string): RFC 3339 parsing.
+    ['timestamp("2026-01-01T00:00:00Z") == timestamp("2026-01-01T00:00:00Z")', true],
+    ['timestamp("2026-01-01T00:00:00Z") != timestamp("2026-01-02T00:00:00Z")', true],
+    ['timestamp("2026-01-01T00:00:00Z").getFullYear() == 2026', true],
+    ['timestamp("2023-11-14T22:13:20Z") == timestamp(1700000000)', true],
+    // timestamp(timestamp): identity.
+    ['timestamp(timestamp("2026-01-01T00:00:00Z")) == timestamp("2026-01-01T00:00:00Z")', true],
+    ['timestamp(timestamp(1700000000)) == timestamp(1700000000)', true],
+
+    // ---- timestamp(value, precision): 0 seconds, 3 millis, 6 micros, 9 nanos ----
+    ['timestamp(1700000000, 0) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000, 3) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000000, 6) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000000000, 9) == timestamp(1700000000)', true],
+    ['timestamp(1700000000000, 3) == timestamp("2023-11-14T22:13:20Z")', true],
+    // Sub-second precision survives.
+    ['timestamp(1700000000123, 3) == timestamp("2023-11-14T22:13:20.123Z")', true],
+    ['timestamp(1700000000123456, 6) == timestamp("2023-11-14T22:13:20.123456Z")', true],
+    // The same integer means different instants across the two arities.
+    ['timestamp(1700000000, 3) == timestamp(1700000000)', false],
+    // Pre-epoch values floor toward negative infinity rather than truncating toward zero,
+    // which would leave a proto Timestamp with a negative nanos field.
+    ['timestamp(-500, 3) == timestamp("1969-12-31T23:59:59.500Z")', true],
+    ['timestamp(-1, 9) == timestamp("1969-12-31T23:59:59.999999999Z")', true],
+  ]
+  it.each(boolCases)('%s -> %s', async (expr, expected) => {
+    expect(await evalStr(`${expr} ? "T" : "F"`)).toBe(expected ? 'T' : 'F')
+  })
+
+  // With the unit a number rather than a name, rejecting anything outside {0, 3, 6, 9} is the
+  // only thing between a typo and a silently wrong instant.
+  it.each([1, 2, 4, 5, 7, 8, 10, -3])('rejects precision %s', async (precision) => {
+    const validator = new CelValidator()
+    await expect(
+      validator.execute(rule(`timestamp(1700000000, ${precision}) == now`), null, 0))
+      .rejects.toThrow(/unknown precision/)
+  })
+
+  // CEL's timestamp range is google.protobuf.Timestamp's: 0001-01-01T00:00:00Z through
+  // 9999-12-31T23:59:59.999999999Z. @bufbuild/protobuf's create() performs no validation, so
+  // without an explicit check `timestamp(253402300800)` built a year-10000 instant that merely
+  // compared unequal — Java, Go, Python, C# and C++ all fail the rule here instead.
+  it.each([
+    'timestamp(253402300800)',
+    'timestamp(-62135596801)',
+    'timestamp(253402300800000, 3)',
+  ])('rejects out-of-range %s', async (expr) => {
+    const validator = new CelValidator()
+    await expect(validator.execute(rule(`${expr} == now`), null, 0))
+      .rejects.toThrow(/must be in range/)
+  })
+
+  // Both boundaries are themselves valid, and render as the same instants Java does.
+  // (Asserted on the rendered instant rather than .getFullYear(), which @bufbuild/cel reports as
+  // 1901 for year 1 — JS's two-digit-year mapping, where `new Date(1, ...)` means 1901.)
+  it.each([
+    "string(timestamp(253402300799)) == '9999-12-31T23:59:59Z'",
+    "string(timestamp(-62135596800)) == '0001-01-01T00:00:00Z'",
+  ])('accepts boundary %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, 0)).toBe(true)
+  })
+})
+
+// Scale preservation across every decimal-producing operation (Java BigDecimal parity).
+//
+// decimal.js has no scale concept - `new Decimal("2.00")` normalizes to 2 - so results encoded
+// from decimalPlaces() silently dropped trailing zeros, and `string(decimal("2.00"))` came back
+// as "2". Scale is now recovered from each operand and carried through explicitly, following
+// BigDecimal's rules: add/sub/mod take max(s1,s2), mul takes s1+s2, neg/abs keep the operand's,
+// greatest/least keep the *selected* operand's, sqrt uses the preferred scale/2 when the root is
+// exact, and div alone has no derived scale (MathContext gives the quotient its own).
+//
+// Every expectation below is the verbatim output of the Java reference for the same expression.
+describe('CelValidator decimal scale preservation (Java BigDecimal parity)', () => {
+  const evalStr = async (expr: string): Promise<any> => {
+    const validator = new CelValidator()
+    return validator.execute(rule(expr), null, 0)
+  }
+
+  const scaleCases: [string, string][] = [
+    ['string(decimal("2.00"))', '2.00'],
+    ['string(decimal("2.0"))', '2.0'],
+    ['string(decimal("2"))', '2'],
+    ['string(decimal("0.00"))', '0.00'],
+    ['string(decimal("-1.50"))', '-1.50'],
+    ['string(decimal("1E+3"))', '1000'],
+    ['string(decimal("2.00e1"))', '20.0'],
+    ['string(decimal("1e-5"))', '0.00001'],
+    ['string(decimal(5))', '5'],
+    ['string(decimal(5.25))', '5.25'],
+    ['string(decimal(decimal("3.400")))', '3.400'],
+    ['string(decimals.add(decimal("1.5"), decimal("1.50")))', '3.00'],
+    ['string(decimals.add(decimal("1.005"), decimal("2.1")))', '3.105'],
+    ['string(decimals.add(decimal("1"), decimal("2")))', '3'],
+    ['string(decimals.sub(decimal("1.5"), decimal("1.50")))', '0.00'],
+    ['string(decimals.sub(decimal("5.250"), decimal("1.1")))', '4.150'],
+    ['string(decimals.mul(decimal("2.0"), decimal("3.0")))', '6.00'],
+    ['string(decimals.mul(decimal("1.25"), decimal("4.000")))', '5.00000'],
+    ['string(decimals.mul(decimal("2"), decimal("3")))', '6'],
+    ['string(decimals.div(decimal("1.0"), decimal("4.0")))', '0.25'],
+    ['string(decimals.div(decimal("1.00"), decimal("4.0")))', '0.25'],
+    ['string(decimals.div(decimal("1"), decimal("4")))', '0.25'],
+    ['string(decimals.div(decimal("1"), decimal("3")))', '0.33333333333333333333333333333333333333'],
+    ['string(decimals.div(decimal("10.0"), decimal("2.0")))', '5'],
+    ['string(decimals.mod(decimal("5.50"), decimal("2.0")))', '1.50'],
+    ['string(decimals.mod(decimal("5.5"), decimal("2.00")))', '1.50'],
+    ['string(decimals.mod(decimal("7"), decimal("3")))', '1'],
+    ['string(decimals.greatest(decimal("2.0"), decimal("2.00")))', '2.0'],
+    ['string(decimals.greatest(decimal("3.00"), decimal("2.0")))', '3.00'],
+    ['string(decimals.least(decimal("2.0"), decimal("2.00")))', '2.0'],
+    ['string(decimals.least(decimal("3.00"), decimal("2.0")))', '2.0'],
+    ['string(decimals.sqrt(decimal("4.00")))', '2.0'],
+    ['string(decimals.sqrt(decimal("4")))', '2'],
+    ['string(decimals.sqrt(decimal("2")))', '1.4142135623730950488016887242096980786'],
+    ['string(decimals.sqrt(decimal("9.0000")))', '3.00'],
+    ['string(decimals.neg(decimal("1.50")))', '-1.50'],
+    ['string(decimals.abs(decimal("-1.50")))', '1.50'],
+    ['string(decimals.floor(decimal("1.50")))', '1'],
+    ['string(decimals.ceil(decimal("1.50")))', '2'],
+    ['string(decimals.trunc(decimal("1.50")))', '1'],
+    ['string(decimals.trunc(decimal("1.2999"), 2))', '1.29'],
+    ['string(decimals.trunc(decimal("1.5"), 4))', '1.5'],
+    ['string(decimals.round(decimal("2.5"), 2))', '2.50'],
+    ['string(decimals.round(decimal("1.50")))', '2'],
+    ['string(decimals.add(decimals.mul(decimal("2.0"), decimal("3.0")), decimal("1.000")))', '7.000'],
+    ['string(decimal(5.0))', '5.0'],
+    ['string(decimal(100.0))', '100.0'],
+    ['string(decimal(0.1))', '0.1'],
+    ['string(decimals.sqrt(decimal("1.0")))', '1'],
+    ['string(decimals.sqrt(decimal("0.0004")))', '0.02'],
+    ['string(decimals.sqrt(decimal("2.25")))', '1.5'],
+    ['string(decimals.sqrt(decimal("6.250000")))', '2.500'],
+    ['string(decimals.sqrt(decimal("100.000")))', '10.0'],
+    ['string(decimals.trunc(decimal("1.50"), 4))', '1.50'],
+    ['string(decimals.trunc(decimal("2.00")))', '2'],
+    ['string(decimals.floor(decimal("2.00")))', '2'],
+    ['string(decimals.ceil(decimal("2.00")))', '2'],
+    ['string(decimals.round(decimal("2.00")))', '2'],
+    ['string(decimals.add(decimal("1E+3"), decimal("1")))', '1001'],
+    ['string(decimals.mul(decimal("1E+3"), decimal("2")))', '2000'],
+    ['string(decimals.neg(decimal("1E+3")))', '-1000'],
+    ['string(decimals.greatest(decimal("2.00"), decimal("2.0")))', '2.00'],
+    ['string(decimals.least(decimal("2.00"), decimal("2.0")))', '2.00'],
+  ]
+  it.each(scaleCases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // Equality stays numeric across differing scales. Preserving scale means two decimals that
+  // used to encode to byte-identical protos ("2.00" and "2.0" both normalized to 2) now differ
+  // structurally, so anything that fell back to a message comparison would start reporting them
+  // unequal - where Java compares by value. Lists are included because container equality is
+  // exactly where such a fallback would hide.
+  const equalityCases: [string, boolean][] = [
+    ['decimal("2.00") == decimal("2.0")', true],
+    ['decimal("2.00") == decimal("2")', true],
+    ['decimals.eq(decimal("2.00"), decimal("2.0"))', true],
+    ['decimal("2.00") != decimal("2.0")', false],
+    ['decimal("2.00") in [decimal("2.0"), decimal("9")]', true],
+    ['decimals.add(decimal("1.5"), decimal("1.50")) == decimal("3")', true],
+    ['decimal("0.00") == decimal("0")', true],
+    ['[decimal("2.00")] == [decimal("2.0")]', true],
+  ]
+  it.each(equalityCases)('%s is %s', async (expr, expected) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, 0)).toBe(expected)
+  })
+})
+
+describe('CelValidator variant functions', () => {
+  // `this` is a JSON string; variants.parseJson(this) turns it into a Variant, then the
+  // variants.* accessors navigate and extract. Covers the null model (absent vs
+  // variant-null), navigation, typed extraction, and toJson.
+  const V = 'variants.parseJson(this)'
+  const json =
+    '{"name":"alice","age":30,"scores":[10,20,30],"nested":{"x":1},"explicit":null}'
+  const cases: string[] = [
+    `variants.type(${V}) == 'object'`,
+    `variants.as(variants.field(${V}, 'name'), 'string') == 'alice'`,
+    `variants.as(variants.field(${V}, 'age'), 'int') == 30`,
+    `variants.field(${V}, 'missing') == null`,
+    `variants.isNull(variants.field(${V}, 'explicit'))`,
+    `!variants.isNull(variants.field(${V}, 'missing'))`,
+    `variants.as(variants.path(${V}, '$.nested.x'), 'int') == 1`,
+    `variants.as(variants.index(variants.field(${V}, 'scores'), 2), 'int') == 30`,
+    `variants.tryAs(variants.field(${V}, 'age'), 'string') == null`,
+    `variants.toJson(variants.field(${V}, 'nested')) == '{"x":1}'`,
+  ]
+
+  it.each(cases)('evaluates %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
+  })
+
+  // An *absent* variant — a Protobuf field left unset, or an Avro variant record whose byte
+  // fields are empty — carries no metadata, so there is nothing to read. It reads as CEL null
+  // and every accessor propagates that, rather than the Variant constructor throwing on the
+  // metadata version byte it cannot read.
+  describe('absent variant', () => {
+    const absent = create(VariantSchema, {
+      metadata: new Uint8Array(0),
+      value: new Uint8Array(0),
+    })
+    const absentCases: string[] = [
+      'variants.type(this) == null',
+      // isNull is false, not an error: an absent variant is not a JSON null.
+      '!variants.isNull(this)',
+      "variants.field(this, 'name') == null",
+      "variants.path(this, '$.name') == null",
+      'variants.toJson(this) == null',
+      // The explicit constructor reports it as CEL null too, like variant(null).
+      'variant(this) == null',
+    ]
+
+    it.each(absentCases)('evaluates %s', async (expr) => {
+      const validator = new CelValidator()
+      expect(await validator.execute(rule(expr), VariantSchema, absent)).toBe(true)
+    })
+
+    // Absent must stay distinguishable from a variant that genuinely holds JSON null: the
+    // former is CEL null, the latter a present variant whose type is NULL.
+    it('is distinct from an explicit JSON null', async () => {
+      const validator = new CelValidator()
+      expect(
+        await validator.execute(
+          rule("variants.isNull(variants.parseJson('null'))"), null, 'null')
+      ).toBe(true)
+      expect(
+        await validator.execute(
+          rule("variants.type(variants.parseJson('null')) != null"), null, 'null')
+      ).toBe(true)
+    })
+  })
+
+  // A string is rejected by variant(...) with a redirect to parseJson.
+  it('rejects a string passed to variant()', async () => {
+    const validator = new CelValidator()
+    await expect(validator.execute(rule("variants.type(variant(this)) == 'object'"), null, 'x'))
+      .rejects.toThrow(/Could not execute/)
+  })
+
+  // variant(null) yields CEL null instead of erroring (matching the Java reference), and it
+  // composes: a null flows through the accessors as absent.
+  const nullCases: string[] = [
+    'variant(null) == null',
+    "variants.field(variant(null), 'k') == null",
+    // An absent field is null, and variant(null) of it is still null.
+    `variant(variants.field(${V}, 'missing')) == null`,
+  ]
+
+  it.each(nullCases)('variant(null) yields CEL null: %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
+  })
+
+  // variants.tryParseJson soft-fails to CEL null on unparseable input, including empty and
+  // whitespace-only strings (JSON.parse throws SyntaxError, which tryParseJson catches).
+  const tryParseNullCases: string[] = [
+    "variants.tryParseJson('') == null",
+    "variants.tryParseJson('   ') == null",
+    "variants.tryParseJson('{not json') == null",
+  ]
+
+  it.each(tryParseNullCases)('tryParseJson soft-fails to null: %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
+  })
+
+  // The non-finite bareword contract, end to end through the CEL layer. JSON.parse rejects the
+  // barewords, so parseJson rewrites them; Java (Jackson), Python, C#, Rust, Go and C++ all
+  // accept them, and every client's toJson writes them back out as barewords.
+  const nonFiniteCases: string[] = [
+    "variants.type(variants.parseJson('NaN')) == 'double'",
+    "variants.type(variants.parseJson('Infinity')) == 'double'",
+    "variants.type(variants.parseJson('-Infinity')) == 'double'",
+    "variants.toJson(variants.parseJson('NaN')) == 'NaN'",
+    "variants.toJson(variants.parseJson('Infinity')) == 'Infinity'",
+    "variants.toJson(variants.parseJson('-Infinity')) == '-Infinity'",
+    `variants.toJson(variants.parseJson('{"a":NaN}')) == '{"a":NaN}'`,
+    `variants.toJson(variants.parseJson('[NaN,Infinity,-Infinity]')) == '[NaN,Infinity,-Infinity]'`,
+    `variants.type(variants.field(variants.parseJson('{"a":NaN}'), 'a')) == 'double'`,
+    // Magnitude overflow, which JSON.parse already reads as Infinity.
+    "variants.toJson(variants.parseJson('1e400')) == 'Infinity'",
+    // A bareword is a successful parse, not a soft failure.
+    "variants.tryParseJson('NaN') != null",
+    // Spelling and case are exact, matching Jackson, so these stay soft failures.
+    "variants.tryParseJson('nan') == null",
+    "variants.tryParseJson('INFINITY') == null",
+  ]
+
+  it.each(nonFiniteCases)('non-finite through CEL: %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, json)).toBe(true)
+  })
+})
+
+describe('CelValidator variant serde into CEL', () => {
+  const expr = "variants.as(variants.field(variant(this), 'name'), 'string') == 'alice'"
+
+  // An Avro `variant` logical-type field decodes to a Variant (via the production
+  // VariantLogicalType), which then flows into CEL through variant(this).
+  it('passes an Avro variant (logical type) into CEL', async () => {
+    const type = avro.Type.forSchema(
+      {
+        type: 'record', name: 'confluent.type.Variant', logicalType: 'variant',
+        fields: [{ name: 'metadata', type: 'bytes' }, { name: 'value', type: 'bytes' }],
+      } as avro.Schema,
+      { logicalTypes: { variant: VariantLogicalType } },
+    )
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
+    const decoded = type.fromBuffer(type.toBuffer(new Variant(value, metadata)))
+    expect(decoded).toBeInstanceOf(Variant)
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, decoded)).toBe(true)
+  })
+
+  // A confluent.type.Variant proto message flows into CEL through variant(this).
+  it('passes a Protobuf variant message into CEL', async () => {
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
+    const msg = create(VariantSchema, { value, metadata })
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), VariantSchema, msg)).toBe(true)
+  })
+
+  // Cross-client parity: a variant value is usable with the variants.* accessors with no
+  // variant(...) call, in both formats, and the wrapped form keeps working alongside it. The
+  // accessors are declared [DYN, ...] and coerce inside, so they take whatever the decoder
+  // produced.
+  const bareCases: [string, boolean][] = [
+    // Bare: no constructor call.
+    ["variants.type(this) == 'object'", true],
+    ["variants.as(variants.field(this, 'name'), 'string') == 'alice'", true],
+    ["variants.as(variants.path(this, '$.age'), 'int') == 30", true],
+    // The wrapped form must keep working (variant(...) re-entry).
+    ["variants.as(variants.field(variant(this), 'name'), 'string') == 'alice'", true],
+    // A missing key is CEL null, not an error.
+    ["variants.field(this, 'nope') == null", true],
+    // Negative control.
+    ["variants.as(variants.field(this, 'name'), 'string') == 'bob'", false],
+  ]
+
+  it.each(bareCases)('Avro variant needs no constructor: %s', async (e, expected) => {
+    const type = avro.Type.forSchema(
+      {
+        type: 'record', name: 'confluent.type.Variant', logicalType: 'variant',
+        fields: [{ name: 'metadata', type: 'bytes' }, { name: 'value', type: 'bytes' }],
+      } as avro.Schema,
+      { logicalTypes: { variant: VariantLogicalType } },
+    )
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
+    const decoded = type.fromBuffer(type.toBuffer(new Variant(value, metadata)))
+    expect(await new CelValidator().execute(rule(e), null, decoded)).toBe(expected)
+  })
+
+  // `variants.isNull` must coerce its receiver like every other accessor. It is declared [DYN],
+  // so a bare variant field reaches it. A bare *object* cannot catch a missing coercion - isNull
+  // on an object is false either way - so only a variant that is itself null discriminates.
+  it.each([['null', true], ['5', false]] as [string, boolean][])(
+    'variants.isNull coerces a bare receiver: %s', async (json, expected) => {
+      const { value, metadata } = parseJson(json)
+      const msg = create(VariantSchema, { value, metadata })
+      expect(await new CelValidator().execute(
+        rule('variants.isNull(this)'), VariantSchema, msg)).toBe(expected)
+      // The wrapped form has always worked and must keep working.
+      expect(await new CelValidator().execute(
+        rule('variants.isNull(variant(this))'), VariantSchema, msg)).toBe(expected)
+    })
+
+  it.each(bareCases)('Protobuf variant needs no constructor: %s', async (e, expected) => {
+    const { value, metadata } = parseJson('{"name":"alice","age":30}')
+    const msg = create(VariantSchema, { value, metadata })
+    expect(await new CelValidator().execute(rule(e), VariantSchema, msg)).toBe(expected)
+  })
+})
+
+// Cross-client parity: a bare confluent.type.Decimal field is usable with decimals.*, ==,
+// string() and double() with no decimal(...) call on it. The discriminating case is the
+// scale-differing equality: a client comparing decimals by their protobuf encoding (unscaled
+// bytes plus scale, field by field) answers false for decimal("12.340"), because 12.34 and
+// 12.340 are the same number in two different encodings.
+describe('CelValidator bare protobuf decimal', () => {
+  const bareDecimalCases: [string, boolean][] = [
+    // Bare: no constructor call on the field.
+    ['decimals.eq(this, decimal("12.34"))', true],
+    ['decimals.gt(this, decimal("10.00"))', true],
+    // The wrapped form must keep working (decimal(...) re-entry).
+    ['decimals.eq(decimal(this), decimal("12.34"))', true],
+    // `==` is numeric on it: 12.34 equals 12.340 despite the differing scale.
+    ['this == decimal("12.340")', true],
+    ['this != decimal("12.340")', false],
+    ['decimals.lt(this, decimal("100"))', true],
+    // Negative control: a false comparison must still be false.
+    ['decimals.gt(this, decimal("100"))', false],
+    ['string(this) == "12.34"', true],
+    ['double(this) == 12.34', true],
+  ]
+
+  it.each(bareDecimalCases)('Protobuf decimal needs no constructor: %s', async (e, expected) => {
+    // 12.34 = unscaled 1234 (0x04D2) at scale 2.
+    const msg = create(DecimalSchema, { value: new Uint8Array([0x04, 0xd2]), scale: 2 })
+    expect(await new CelValidator().execute(rule(e), DecimalSchema, msg)).toBe(expected)
+  })
+})
+
+// A variant timestamp spans the whole int64 range while a CEL timestamp is 0001-9999, so an
+// out-of-range value is reachable from data. It used to be built anyway, leaving an instant that
+// could not be rendered - measured, `string()` failed with "cannot encode message
+// google.protobuf.Timestamp" - but could still be compared, so `< now` answered a confident
+// false for a value that is not a time. Refused now, and routed through the as/tryAs split so a
+// rule can guard, matching the reference's variantGetTimestamp.
+describe('variants.as(v, "timestamp") is range-checked', () => {
+  const MAX_MICROS = 253402300799n * 1_000_000n + 999_999n
+  const MIN_MICROS = -62135596800n * 1_000_000n
+
+  function tsVariant(micros: bigint): Variant {
+    const b = new VariantBuilder()
+    b.appendTimestampTz(micros)
+    return b.build()
+  }
+
+  it.each([0n, MAX_MICROS, MIN_MICROS])('accepts %s', async (micros) => {
+    const v = tsVariant(micros)
+    const validator = new CelValidator()
+    expect(await validator.execute(
+      rule('variants.as(this, "timestamp") == variants.as(this, "timestamp")'), null, v))
+      .toBe(true)
+    // tryAs answers a timestamp, not null - otherwise the guard case below proves nothing.
+    expect(await validator.execute(
+      rule('variants.tryAs(this, "timestamp") == null'), null, v)).toBe(false)
+  })
+
+  it.each([9223372036854775807n, -9223372036854775807n, MAX_MICROS + 1_000_000n])(
+    'refuses %s and names the range', async (micros) => {
+      const v = tsVariant(micros)
+      const validator = new CelValidator()
+      await expect(validator.execute(
+        rule('variants.as(this, "timestamp") != null'), null, v))
+        .rejects.toThrow('is outside 0001-01-01T00:00:00Z')
+      // tryAs answers CEL null instead, so a rule can guard on it.
+      expect(await validator.execute(
+        rule('variants.tryAs(this, "timestamp") == null'), null, v)).toBe(true)
+    })
+})
+
+// `scale` is an int32 on the wire. Two paths reach the encoder out of range, and both only for
+// **zero**: the plain-form width ceiling caps a non-zero scale at 9999999, and zero is exempt
+// from it. Before the guard, protobuf-es stored the value verbatim and the failure surfaced at
+// serialization as "cannot encode field confluent.type.Decimal.scale" - naming the field, not
+// the rule. C++ and Rust already refuse at their encoders for the same reason.
+describe('a scale outside int32 is refused', () => {
+  it.each([
+    // The string constructor: derived scale 2147483648. The reference refuses this at parse
+    // too - new BigDecimal("0E-2147483648") is NumberFormatException("Scale out of range.").
+    ['decimal("0E-2147483648") == decimal("0")', '2147483648'],
+    // decimals.mul sums the operand scales: 2e9 + 2e9.
+    ['decimals.mul(decimal("0E-2000000000"), decimal("0E-2000000000")) == decimal("0")',
+      '4000000000'],
+  ])('%s', async (expr, scale) => {
+    const validator = new CelValidator()
+    await expect(validator.execute(rule(expr), null, 'x'))
+      .rejects.toThrow(`scale ${scale} does not fit the int32 scale field`)
+  })
+
+  // Inside int32 it still answers - including a zero at a wide but legal scale, so the guard
+  // cannot be satisfied by refusing every zero.
+  it.each([
+    'decimal("0E-2000000000") == decimal("0")',
+    'decimal("0.00") == decimal("0")',
+    'decimals.add(decimal("1.50"), decimal("2.25")) == decimal("3.75")',
+  ])('still answers %s', async (expr) => {
+    const validator = new CelValidator()
+    expect(await validator.execute(rule(expr), null, 'x')).toBe(true)
+  })
+})
+
+// An exact div/sqrt result carries the reference's *preferred* scale, not the quotient's own
+// natural scale: `dividend.scale - divisor.scale` for divide, `scale / 2` truncated toward zero
+// for square root. Trailing zeros are kept down to it and padded up to it, never stripped below.
+//
+// div was previously left on decimal.js's own normalization, and the comment defending that
+// cited `10.0/2.0` -> "5". The example is correct; it is also the only shape that cannot tell
+// the two behaviours apart, because its preferred scale is 1 - 1 = 0. It is kept below as the
+// first case, now alongside the mismatched pairs that do separate them.
+describe('CelValidator exact div/sqrt carry the preferred scale', () => {
+  const evalStr = async (expr: string): Promise<any> =>
+    new CelValidator().execute(rule(expr), null, 0)
+
+  const cases: [string, string][] = [
+    ['string(decimals.div(decimal("10.0"), decimal("2.0")))', '5'],
+    ['string(decimals.div(decimal("10.0"), decimal("2")))', '5.0'],
+    ['string(decimals.div(decimal("6.0"), decimal("3")))', '2.0'],
+    ['string(decimals.div(decimal("10.00"), decimal("2")))', '5.00'],
+    ['string(decimals.div(decimal("1.000"), decimal("0.1")))', '10.00'],
+    ['string(decimals.div(decimal("-6.0"), decimal("3")))', '-2.0'],
+    ['string(decimals.div(decimal("6.0"), decimal("-3")))', '-2.0'],
+    ['string(decimals.div(decimal("100"), decimal("1E+2")))', '1.00'],
+    // ...but never below the exact quotient's own scale: 10/4 is 2.5 at a preferred 0.
+    ['string(decimals.div(decimal("10"), decimal("4")))', '2.5'],
+    ['string(decimals.div(decimal("1.0"), decimal("8")))', '0.125'],
+    ['string(decimals.div(decimal("100.0"), decimal("0.5")))', '200'],
+    ['string(decimals.div(decimal("1000"), decimal("10")))', '100'],
+    // An inexact quotient keeps all 38 digits - padding it would claim digits it lacks, and a
+    // trailing zero there can be significant (1/99 ends in one).
+    ['string(decimals.div(decimal("1.00000"), decimal("3")))', '0.' + '3'.repeat(38)],
+    ['string(decimals.div(decimal("1"), decimal("99")))', '0.010101010101010101010101010101010101010'],
+    ['string(decimals.sqrt(decimal("4.00")))', '2.0'],
+    ['string(decimals.sqrt(decimal("100.0000")))', '10.00'],
+    ['string(decimals.sqrt(decimal("0.0001")))', '0.01'],
+    ['string(decimals.sqrt(decimal("9.0")))', '3'],
+    ['string(decimals.sqrt(decimal("400.0")))', '20'],
+    ['string(decimals.sqrt(decimal("16.000")))', '4.0'],
+    ['string(decimals.sqrt(decimal("2")))', '1.4142135623730950488016887242096980786'],
+  ]
+  it.each(cases)('%s == %s', async (expr, expected) => {
+    expect(await evalStr(expr)).toBe(expected)
+  })
+
+  // The scale itself, not its rendering. `string()` is plain form, so it reads the same at
+  // several scales - a zero writes as "0" at every non-positive scale, and 500 writes as "500"
+  // whether its scale is -2 or -1 - but the scale is a field of the confluent.type.Decimal
+  // encoding. The result *is* that message, so a rule can select `.scale` off it.
+  //
+  // Two things are only visible here. A zero takes the preferred scale outright, in both
+  // directions, because the reference returns `zeroValueOf(preferredScale)`; and the target is
+  // `max(preferred, minimalScale)` over the *stripped* scale, which can be negative -
+  // `decimalPlaces()` floors at 0, so it answered 0 where the reference says -2.
+  const scaleCases: [string, number][] = [
+    ['decimals.sqrt(decimal("0"))', 0],
+    ['decimals.sqrt(decimal("0.0"))', 0],
+    ['decimals.sqrt(decimal("0.00"))', 1],
+    ['decimals.sqrt(decimal("0.000"))', 1],
+    ['decimals.div(decimal("0.00"), decimal("3"))', 2],
+    ['decimals.div(decimal("0"), decimal("3.00"))', -2],
+    ['decimals.div(decimal("0.00"), decimal("3.0000"))', -2],
+    ['decimals.sqrt(decimal("4E+2"))', -1],
+    ['decimals.sqrt(decimal("1E+4"))', -2],
+    // scale -3 halves toward zero to -1, not down to the floor's -2.
+    ['decimals.sqrt(decimal("250E+3"))', -1],
+    ['decimals.div(decimal("100.0"), decimal("0.5"))', 0],
+    ['decimals.div(decimal("6.0"), decimal("3"))', 1],
+  ]
+  it.each(scaleCases)('%s has scale %s', async (expr, scale) => {
+    expect(await evalStr(`${expr}.scale == ${scale}`)).toBe(true)
+  })
+})
+
+// The preferred scale does not override the 38-digit context precision. The reference pads
+// toward the preferred scale only while the result still fits in `mc.precision` significant
+// digits and stops short otherwise, so the target is
+// min(preferred, minimalScale + (38 - minimalPrecision)), floored at the minimal scale.
+//
+// Without the cap the padding ran to the raw preferred scale: `1.<100 zeros> / 1` came back
+// with 101 significant digits, and `sqrt(1.<100 zeros>)` with 51.
+describe('CelValidator the preferred scale cannot exceed the context precision', () => {
+  const evalStr = async (expr: string): Promise<any> =>
+    new CelValidator().execute(rule(expr), null, 0)
+  const z = (n: number) => '0'.repeat(n)
+
+  const cases: [string, string][] = [
+    // 37 zeros is exactly 38 significant digits: the last reachable preferred scale.
+    [`string(decimals.div(decimal("1.${z(37)}"), decimal("1")))`, `1.${z(37)}`],
+    // 40 and 100 would need 41 and 101; both stop at 37.
+    [`string(decimals.div(decimal("1.${z(40)}"), decimal("1")))`, `1.${z(37)}`],
+    [`string(decimals.div(decimal("1.${z(100)}"), decimal("1")))`, `1.${z(37)}`],
+    [`string(decimals.div(decimal("2.${z(100)}"), decimal("1")))`, `2.${z(37)}`],
+    // The cap is on precision, not on scale: 0.5 spends a digit before the padding starts and
+    // so reaches scale 38, where 1 reaches only 37...
+    [`string(decimals.div(decimal("1.${z(100)}"), decimal("2")))`, `0.5${z(37)}`],
+    // ...and 0.125 spends three, reaching 38 from a minimal scale of 3.
+    [`string(decimals.div(decimal("1.${z(100)}"), decimal("8")))`, `0.125${z(35)}`],
+    // sqrt: preferred 20 fits, 37 is exactly the ceiling, 50 does not fit.
+    [`string(decimals.sqrt(decimal("1.${z(40)}")))`, `1.${z(20)}`],
+    [`string(decimals.sqrt(decimal("1.${z(74)}")))`, `1.${z(37)}`],
+    [`string(decimals.sqrt(decimal("1.${z(100)}")))`, `1.${z(37)}`],
+  ]
+  it.each(cases.map(([e, w], i) => [i, e, w] as [number, string, string]))(
+    'case %s keeps 38 significant digits', async (_i, expr, expected) => {
+      expect(await evalStr(expr)).toBe(expected)
+    })
+
+  // A zero is exempt: it is one digit at any scale, so it keeps the full preferred scale.
+  // Measured on the reference: 0.<100 zeros> / 1 is scale 100 at precision 1.
+  const zeroCases: [string, number][] = [
+    [`decimals.div(decimal("0.${z(100)}"), decimal("1"))`, 100],
+    [`decimals.div(decimal("0.${z(100)}"), decimal("3.0"))`, 99],
+  ]
+  it.each(zeroCases)('%s has scale %s', async (expr, scale) => {
+    expect(await evalStr(`${expr}.scale == ${scale}`)).toBe(true)
+  })
+})
+
+// cel-es resolves `string(x)` / `double(x)` against its own stdlib overloads before it consults a
+// registered function, so the Decimal extensions only run for what no stdlib overload matched.
+// That left them serving as a lenient re-implementation of the stdlib: `double(false)` was 0 and a
+// bytes/list/map/message argument became NaN, where the reference reports "found no matching
+// overload" and every other client refuses. Measured against cel-java 0.13.1 for each row.
+describe('string/double have no overload for the types CEL does not declare', () => {
+  const validator = new CelValidator()
+  const evalExpr = async (expr: string): Promise<any> => validator.execute(rule(expr), null, 0)
+
+  const refused: [string, string][] = [
+    ['double(false)', 'bool'],
+    ['double(true)', 'bool'],
+    ['double(b"12")', 'bytes'],
+    ['double([1, 2])', 'list'],
+    ['double({"a": 1})', 'map'],
+    ['double(timestamp("1970-01-01T00:00:01Z"))', 'google.protobuf.Timestamp'],
+    ['double(duration("1s"))', 'google.protobuf.Duration'],
+    ['string([1, 2])', 'list'],
+    ['string({"a": 1})', 'map'],
+  ]
+  it.each(refused)('%s is refused as (%s)', async (expr, typeName) => {
+    await expect(evalExpr(`string(${expr})`)).rejects.toThrow(
+      new RegExp(`found no matching overload for '(string|double)' applied to \\(${typeName.replace(/\./g, '\\.')}\\)`))
+  })
+
+  // The stdlib overloads the extensions must not have disturbed: each of these is handled by
+  // cel-es before the Decimal arm is reached, and each matches the reference.
+  const stdlib: [string, string][] = [
+    ['string(1)', '1'],
+    ['string(true)', 'true'],
+    ['string(b"ab")', 'ab'],
+    ['string(uint(3))', '3'],
+    ['string("x")', 'x'],
+    ['string(timestamp("2023-11-14T22:13:20.123Z"))', '2023-11-14T22:13:20.123Z'],
+    ['string(duration("1s"))', '1s'],
+    ['string(double("1.5"))', '1.5'],
+    ['string(double(uint(3)))', '3'],
+    ['string(decimal("12.30"))', '12.30'],
+    ['string(double(decimal("100.50")))', '100.5'],
+  ]
+  it.each(stdlib)('%s == %s', async (expr, expected) => {
+    expect(await evalExpr(expr)).toBe(expected)
   })
 })
