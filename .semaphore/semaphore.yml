@@ -156,6 +156,41 @@ blocks:
             - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
             - make integtest
 
+  # The s390x counterpart of the Linux test jobs above. Each job builds from source and runs
+  # its tests in an ubuntu:24.04 container, with brokers started from release tarballs; see
+  # .semaphore/test-s390x.sh for why. Coverage is not pushed: the amd64/arm64 jobs already
+  # collect it, under artifact names these jobs would collide with.
+  - name: "Linux s390x: Build and test"
+    run:
+      when: "change_in(['/package.json', '/lib', '/src', '/test', '/schemaregistry', '/schemaregistry-examples', '/proto', '/.semaphore/test-s390x.sh']) AND tag !~ '^v[0-9]\\.'"
+    dependencies: [ ]
+    task:
+      agent:
+        machine:
+          type: s1-ubuntu-24-s390x-4
+      env_vars:
+        - name: NODE_VERSION
+          value: "24.21.0"
+      prologue:
+        commands:
+          - '[[ -z $DOCKERHUB_APIKEY ]] || docker login --username $DOCKERHUB_USER --password $DOCKERHUB_APIKEY'
+      jobs:
+        - name: "Test"
+          commands:
+            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:24.04 /v/.semaphore/test-s390x.sh test
+        - name: "Promisified Tests (Classic Protocol)"
+          commands:
+            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:24.04 /v/.semaphore/test-s390x.sh promisified-classic
+        - name: "Promisified Tests (Consumer Protocol)"
+          commands:
+            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:24.04 /v/.semaphore/test-s390x.sh promisified-consumer
+        - name: "(SR) Test"
+          commands:
+            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:24.04 /v/.semaphore/test-s390x.sh sr-test
+        - name: "(SR) e2e tests"
+          commands:
+            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:24.04 /v/.semaphore/test-s390x.sh sr-e2e
+
   - name: "Linux amd64: Performance"
     run:
       when: "change_in(['/package.json', '/lib', '/src', '/ci/tests']) AND tag !~ '^v[0-9]\\.'"
