@@ -11,6 +11,7 @@
   "description": "",
   "dependencies": {
     "@confluentinc/kafka-javascript": "file:../..",
+    "js-yaml": "^4.1.0",
     "kafkajs": "^2.2.4"
   }
 }
