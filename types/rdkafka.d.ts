@@ -474,6 +474,13 @@ export type TopicDescription = {
     authorizedOperations?: AclOperationTypes[]
 }
 
+export type ClusterDescription = {
+    clusterId?: string
+    controller?: Node
+    nodes: Node[]
+    authorizedOperations?: AclOperationTypes[]
+}
+
 export class OffsetSpec {
     constructor(timestamp: number);
     static EARLIEST: OffsetSpec;
@@ -539,6 +546,10 @@ export interface IAdminClient {
     describeTopics(topics: string[],
         options?: { includeAuthorizedOperations?: boolean, timeout?: number },
         cb?: (err: LibrdKafkaError, result: TopicDescription[]) => any): void;
+
+    describeCluster(cb?: (err: LibrdKafkaError, result: ClusterDescription) => any): void;
+    describeCluster(options?: { includeAuthorizedOperations?: boolean, timeout?: number },
+        cb?: (err: LibrdKafkaError, result: ClusterDescription) => any): void;
 
     listOffsets(partitions: TopicPartitionOffsetSpec[],
         options?: { timeout?: number, isolationLevel?: IsolationLevel },

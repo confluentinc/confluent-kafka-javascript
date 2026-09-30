@@ -423,6 +423,13 @@ export interface ITopicConfig {
   configEntries?: IResourceConfigEntry[]
 }
 
+export interface DescribeClusterResult {
+  clusterId: string | null
+  controller: number | null
+  brokers: Array<{ nodeId: number, host: string, port: number, rack?: string }>
+  authorizedOperations?: AclOperationTypes[]
+}
+
 export type Admin = {
   connect(): Promise<void>
   disconnect(): Promise<void>
@@ -456,6 +463,10 @@ export type Admin = {
     includeAuthorizedOperations?: boolean,
     timeout?: number
   }): Promise<Array<ITopicMetadata>>
+  describeCluster(options?: {
+    timeout?: number,
+    includeAuthorizedOperations?: boolean
+  }): Promise<DescribeClusterResult>
   fetchTopicOffsets(topic: string,
     options?: {
       timeout?: number,

@@ -1657,8 +1657,57 @@ void AdminClientDescribeTopics::HandleErrorCallback() {
 }
 
 /**
+ * @brief Describe Cluster in an asynchronous worker
+ *
+ * This callback will describe the cluster.
+ */
+AdminClientDescribeCluster::AdminClientDescribeCluster(
+    Nan::Callback* callback, NodeKafka::AdminClient* client,
+    const bool include_authorized_operations,
+    const int& timeout_ms)
+    : ErrorAwareWorker(callback),
+      m_client(client),
+      m_include_authorized_operations(include_authorized_operations),
+      m_timeout_ms(timeout_ms) {}
+
+AdminClientDescribeCluster::~AdminClientDescribeCluster() {
+  if (this->m_event_response) {
+    rd_kafka_event_destroy(this->m_event_response);
+  }
+}
+
+void AdminClientDescribeCluster::Execute() {
+  Baton b = m_client->DescribeCluster(m_include_authorized_operations,
+                                      m_timeout_ms, &m_event_response);
+  if (b.err() != RdKafka::ERR_NO_ERROR) {
+    SetErrorBaton(b);
+  }
+}
+
+void AdminClientDescribeCluster::HandleOKCallback() {
+  Nan::HandleScope scope;
+  const unsigned int argc = 2;
+  v8::Local<v8::Value> argv[argc];
+
+  argv[0] = Nan::Null();
+  argv[1] = Conversion::Admin::FromDescribeClusterResult(
+      rd_kafka_event_DescribeCluster_result(m_event_response));
+
+  callback->Call(argc, argv);
+}
+
+void AdminClientDescribeCluster::HandleErrorCallback() {
+  Nan::HandleScope scope;
+
+  const unsigned int argc = 1;
+  v8::Local<v8::Value> argv[argc] = {GetErrorObject()};
+
+  callback->Call(argc, argv);
+}
+
+/**
  * @brief ListOffsets in an asynchronous worker
- * 
+ *
  * This callback will list requested offsets for the specified topic partitions.
  */
 AdminClientListOffsets::AdminClientListOffsets(

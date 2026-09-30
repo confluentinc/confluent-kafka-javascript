@@ -123,6 +123,7 @@ void AdminClient::Init(v8::Local<v8::Object> exports) {
   Nan::SetPrototypeMethod(tpl, "createPartitions", NodeCreatePartitions);
   Nan::SetPrototypeMethod(tpl, "deleteRecords", NodeDeleteRecords);
   Nan::SetPrototypeMethod(tpl, "describeTopics", NodeDescribeTopics);
+  Nan::SetPrototypeMethod(tpl, "describeCluster", NodeDescribeCluster);
   Nan::SetPrototypeMethod(tpl, "listOffsets", NodeListOffsets);
 
   // Consumer group related operations
@@ -915,6 +916,74 @@ Baton AdminClient::DescribeTopics(rd_kafka_TopicCollection_t *topics,
   }
 }
 
+Baton AdminClient::DescribeCluster(bool include_authorized_operations,
+                                   int timeout_ms,
+                                   rd_kafka_event_t **event_response) {
+  if (!IsConnected()) {
+    return Baton(RdKafka::ERR__STATE);
+  }
+
+  {
+    scoped_shared_write_lock lock(m_connection_lock);
+    if (!IsConnected()) {
+      return Baton(RdKafka::ERR__STATE);
+    }
+
+    // Make admin options to establish that we are describing the cluster
+    rd_kafka_AdminOptions_t *options = rd_kafka_AdminOptions_new(
+        m_client->c_ptr(), RD_KAFKA_ADMIN_OP_DESCRIBECLUSTER);
+
+    if (include_authorized_operations) {
+      rd_kafka_error_t *error =
+          rd_kafka_AdminOptions_set_include_authorized_operations(
+              options, include_authorized_operations);
+      if (error) {
+        return Baton::BatonFromErrorAndDestroy(error);
+      }
+    }
+
+    char errstr[512];
+    rd_kafka_resp_err_t err = rd_kafka_AdminOptions_set_request_timeout(
+        options, timeout_ms, errstr, sizeof(errstr));
+    if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+      return Baton(static_cast<RdKafka::ErrorCode>(err), errstr);
+    }
+
+    // Create queue just for this operation.
+    rd_kafka_queue_t *rkqu = rd_kafka_queue_new(m_client->c_ptr());
+
+    rd_kafka_DescribeCluster(m_client->c_ptr(), options, rkqu);
+
+    // Poll for an event by type in that queue
+    // DON'T destroy the event. It is the out parameter, and ownership is
+    // the caller's.
+    *event_response =
+        PollForEvent(rkqu, RD_KAFKA_EVENT_DESCRIBECLUSTER_RESULT, timeout_ms);
+
+    // Destroy the queue since we are done with it.
+    rd_kafka_queue_destroy(rkqu);
+
+    // Destroy the options we just made because we polled already
+    rd_kafka_AdminOptions_destroy(options);
+
+    // If we got no response from that operation, this is a failure
+    // likely due to time out
+    if (*event_response == NULL) {
+      return Baton(RdKafka::ERR__TIMED_OUT);
+    }
+
+    // Now we can get the error code from the event
+    if (rd_kafka_event_error(*event_response)) {
+      // If we had a special error code, get out of here with it
+      const rd_kafka_resp_err_t errcode = rd_kafka_event_error(*event_response);
+      return Baton(static_cast<RdKafka::ErrorCode>(errcode));
+    }
+
+    // At this point, event_response contains the result, which needs
+    // to be parsed/converted by the caller.
+    return Baton(RdKafka::ERR_NO_ERROR);
+  }
+}
 
 Baton AdminClient::ListOffsets(rd_kafka_topic_partition_list_t *partitions,
                                int timeout_ms,
@@ -1547,6 +1616,35 @@ NAN_METHOD(AdminClient::NodeDescribeTopics) {
   Nan::AsyncQueueWorker(new Workers::AdminClientDescribeTopics(
       callback, client, topic_collection,
       include_authorised_operations, timeout_ms));
+}
+
+/**
+ * Describe Cluster.
+ */
+NAN_METHOD(AdminClient::NodeDescribeCluster) {
+  Nan::HandleScope scope;
+
+  if (info.Length() < 2 || !info[1]->IsFunction()) {
+    return Nan::ThrowError("Need to specify a callback");
+  }
+
+  if (!info[0]->IsObject()) {
+    return Nan::ThrowError("Must provide options object");
+  }
+
+  v8::Local<v8::Object> options = info[0].As<v8::Object>();
+
+  bool include_authorized_operations =
+      GetParameter<bool>(options, "includeAuthorizedOperations", false);
+
+  int timeout_ms = GetParameter<int64_t>(options, "timeout", 5000);
+
+  v8::Local<v8::Function> cb = info[1].As<v8::Function>();
+  Nan::Callback *callback = new Nan::Callback(cb);
+  AdminClient *client = ObjectWrap::Unwrap<AdminClient>(info.This());
+
+  Nan::AsyncQueueWorker(new Workers::AdminClientDescribeCluster(
+      callback, client, include_authorized_operations, timeout_ms));
 }
 
 
