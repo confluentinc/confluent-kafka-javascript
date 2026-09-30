@@ -491,6 +491,29 @@ module.exports = {
           next();
         });
       },
+
+      'passes the partition from the delivery report to the callback': function(next) {
+        var v = 'foo';
+        var k = 'key';
+
+        client._oldProduce = function(topic, partition, value, key, timestamp, opaque) {
+          setImmediate(function() {
+            client.emit('delivery-report', null, {
+              topic: topic,
+              partition: 3,
+              offset: 42,
+              opaque: opaque,
+            });
+          });
+        };
+
+        client.produce('tawpic', 0, v, k, null, function(err, offset, partition) {
+          t.equal(err, null);
+          t.equal(offset, 42);
+          t.equal(partition, 3);
+          next();
+        });
+      },
     }
   },
 };

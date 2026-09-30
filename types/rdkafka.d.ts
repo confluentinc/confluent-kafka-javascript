@@ -288,8 +288,8 @@ export class Producer extends Client<KafkaProducerEvents> {
 }
 
 export class HighLevelProducer extends Producer {
-  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, callback: (err: any, offset?: NumberNullUndefined) => void): any;
-  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeader[], callback: (err: any, offset?: NumberNullUndefined) => void): any;
+  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, callback: (err: any, offset?: NumberNullUndefined, partition?: NumberNullUndefined) => void): any;
+  produce(topic: string, partition: NumberNullUndefined, message: any, key: any, timestamp: NumberNullUndefined, headers: MessageHeader[], callback: (err: any, offset?: NumberNullUndefined, partition?: NumberNullUndefined) => void): any;
 
   setKeySerializer(serializer: (key: any, cb: (err: any, key: MessageKey) => void) => void): void;
   setKeySerializer(serializer: (key: any) => MessageKey | Promise<MessageKey>): void;
