@@ -30,6 +30,9 @@
    fails fast. Concurrent `connect()` calls on the same client now share a single
    in-flight connection attempt rather than the second call throwing.
 
+## Fixes
+1. Stop retaining produce `opaque` values when no delivery report callback is registered, which leaked Persistent handles (#272)
+
 
 # confluent-kafka-javascript 1.10.1
 
