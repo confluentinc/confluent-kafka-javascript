@@ -557,13 +557,15 @@ NAN_METHOD(Producer::NodeProduce) {
     timestamp = 0;
   }
 
+  Producer* producer = ObjectWrap::Unwrap<Producer>(info.This());
+
   void* opaque = NULL;
-  // Opaque handling
-  if (info.Length() > 5 && !info[5]->IsUndefined()) {
-    // We need to create a persistent handle
+  // Opaque is only returned via a delivery report callback. Retain a Persistent
+  // handle only when one is registered; otherwise it would never be freed
+  // because Delivery::dr_cb returns early when there are no callbacks (#272).
+  if (info.Length() > 5 && !info[5]->IsUndefined() &&
+      producer->m_dr_cb.dispatcher.HasCallbacks()) {
     opaque = new Nan::Persistent<v8::Value>(info[5]);
-    // To get the local from this later,
-    // v8::Local<v8::Object> object = Nan::New(persistent);
   }
 
   std::vector<RdKafka::Headers::Header> headers;
@@ -614,8 +616,6 @@ NAN_METHOD(Producer::NodeProduce) {
       }
     }
   }
-
-  Producer* producer = ObjectWrap::Unwrap<Producer>(info.This());
 
   // Let the JS library throw if we need to so the error can be more rich
   int error_code;

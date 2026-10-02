@@ -8,6 +8,9 @@
 5. Add Variant, Decimal, and Timestamp CEL functions (#524)
 6. Add prebuilt binaries for linux-s390x (IBM Z), for both glibc and musl (#527)
 
+## Fixes
+1. Stop retaining produce `opaque` values when no delivery report callback is registered, which leaked Persistent handles (#272)
+
 
 # confluent-kafka-javascript 1.10.1
 
