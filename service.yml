@@ -3,9 +3,6 @@ lang: unknown
 lang_version: unknown
 git:
   enable: true
-github:
-  enable: true
-  repo_name: confluentinc/confluent-kafka-javascript
 codeowners:
   enable: true
 semaphore:
@@ -13,14 +10,13 @@ semaphore:
   pipeline_enable: false
   tasks:
     - name: post-install
-      scheduled: false
-      branch: "master"
+      branch: master
       pipeline_file: .semaphore/post_install.yml
       parameters:
         - name: LIBRARY_VERSION
           required: true
-          description: "Which library version to install."
-          default_value: "latest"
+          description: Which library version to install.
+          default_value: latest
   managed_sections:
     - version
     - name
@@ -29,13 +25,13 @@ semaphore:
 sonarqube:
   enable: true
   coverage_reports:
-    - "./coverage/lcov.info"
-  coverage_exclusions:
-    - "**/*.pb.*"
-    - "**/mk-include/**/*"
-    - "examples/**"
-    - "schemaregistry-examples/**"
-    - "schemaregistry/e2e/**"
+    - ./coverage/lcov.info
   languages:
-    - "javascript"
-    - "typescript"
+    - javascript
+    - typescript
+  analysis_exclusions:
+    - '**/*.pb.*'
+    - '**/mk-include/**/*'
+    - examples/**
+    - schemaregistry-examples/**
+    - schemaregistry/e2e/**
