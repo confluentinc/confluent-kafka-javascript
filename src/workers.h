@@ -233,6 +233,22 @@ class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {
   int64_t m_low_offset;
 };
 
+class ConnectionClusterId : public ErrorAwareWorker {
+ public:
+  ConnectionClusterId(Nan::Callback*, NodeKafka::Connection*, int);
+  ~ConnectionClusterId();
+
+  void Execute();
+  void HandleOKCallback();
+  void HandleErrorCallback();
+
+ private:
+  NodeKafka::Connection * m_connection;
+  int m_timeout_ms;
+
+  std::string m_cluster_id;
+};
+
 class ProducerConnect : public ErrorAwareWorker {
  public:
   ProducerConnect(Nan::Callback*, NodeKafka::Producer*);
