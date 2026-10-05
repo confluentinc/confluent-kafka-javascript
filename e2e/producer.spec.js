@@ -58,6 +58,22 @@ describe('Producer', function() {
       });
     });
 
+    it('should return the cluster id', function(done) {
+      producer.clusterId(5000, function(err, clusterId) {
+        t.ifError(err);
+        t.equal(typeof clusterId, 'string');
+        t.ok(clusterId.length > 0, 'Cluster id is empty');
+
+        // librdkafka caches the cluster id from the metadata request made
+        // while connecting, so a cache-only lookup must return the same value.
+        producer.clusterId(0, function(err2, cachedClusterId) {
+          t.ifError(err2);
+          t.equal(cachedClusterId, clusterId);
+          done();
+        });
+      });
+    });
+
     it('should produce a message with a null payload and null key', function(done) {
       var tt = setInterval(function() {
         producer.poll();
