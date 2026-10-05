@@ -1103,7 +1103,9 @@ class AssociatedNameStrategyImpl implements SubjectNameStrategyInterface {
  * AssociatedNameStrategy returns a strategy that retrieves the associated subject name from schema registry.
  * The topic is passed as the resource name to schema registry. If there is a configuration property
  * named "subject.name.strategy.kafka.cluster.id", then its value will be passed as the resource namespace;
- * otherwise the value "-" will be passed as the resource namespace.
+ * otherwise, if a cluster id resolver was supplied (see setClusterIdResolver, which the Kafka client
+ * integration sets to the id of the connected cluster), the resolved id will be passed;
+ * otherwise the wildcard value "-" will be passed as the resource namespace.
  * If more than one subject is returned from the query, an exception will be thrown.
  * If no subjects are returned from the query, then the behavior will fall back to TopicNameStrategy,
  * unless the configuration property "subject.name.strategy.fallback.type" is set to "RECORD",

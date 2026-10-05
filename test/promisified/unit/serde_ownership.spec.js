@@ -22,6 +22,12 @@ const throwingBuilder = (message) => ({
     build: jest.fn(() => { throw new Error(message); }),
 });
 
+const makeResolverThrowingSerde = (message) => {
+    const serde = makeSerde();
+    serde.setClusterIdResolver = jest.fn(() => { throw new Error(message); });
+    return serde;
+};
+
 const kafka = new Kafka({ kafkaJS: { brokers: ['localhost:9092'] } });
 
 describe('Producer > serde ownership', () => {
@@ -69,6 +75,24 @@ describe('Producer > serde ownership', () => {
 
         await expect(producer.connect()).rejects.toThrow('value builder failed');
         expect(keySerde.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails connect() and closes the serializers when setClusterIdResolver throws, staying retryable', async () => {
+        const keySerde = makeSerde();
+        const valueSerde = makeResolverThrowingSerde('resolver failed');
+        const valueBuilder = builderFor(valueSerde);
+        const producer = kafka.producer({
+            'js.key.serializer.builder': builderFor(keySerde),
+            'js.value.serializer.builder': valueBuilder,
+        });
+
+        await expect(producer.connect()).rejects.toThrow('resolver failed');
+        expect(keySerde.close).toHaveBeenCalledTimes(1);
+        expect(valueSerde.close).toHaveBeenCalledTimes(1);
+
+        await expect(producer.disconnect()).resolves.toBeUndefined();
+        await expect(producer.connect()).rejects.toThrow('resolver failed');
+        expect(valueBuilder.build).toHaveBeenCalledTimes(2);
     });
 
     it('does not build or close serializers on disconnect() before connect()', async () => {
@@ -134,6 +158,24 @@ describe('Consumer > serde ownership', () => {
 
         await expect(consumer.connect()).rejects.toThrow('value builder failed');
         expect(keySerde.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails connect() and closes the deserializers when setClusterIdResolver throws, staying retryable', async () => {
+        const keySerde = makeSerde();
+        const valueSerde = makeResolverThrowingSerde('resolver failed');
+        const valueBuilder = builderFor(valueSerde);
+        const consumer = consumerKafka.consumer({
+            'js.key.deserializer.builder': builderFor(keySerde),
+            'js.value.deserializer.builder': valueBuilder,
+        });
+
+        await expect(consumer.connect()).rejects.toThrow('resolver failed');
+        expect(keySerde.close).toHaveBeenCalledTimes(1);
+        expect(valueSerde.close).toHaveBeenCalledTimes(1);
+
+        await expect(consumer.disconnect()).resolves.toBeUndefined();
+        await expect(consumer.connect()).rejects.toThrow('resolver failed');
+        expect(valueBuilder.build).toHaveBeenCalledTimes(2);
     });
 
     it('does not build or close deserializers on disconnect() before connect()', async () => {
