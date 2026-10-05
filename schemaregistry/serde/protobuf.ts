@@ -415,7 +415,7 @@ export class KafkaProtobufSerializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
   #protobufSerializerConfig?: ProtobufSerializerConfig | null = null
-  #serializerInitializer?: ((serializer: ProtobufSerializer) => void) | null = null
+  #serializerInit?: ((serializer: ProtobufSerializer) => void | Promise<void>) | null = null
   #ruleRegistry?: RuleRegistry | null = null
 
   /**
@@ -446,8 +446,8 @@ export class KafkaProtobufSerializerBuilder<T> {
     return this
   }
 
-  setSerializerInitializer(initializer: (serializer: ProtobufSerializer) => void): KafkaProtobufSerializerBuilder<T> {
-    this.#serializerInitializer = initializer
+  setSerializerInit(init: (serializer: ProtobufSerializer) => void | Promise<void>): KafkaProtobufSerializerBuilder<T> {
+    this.#serializerInit = init
     return this
   }
 
@@ -456,14 +456,14 @@ export class KafkaProtobufSerializerBuilder<T> {
    * property is read from the client configuration today, so it is handed
    * back unchanged.
    */
-  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): [ProtobufSerializer, ProducerConstructorConfig<unknown, unknown>] {
+  async build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): Promise<[ProtobufSerializer, ProducerConstructorConfig<unknown, unknown>]> {
     const protobufSerializerConfig = this.#protobufSerializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    const serde = buildKafkaSerde(
+    const serde = await buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new ProtobufSerializer(client, serdeType, protobufSerializerConfig, this.#ruleRegistry ?? undefined),
-      this.#serializerInitializer)
+      this.#serializerInit)
     return [serde, config]
   }
 }
@@ -634,7 +634,7 @@ export class KafkaProtobufDeserializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
   #protobufDeserializerConfig?: ProtobufDeserializerConfig | null = null
-  #deserializerInitializer?: ((deserializer: ProtobufDeserializer) => void) | null = null
+  #deserializerInit?: ((deserializer: ProtobufDeserializer) => void | Promise<void>) | null = null
   #ruleRegistry?: RuleRegistry | null = null
 
   /**
@@ -660,8 +660,8 @@ export class KafkaProtobufDeserializerBuilder<T> {
     return this
   }
 
-  setDeserializerInitializer(initializer: (deserializer: ProtobufDeserializer) => void): KafkaProtobufDeserializerBuilder<T> {
-    this.#deserializerInitializer = initializer
+  setDeserializerInit(init: (deserializer: ProtobufDeserializer) => void | Promise<void>): KafkaProtobufDeserializerBuilder<T> {
+    this.#deserializerInit = init
     return this
   }
 
@@ -675,14 +675,14 @@ export class KafkaProtobufDeserializerBuilder<T> {
    * property is read from the client configuration today, so it is handed
    * back unchanged.
    */
-  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): [ProtobufDeserializer, ConsumerConstructorConfig<unknown, unknown>] {
+  async build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): Promise<[ProtobufDeserializer, ConsumerConstructorConfig<unknown, unknown>]> {
     const protobufDeserializerConfig = this.#protobufDeserializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    const serde = buildKafkaSerde(
+    const serde = await buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new ProtobufDeserializer(client, serdeType, protobufDeserializerConfig, this.#ruleRegistry ?? undefined),
-      this.#deserializerInitializer)
+      this.#deserializerInit)
     return [serde, config]
   }
 }

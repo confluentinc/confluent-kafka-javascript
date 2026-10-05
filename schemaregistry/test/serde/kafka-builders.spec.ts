@@ -37,75 +37,114 @@ const setSerdeConfig = (builder: any, config: object): any => {
   throw new Error('no serde config setter found');
 };
 
-/* An initializer setter of each builder. */
-const setInitializer = (builder: any, init: (serde: any) => void): any => {
-  if (typeof builder.setSerializerInitializer === 'function') {
-    return builder.setSerializerInitializer(init);
+/* An init setter of each builder. */
+const setInit = (builder: any, init: (serde: any) => void | Promise<void>): any => {
+  if (typeof builder.setSerializerInit === 'function') {
+    return builder.setSerializerInit(init);
   }
-  return builder.setDeserializerInitializer(init);
+  return builder.setDeserializerInit(init);
 };
 
 describe('Kafka serde builders', () => {
-  it.each(serializerBuilders)('%s serializer builder honours isKey', (_name, make) => {
-    const value = make().setClientConfig(clientConfig).build({} as any, false)[0];
-    const key = make().setClientConfig(clientConfig).build({} as any, true)[0];
+  it.each(serializerBuilders)('%s serializer builder honours isKey', async (_name, make) => {
+    const value = (await make().setClientConfig(clientConfig).build({} as any, false))[0];
+    const key = (await make().setClientConfig(clientConfig).build({} as any, true))[0];
     expect(value.serdeType).toBe(SerdeType.VALUE);
     expect(key.serdeType).toBe(SerdeType.KEY);
   });
 
-  it.each(deserializerBuilders)('%s deserializer builder honours isKey', (_name, make) => {
-    const value = make().setClientConfig(clientConfig).build({} as any, false)[0];
-    const key = make().setClientConfig(clientConfig).build({} as any, true)[0];
+  it.each(deserializerBuilders)('%s deserializer builder honours isKey', async (_name, make) => {
+    const value = (await make().setClientConfig(clientConfig).build({} as any, false))[0];
+    const key = (await make().setClientConfig(clientConfig).build({} as any, true))[0];
     expect(value.serdeType).toBe(SerdeType.VALUE);
     expect(key.serdeType).toBe(SerdeType.KEY);
   });
 
-  it.each(allBuilders)('%s builder hands the client configuration back unchanged', (_name, make) => {
+  it.each(allBuilders)('%s builder hands the client configuration back unchanged', async (_name, make) => {
     /* No Schema Registry property is read from the client configuration
      * today, so nothing is consumed: what the Kafka client receives is what
      * it passed in. */
     const config = { 'bootstrap.servers': 'localhost:9092', 'client.id': 'app' };
-    const [serde, remaining] = make().setClientConfig(clientConfig).build(config as any, false);
+    const [serde, remaining] = await make().setClientConfig(clientConfig).build(config as any, false);
     expect(serde).toBeDefined();
     expect(remaining).toEqual({ 'bootstrap.servers': 'localhost:9092', 'client.id': 'app' });
   });
 
-  it.each(allBuilders)('%s builder requires a client config or a client', (_name, make) => {
-    expect(() => make().build({} as any, false)[0])
-      .toThrow('Schema Registry client configuration is required');
-    expect(() => make().setClientConfig({ baseURLs: [] } as ClientConfig).build({} as any, false)[0])
-      .toThrow('Schema Registry client baseURLs attribute is required');
+  it.each(allBuilders)('%s builder requires a client config or a client', async (_name, make) => {
+    await expect(make().build({} as any, false))
+      .rejects.toThrow('Schema Registry client configuration is required');
+    await expect(make().setClientConfig({ baseURLs: [] } as ClientConfig).build({} as any, false))
+      .rejects.toThrow('Schema Registry client baseURLs attribute is required');
   });
 
-  it.each(allBuilders)('%s builder rejects both a client and a client config', (_name, make) => {
+  it.each(allBuilders)('%s builder rejects both a client and a client config', async (_name, make) => {
     const client = new MockClient();
-    expect(() => make().setClientConfig(clientConfig).setSchemaRegistryClient(client).build({} as any, false)[0])
-      .toThrow('Cannot specify both a Schema Registry client and a client configuration; use one or the other');
+    await expect(make().setClientConfig(clientConfig).setSchemaRegistryClient(client).build({} as any, false))
+      .rejects.toThrow('Cannot specify both a Schema Registry client and a client configuration; use one or the other');
   });
 
-  it('runs the serializer initializer', () => {
+  it('runs the serializer initializer', async () => {
     let seen: unknown = null;
-    const s = kafkaAvroSerializerBuilder<any>()
+    const s = (await kafkaAvroSerializerBuilder<any>()
       .setClientConfig(clientConfig)
-      .setSerializerInitializer((serializer) => { seen = serializer; })
-      .build({} as any, false)[0];
+      .setSerializerInit((serializer) => { seen = serializer; })
+      .build({} as any, false))[0];
     expect(seen).toBe(s);
   });
 
-  it('runs the deserializer initializer', () => {
+  it('runs the deserializer initializer', async () => {
     let seen: unknown = null;
-    const d = kafkaProtobufDeserializerBuilder<any>()
+    const d = (await kafkaProtobufDeserializerBuilder<any>()
       .setClientConfig(clientConfig)
-      .setDeserializerInitializer((deserializer) => { seen = deserializer; })
-      .build({} as any, false)[0];
+      .setDeserializerInit((deserializer) => { seen = deserializer; })
+      .build({} as any, false))[0];
     expect(seen).toBe(d);
+  });
+
+  it('awaits an asynchronous serializer initializer before returning the serializer', async () => {
+    let finished = false;
+    const [s] = await kafkaAvroSerializerBuilder<any>()
+      .setClientConfig(clientConfig)
+      .setSerializerInit(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        finished = true;
+      })
+      .build({} as any, false);
+    expect(s).toBeDefined();
+    expect(finished).toBe(true);
+  });
+
+  it('awaits an asynchronous deserializer initializer before returning the deserializer', async () => {
+    let finished = false;
+    const [d] = await kafkaProtobufDeserializerBuilder<any>()
+      .setClientConfig(clientConfig)
+      .setDeserializerInit(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        finished = true;
+      })
+      .build({} as any, false);
+    expect(d).toBeDefined();
+    expect(finished).toBe(true);
+  });
+
+  it.each(allBuilders)('%s builder closes the serde when an asynchronous initializer rejects', async (_name, make) => {
+    const client = new MockClient();
+    let built: any = null;
+    const builder = setInit(make().setSchemaRegistryClient(client), async (serde) => {
+      built = serde;
+      jest.spyOn(serde, 'close');
+      await Promise.resolve();
+      throw new Error('async initializer failed');
+    });
+    await expect(builder.build({} as any, false)).rejects.toThrow('async initializer failed');
+    expect(built.close).toHaveBeenCalledTimes(1);
   });
 
   describe('Schema Registry client ownership', () => {
     it.each(allBuilders)('%s builder uses the supplied client and never closes it', async (_name, make) => {
       const client = new MockClient();
       const closeSpy = jest.spyOn(client, 'close');
-      const serde: any = make().setSchemaRegistryClient(client).build({} as any, false)[0];
+      const serde: any = (await make().setSchemaRegistryClient(client).build({} as any, false))[0];
       expect(serde.client).toBe(client);
 
       await serde.close();
@@ -114,7 +153,7 @@ describe('Kafka serde builders', () => {
     });
 
     it.each(allBuilders)('%s builder owns the client it creates and closes it once', async (_name, make) => {
-      const serde: any = make().setClientConfig(clientConfig).build({} as any, false)[0];
+      const serde: any = (await make().setClientConfig(clientConfig).build({} as any, false))[0];
       expect(serde.client).toBeInstanceOf(SchemaRegistryClient);
       const closeSpy = jest.spyOn(serde.client, 'close');
 
@@ -123,39 +162,42 @@ describe('Kafka serde builders', () => {
       expect(closeSpy).toHaveBeenCalledTimes(1);
     });
 
-    it.each(allBuilders)('%s builder releases a created client when the serde constructor throws', (_name, make) => {
+    it.each(allBuilders)('%s builder releases a created client when the serde constructor throws', async (_name, make) => {
       /* An unknown fallback type makes the subject name strategy constructor throw. */
       const closeSpy = jest.spyOn(SchemaRegistryClient.prototype, 'close');
       try {
         const builder = setSerdeConfig(make().setClientConfig(clientConfig), {
           subjectNameStrategyConfig: { 'subject.name.strategy.fallback.type': 'BOGUS' },
         });
-        expect(() => builder.build({} as any, false)[0]).toThrow('Invalid value for subject.name.strategy.fallback.type');
+        await expect(builder.build({} as any, false))
+      .rejects.toThrow('Invalid value for subject.name.strategy.fallback.type');
         expect(closeSpy).toHaveBeenCalledTimes(1);
       } finally {
         closeSpy.mockRestore();
       }
     });
 
-    it.each(allBuilders)('%s builder leaves a supplied client alone when the serde constructor throws', (_name, make) => {
+    it.each(allBuilders)('%s builder leaves a supplied client alone when the serde constructor throws', async (_name, make) => {
       const client = new MockClient();
       const closeSpy = jest.spyOn(client, 'close');
       const builder = setSerdeConfig(make().setSchemaRegistryClient(client), {
         subjectNameStrategyConfig: { 'subject.name.strategy.fallback.type': 'BOGUS' },
       });
-      expect(() => builder.build({} as any, false)[0]).toThrow();
+      await expect(builder.build({} as any, false))
+      .rejects.toThrow();
       expect(closeSpy).not.toHaveBeenCalled();
     });
 
-    it.each(allBuilders)('%s builder closes the serde when the initializer throws', (_name, make) => {
+    it.each(allBuilders)('%s builder closes the serde when the initializer throws', async (_name, make) => {
       const client = new MockClient();
       let built: any = null;
-      const builder = setInitializer(make().setSchemaRegistryClient(client), (serde) => {
+      const builder = setInit(make().setSchemaRegistryClient(client), (serde) => {
         built = serde;
         jest.spyOn(serde, 'close');
         throw new Error('initializer failed');
       });
-      expect(() => builder.build({} as any, false)[0]).toThrow('initializer failed');
+      await expect(builder.build({} as any, false))
+      .rejects.toThrow('initializer failed');
       expect(built).not.toBeNull();
       expect(built.close).toHaveBeenCalledTimes(1);
     });
@@ -165,7 +207,7 @@ describe('Kafka serde builders', () => {
     it.each(allBuilders)('%s builder stores the resolver without invoking it (ASSOCIATED strategy)', async (_name, make) => {
       const client = new MockClient();
       const resolver = jest.fn(async () => 'lkc-test');
-      const serde: any = make().setSchemaRegistryClient(client).build({} as any, false)[0];
+      const serde: any = (await make().setSchemaRegistryClient(client).build({} as any, false))[0];
       /* Default strategy is ASSOCIATED with no configured cluster id. */
       serde.setClusterIdResolver(resolver);
       expect(resolver).not.toHaveBeenCalled();
@@ -180,9 +222,9 @@ describe('Kafka serde builders', () => {
     it.each(allBuilders)('%s builder ignores the resolver with the TOPIC strategy', async (_name, make) => {
       const client = new MockClient();
       const resolver = jest.fn(async () => 'lkc-test');
-      const serde: any = setSerdeConfig(make().setSchemaRegistryClient(client), {
+      const serde: any = (await setSerdeConfig(make().setSchemaRegistryClient(client), {
         subjectNameStrategyType: SubjectNameStrategyType.TOPIC,
-      }).build({} as any, false)[0];
+      }).build({} as any, false))[0];
       serde.setClusterIdResolver(resolver);
       const subject = await serde.subjectName('topic1', undefined);
       expect(subject).toBe('topic1-value');

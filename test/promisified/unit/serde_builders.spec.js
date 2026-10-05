@@ -42,8 +42,8 @@ describe('buildSerdes', () => {
         'value.only.prop': 'v',
     };
 
-    it('returns the configuration as is with no builder', () => {
-        const built = buildSerdes(config, [
+    it('returns the configuration as is with no builder', async () => {
+        const built = await buildSerdes(config, [
             { prop: 'js.key.serializer.builder', builder: null, isKey: true },
             { prop: 'js.value.serializer.builder', builder: undefined, isKey: false },
         ]);
@@ -51,10 +51,10 @@ describe('buildSerdes', () => {
         expect(built.config).toBe(config);
     });
 
-    it('hands every builder its own copy of the full configuration', () => {
+    it('hands every builder its own copy of the full configuration', async () => {
         const keyBuilder = consumingBuilder(makeSerde(), 'shared.prop', 'key.only.prop');
         const valueBuilder = consumingBuilder(makeSerde(), 'shared.prop', 'value.only.prop');
-        buildSerdes(config, [
+        await buildSerdes(config, [
             { prop: 'js.key.serializer.builder', builder: keyBuilder, isKey: true },
             { prop: 'js.value.serializer.builder', builder: valueBuilder, isKey: false },
         ]);
@@ -70,10 +70,10 @@ describe('buildSerdes', () => {
         expect(keyConfig).not.toBe(valueConfig);
     });
 
-    it('creates the client configuration from the intersection of the leftovers', () => {
+    it('creates the client configuration from the intersection of the leftovers', async () => {
         const keySerde = makeSerde();
         const valueSerde = makeSerde();
-        const built = buildSerdes(config, [
+        const built = await buildSerdes(config, [
             { prop: 'js.key.serializer.builder', builder: consumingBuilder(keySerde, 'shared.prop', 'key.only.prop'), isKey: true },
             { prop: 'js.value.serializer.builder', builder: consumingBuilder(valueSerde, 'shared.prop', 'value.only.prop'), isKey: false },
         ]);
@@ -82,15 +82,15 @@ describe('buildSerdes', () => {
         expect(built.config).toEqual({ 'bootstrap.servers': 'b' });
     });
 
-    it('keeps a property only one builder was configured for if that builder leaves it', () => {
-        const built = buildSerdes(config, [
+    it('keeps a property only one builder was configured for if that builder leaves it', async () => {
+        const built = await buildSerdes(config, [
             { prop: 'js.key.serializer.builder', builder: null, isKey: true },
             { prop: 'js.value.serializer.builder', builder: consumingBuilder(makeSerde(), 'value.only.prop'), isKey: false },
         ]);
         expect(built.config).toEqual({ 'bootstrap.servers': 'b', 'shared.prop': 'both', 'key.only.prop': 'k' });
     });
 
-    it('does not let a builder mutating its copy affect the others', () => {
+    it('does not let a builder mutating its copy affect the others', async () => {
         const mutating = {
             build: jest.fn((cfg) => {
                 cfg['not.a.kafka.prop'] = true;
@@ -98,7 +98,7 @@ describe('buildSerdes', () => {
             }),
         };
         const recording = consumingBuilder(makeSerde());
-        const built = buildSerdes(config, [
+        const built = await buildSerdes(config, [
             { prop: 'js.key.serializer.builder', builder: mutating, isKey: true },
             { prop: 'js.value.serializer.builder', builder: recording, isKey: false },
         ]);
@@ -108,13 +108,13 @@ describe('buildSerdes', () => {
         expect(config).not.toHaveProperty(['not.a.kafka.prop']);
     });
 
-    it('closes the serdes built so far when a later builder throws', () => {
+    it('closes the serdes built so far when a later builder throws', async () => {
         const keySerde = makeSerde();
         const keyBuilder = consumingBuilder(keySerde);
-        expect(() => buildSerdes(config, [
+        await expect(buildSerdes(config, [
             { prop: 'js.key.serializer.builder', builder: keyBuilder, isKey: true },
             { prop: 'js.value.serializer.builder', builder: { build: () => { throw new Error('boom'); } }, isKey: false },
-        ])).toThrow('boom');
+        ])).rejects.toThrow('boom');
         expect(keySerde.close).toHaveBeenCalledTimes(1);
     });
 
@@ -137,12 +137,12 @@ describe('buildSerdes', () => {
         expect(thrown.message).toBe(`js.value.serializer.builder ${message}`);
     });
 
-    it('closes the serdes built so far when a later builder returns a bad result', () => {
+    it('closes the serdes built so far when a later builder returns a bad result', async () => {
         const keySerde = makeSerde();
-        expect(() => buildSerdes(config, [
+        await expect(buildSerdes(config, [
             { prop: 'js.key.serializer.builder', builder: consumingBuilder(keySerde), isKey: true },
             { prop: 'js.value.serializer.builder', builder: { build: () => makeSerde() }, isKey: false },
-        ])).toThrow('js.value.serializer.builder must return a [serde, configuration] pair');
+        ])).rejects.toThrow('js.value.serializer.builder must return a [serde, configuration] pair');
         expect(keySerde.close).toHaveBeenCalledTimes(1);
     });
 });

@@ -8,19 +8,20 @@ import {Serde} from "./serde";
  *
  * A client the application supplied is never closed by the serde. A client
  * created here is owned by the serde, closed together with it, and released
- * right away if the serde cannot be constructed or its initializer throws.
+ * right away if the serde cannot be constructed or its init callback throws.
  *
  * @param clientConfig - configuration to create a Schema Registry client from
  * @param client - a Schema Registry client the application owns
  * @param construct - creates the serde from the resolved client
- * @param init - optional callback run on the constructed serde
+ * @param init - optional callback run on the constructed serde, which may be
+ *   asynchronous and is awaited before the serde is returned
  */
-export function buildKafkaSerde<S extends Serde>(
+export async function buildKafkaSerde<S extends Serde>(
   clientConfig: ClientConfig | null | undefined,
   client: Client | null | undefined,
   construct: (client: Client) => S,
-  init?: ((serde: S) => void) | null
-): S {
+  init?: ((serde: S) => void | Promise<void>) | null
+): Promise<S> {
   if (client != null && clientConfig != null) {
     throw new Error('Cannot specify both a Schema Registry client and a client configuration; use one or the other')
   }
@@ -52,7 +53,7 @@ export function buildKafkaSerde<S extends Serde>(
 
   if (init != null) {
     try {
-      init(serde)
+      await init(serde)
     } catch (err) {
       closeQuietly(serde)
       throw err

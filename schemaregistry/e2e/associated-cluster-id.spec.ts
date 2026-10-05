@@ -216,7 +216,7 @@ describe('Associated subject name strategy with the connected cluster id', () =>
     const builder = kafkaAvroSerializerBuilder<User>()
       .setSchemaRegistryClient(schemaRegistryClient)
       .setAvroSerializerConfig({ autoRegisterSchemas: false, useLatestVersion: true })
-      .setSerializerInitializer((ser) => {
+      .setSerializerInit((ser) => {
         serializer = ser;
         /* Count invocations of whatever resolver the producer hands over. */
         const original = ser.setClusterIdResolver.bind(ser);

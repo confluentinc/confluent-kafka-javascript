@@ -241,7 +241,7 @@ export class KafkaAvroSerializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
   #avroSerializerConfig?: AvroSerializerConfig | null = null
-  #serializerInitializer?: ((serializer: AvroSerializer) => void) | null = null
+  #serializerInit?: ((serializer: AvroSerializer) => void | Promise<void>) | null = null
   #ruleRegistry?: RuleRegistry | null = null
 
   /**
@@ -272,8 +272,8 @@ export class KafkaAvroSerializerBuilder<T> {
     return this
   }
 
-  setSerializerInitializer(initializer: (serializer: AvroSerializer) => void): KafkaAvroSerializerBuilder<T> {
-    this.#serializerInitializer = initializer
+  setSerializerInit(init: (serializer: AvroSerializer) => void | Promise<void>): KafkaAvroSerializerBuilder<T> {
+    this.#serializerInit = init
     return this
   }
 
@@ -282,14 +282,14 @@ export class KafkaAvroSerializerBuilder<T> {
    * property is read from the client configuration today, so it is handed
    * back unchanged.
    */
-  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): [AvroSerializer, ProducerConstructorConfig<unknown, unknown>] {
+  async build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): Promise<[AvroSerializer, ProducerConstructorConfig<unknown, unknown>]> {
     const avroSerializerConfig = this.#avroSerializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    const serde = buildKafkaSerde(
+    const serde = await buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new AvroSerializer(client, serdeType, avroSerializerConfig, this.#ruleRegistry ?? undefined),
-      this.#serializerInitializer)
+      this.#serializerInit)
     return [serde, config]
   }
 }
@@ -421,7 +421,7 @@ export class KafkaAvroDeserializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
   #avroDeserializerConfig?: AvroDeserializerConfig | null = null
-  #deserializerInitializer?: ((deserializer: AvroDeserializer) => void) | null = null
+  #deserializerInit?: ((deserializer: AvroDeserializer) => void | Promise<void>) | null = null
   #ruleRegistry?: RuleRegistry | null = null
 
   /**
@@ -447,8 +447,8 @@ export class KafkaAvroDeserializerBuilder<T> {
     return this
   }
 
-  setDeserializerInitializer(initializer: (deserializer: AvroDeserializer) => void): KafkaAvroDeserializerBuilder<T> {
-    this.#deserializerInitializer = initializer
+  setDeserializerInit(init: (deserializer: AvroDeserializer) => void | Promise<void>): KafkaAvroDeserializerBuilder<T> {
+    this.#deserializerInit = init
     return this
   }
 
@@ -462,14 +462,14 @@ export class KafkaAvroDeserializerBuilder<T> {
    * property is read from the client configuration today, so it is handed
    * back unchanged.
    */
-  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): [AvroDeserializer, ConsumerConstructorConfig<unknown, unknown>] {
+  async build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): Promise<[AvroDeserializer, ConsumerConstructorConfig<unknown, unknown>]> {
     const avroDeserializerConfig = this.#avroDeserializerConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    const serde = buildKafkaSerde(
+    const serde = await buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new AvroDeserializer(client, serdeType, avroDeserializerConfig, this.#ruleRegistry ?? undefined),
-      this.#deserializerInitializer)
+      this.#deserializerInit)
     return [serde, config]
   }
 }

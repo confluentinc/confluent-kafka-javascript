@@ -177,9 +177,11 @@ export interface KafkaSerializerBuilder<T> {
    * @returns the serializer and the configuration left over for the producer.
    *   The producer is created with the properties that every builder left in
    *   place, so a property consumed by any builder never reaches librdkafka.
+   *   May be returned asynchronously: it is awaited while the producer connects.
    */
   build(config: ProducerConstructorConfig<unknown, unknown>, isKey: boolean):
-    [Serializer<T>, ProducerConstructorConfig<unknown, unknown>]
+    [Serializer<T>, ProducerConstructorConfig<unknown, unknown>] |
+    Promise<[Serializer<T>, ProducerConstructorConfig<unknown, unknown>]>
 }
 
 interface JSProducerConfig<K, V> {
@@ -323,9 +325,11 @@ export interface KafkaDeserializerBuilder<T> {
    * @returns the deserializer and the configuration left over for the consumer.
    *   The consumer is created with the properties that every builder left in
    *   place, so a property consumed by any builder never reaches librdkafka.
+   *   May be returned asynchronously: it is awaited while the consumer connects.
    */
   build(config: ConsumerConstructorConfig<unknown, unknown>, isKey: boolean):
-    [Deserializer<T>, ConsumerConstructorConfig<unknown, unknown>]
+    [Deserializer<T>, ConsumerConstructorConfig<unknown, unknown>] |
+    Promise<[Deserializer<T>, ConsumerConstructorConfig<unknown, unknown>]>
 }
 
 export interface JSConsumerConfig<K = Buffer, V = Buffer> {

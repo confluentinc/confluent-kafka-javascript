@@ -216,7 +216,7 @@ export class KafkaJsonSerializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
   #jsonSerializeConfig?: JsonSerializerConfig | null = null
-  #serializerInitializer?: ((serializer: JsonSerializer) => void) | null = null
+  #serializerInit?: ((serializer: JsonSerializer) => void | Promise<void>) | null = null
   #ruleRegistry?: RuleRegistry | null = null
 
   /**
@@ -247,8 +247,8 @@ export class KafkaJsonSerializerBuilder<T> {
     return this
   }
 
-  setSerializerInitializer(initializer: (serializer: JsonSerializer) => void): KafkaJsonSerializerBuilder<T> {
-    this.#serializerInitializer = initializer
+  setSerializerInit(init: (serializer: JsonSerializer) => void | Promise<void>): KafkaJsonSerializerBuilder<T> {
+    this.#serializerInit = init
     return this
   }
 
@@ -257,14 +257,14 @@ export class KafkaJsonSerializerBuilder<T> {
    * property is read from the client configuration today, so it is handed
    * back unchanged.
    */
-  build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): [JsonSerializer, ProducerConstructorConfig<unknown, unknown>] {
+  async build(config : ProducerConstructorConfig<unknown, unknown>, isKey: boolean): Promise<[JsonSerializer, ProducerConstructorConfig<unknown, unknown>]> {
     const jsonSerializeConfig = this.#jsonSerializeConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    const serde = buildKafkaSerde(
+    const serde = await buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new JsonSerializer(client, serdeType, jsonSerializeConfig, this.#ruleRegistry ?? undefined),
-      this.#serializerInitializer)
+      this.#serializerInit)
     return [serde, config]
   }
 }
@@ -394,7 +394,7 @@ export class KafkaJsonDeserializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
   #jsonDeserializeConfig?: JsonDeserializerConfig | null = null
-  #deserializerInitializer?: ((deserializer: JsonDeserializer) => void) | null = null
+  #deserializerInit?: ((deserializer: JsonDeserializer) => void | Promise<void>) | null = null
   #ruleRegistry?: RuleRegistry | null = null
 
   /**
@@ -420,8 +420,8 @@ export class KafkaJsonDeserializerBuilder<T> {
     return this
   }
 
-  setDeserializerInitializer(initializer: (deserializer: JsonDeserializer) => void): KafkaJsonDeserializerBuilder<T> {
-    this.#deserializerInitializer = initializer
+  setDeserializerInit(init: (deserializer: JsonDeserializer) => void | Promise<void>): KafkaJsonDeserializerBuilder<T> {
+    this.#deserializerInit = init
     return this
   }
 
@@ -435,14 +435,14 @@ export class KafkaJsonDeserializerBuilder<T> {
    * property is read from the client configuration today, so it is handed
    * back unchanged.
    */
-  build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): [JsonDeserializer, ConsumerConstructorConfig<unknown, unknown>] {
+  async build(config : ConsumerConstructorConfig<unknown, unknown>, isKey: boolean): Promise<[JsonDeserializer, ConsumerConstructorConfig<unknown, unknown>]> {
     const jsonDeserializeConfig = this.#jsonDeserializeConfig ?? {};
     const serdeType = isKey ? SerdeType.KEY : SerdeType.VALUE;
-    const serde = buildKafkaSerde(
+    const serde = await buildKafkaSerde(
       this.#clientConfig,
       this.#schemaRegistryClient,
       (client) => new JsonDeserializer(client, serdeType, jsonDeserializeConfig, this.#ruleRegistry ?? undefined),
-      this.#deserializerInitializer)
+      this.#deserializerInit)
     return [serde, config]
   }
 }

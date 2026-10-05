@@ -11,6 +11,7 @@ const {
 const {
     ErrorCodes,
     KafkaJSError,
+    KafkaJSAggregateError,
     SerializationError,
     KeySerializationError,
     ValueSerializationError,
@@ -196,7 +197,7 @@ describe('Producer > serializers', () => {
         producer = null;
     });
 
-    it('closes the other serializer and rethrows the first error when a close fails', async () => {
+    it('closes the other serializer and rethrows the error when a close fails', async () => {
         keySerde = makeSerde('key:', { closeImpl: async () => { throw new Error('key close failed'); } });
         valueSerde = makeSerde('value:');
         producer = createProducer({}, {
@@ -211,6 +212,28 @@ describe('Producer > serializers', () => {
         producer = null;
     });
 
+    it('rethrows every close failure together when both serializers fail to close', async () => {
+        keySerde = makeSerde('key:', { closeImpl: async () => { throw new Error('key close failed'); } });
+        valueSerde = makeSerde('value:', { closeImpl: async () => { throw new Error('value close failed'); } });
+        producer = createProducer({}, {
+            'js.key.serializer.builder': builderFor(keySerde),
+            'js.value.serializer.builder': builderFor(valueSerde),
+        });
+        await producer.connect();
+
+        let thrown = null;
+        try {
+            await producer.disconnect();
+        } catch (err) {
+            thrown = err;
+        }
+        expect(thrown).toBeInstanceOf(KafkaJSAggregateError);
+        expect(thrown.errors.map((e) => e.message)).toEqual(['key close failed', 'value close failed']);
+        expect(keySerde.close).toHaveBeenCalledTimes(1);
+        expect(valueSerde.close).toHaveBeenCalledTimes(1);
+        producer = null;
+    });
+
     it('serializes keys and values through the configured serializers', async () => {
         await producer.connect();
         await producer.send({
@@ -219,7 +242,8 @@ describe('Producer > serializers', () => {
         });
 
         expect(keySerde.serialize).toHaveBeenCalledTimes(1);
-        expect(keySerde.serialize).toHaveBeenCalledWith(topicName, 'k0', undefined);
+        /* Serializers get a headers object even when the message has none. */
+        expect(keySerde.serialize).toHaveBeenCalledWith(topicName, 'k0', {});
         expect(valueSerde.serialize).toHaveBeenCalledTimes(2);
 
         consumer = createConsumer({ groupId: `group-${secureRandom()}`, fromBeginning: true });
@@ -266,6 +290,98 @@ describe('Producer > serializers', () => {
         expect(thrown).not.toBeInstanceOf(KeySerializationError);
         expect(thrown.code).toBe(ErrorCodes.ERR__VALUE_SERIALIZATION);
         expect(thrown.cause.message).toBe('cannot serialize "badvalue"');
+    });
+
+    it('awaits an asynchronous builder while connecting', async () => {
+        const asyncSerde = makeSerde('async:');
+        const asyncProducer = createProducer({}, {
+            'js.value.serializer.builder': {
+                build: jest.fn(async (config) => {
+                    await new Promise((resolve) => setTimeout(resolve, 20));
+                    return [asyncSerde, config];
+                }),
+            },
+        });
+        await asyncProducer.connect();
+        try {
+            expect(asyncSerde.setClusterIdResolver).toHaveBeenCalledTimes(1);
+            await asyncProducer.send({ topic: topicName, messages: [{ value: 'v0' }] });
+            expect(asyncSerde.serialize).toHaveBeenCalledTimes(1);
+        } finally {
+            await asyncProducer.disconnect();
+        }
+        expect(asyncSerde.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('builds the serializers once when connect() is called twice concurrently', async () => {
+        const slowBuilder = {
+            build: jest.fn(async (config) => {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                return [valueSerde, config];
+            }),
+        };
+        const slowProducer = createProducer({}, { 'js.value.serializer.builder': slowBuilder });
+        const results = await Promise.allSettled([slowProducer.connect(), slowProducer.connect()]);
+        try {
+            expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+            const rejected = results.find((r) => r.status === 'rejected');
+            expect(rejected.reason).toHaveProperty('code', ErrorCodes.ERR__STATE);
+            expect(slowBuilder.build).toHaveBeenCalledTimes(1);
+        } finally {
+            await slowProducer.disconnect();
+        }
+    });
+
+    it('produces nothing from a batch when one of its messages fails to serialize', async () => {
+        await producer.connect();
+        await expect(producer.send({
+            topic: topicName,
+            messages: [{ value: 'v0' }, { value: 'badvalue' }, { value: 'v2' }],
+        })).rejects.toBeInstanceOf(ValueSerializationError);
+
+        /* The sentinel is the first and only message of the topic. */
+        await producer.send({ topic: topicName, messages: [{ value: 'sentinel' }] });
+
+        consumer = createConsumer({ groupId: `group-${secureRandom()}`, fromBeginning: true });
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+        const consumed = [];
+        await consumer.run({ eachMessage: async ({ message }) => { consumed.push(message); } });
+        await waitForMessages(consumed, { number: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        expect(consumed.map((m) => m.value.toString())).toEqual(['value:sentinel']);
+    });
+
+    it('lets a serializer write headers to a message that has none', async () => {
+        const headerSerde = makeSerde('value:');
+        headerSerde.serialize.mockImplementation(async (_topic, msg, headers) => {
+            headers['schema-id'] = Buffer.from('42');
+            return Buffer.from(`value:${msg}`);
+        });
+        const headerProducer = createProducer({}, { 'js.value.serializer.builder': builderFor(headerSerde) });
+        await headerProducer.connect();
+        try {
+            await headerProducer.send({ topic: topicName, messages: [{ value: 'v0' }] });
+        } finally {
+            await headerProducer.disconnect();
+        }
+
+        consumer = createConsumer({ groupId: `group-${secureRandom()}`, fromBeginning: true });
+        await consumer.connect();
+        await consumer.subscribe({ topic: topicName });
+        const consumed = [];
+        await consumer.run({ eachMessage: async ({ message }) => { consumed.push(message); } });
+        await waitForMessages(consumed, { number: 1 });
+
+        expect(consumed[0].headers['schema-id'].toString()).toBe('42');
+    });
+
+    it('reports a serializer throwing nothing as a ValueSerializationError', async () => {
+        valueSerde.serialize.mockImplementation(async () => { throw undefined; });
+        await producer.connect();
+        await expect(producer.send({ topic: topicName, messages: [{ value: 'v' }] }))
+            .rejects.toBeInstanceOf(ValueSerializationError);
     });
 
     it.each([
