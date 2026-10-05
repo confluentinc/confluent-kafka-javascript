@@ -139,6 +139,8 @@ export interface ProducerConfig {
 }
 
 /**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
  * A function the client hands to a serde once connected, which resolves the id
  * of the Kafka cluster it is connected to. It is invoked lazily, by the serde,
  * only when it needs the cluster id. Concurrent invocations share a single
@@ -148,6 +150,12 @@ export interface ProducerConfig {
  */
 export type ClusterIdResolver = () => Promise<string>
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Serializes message keys or values. Configured through the
+ * `js.key.serializer.builder` / `js.value.serializer.builder` producer properties.
+ */
 export interface Serializer<T> {
   serialize(topic: string, msg: T, headers?: IHeaders): Promise<Buffer>
   /**
@@ -164,6 +172,8 @@ export interface Serializer<T> {
 }
 
 /**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
  * Builds a serializer for a producer while it connects, which lets the
  * serializer take the producer's own configuration into account.
  */
@@ -185,7 +195,9 @@ export interface KafkaSerializerBuilder<T> {
 }
 
 interface JSProducerConfig<K, V> {
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the serializer for message keys while the producer connects. */
   'js.key.serializer.builder'?: KafkaSerializerBuilder<K>
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the serializer for message values while the producer connects. */
   'js.value.serializer.builder'?: KafkaSerializerBuilder<V>
 }
 
@@ -250,6 +262,7 @@ export type Producer<K = Buffer | string, V = Buffer | string> = Client & {
   send(record: ProducerRecord<K,V>): Promise<RecordMetadata[]>
   sendBatch(batch: ProducerBatch<K,V>): Promise<RecordMetadata[]>
   flush(args?: { timeout?: number }): Promise<void>
+  /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
   clusterId(options?: { timeout?: number }): Promise<string>
 
   // Transactional producer-only methods.
@@ -296,6 +309,12 @@ export interface ConsumerConfig {
   partitionAssignors?: PartitionAssignors[],
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Deserializes message keys or values. Configured through the
+ * `js.key.deserializer.builder` / `js.value.deserializer.builder` consumer properties.
+ */
 export interface Deserializer<T> {
   deserialize(topic: string, payload: Buffer, headers?: IHeaders): Promise<T>
   /**
@@ -312,6 +331,8 @@ export interface Deserializer<T> {
 }
 
 /**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
  * Builds a deserializer for a consumer while it connects, which lets the
  * deserializer take the consumer's own configuration into account.
  */
@@ -348,7 +369,9 @@ export interface JSConsumerConfig<K = Buffer, V = Buffer> {
    */
   'js.consumer.max.cache.size.per.worker.ms'?: string | number
 
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the deserializer for message keys while the consumer connects. */
   'js.key.deserializer.builder'?: KafkaDeserializerBuilder<K>
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the deserializer for message values while the consumer connects. */
   'js.value.deserializer.builder'?: KafkaDeserializerBuilder<V>
 }
 
@@ -361,7 +384,9 @@ export interface ConsumerConstructorConfig<K = Buffer, V = Buffer> extends Consu
 interface MessageSetEntry<K = Buffer, V = Buffer> {
   key: Buffer | null
   value: Buffer | null
+  /** **EXPERIMENTAL**: subject to change or removal. The key as deserialized by `js.key.deserializer.builder`, or the error it threw. */
   deserializedKey: { key: K | null, error: KeyDeserializationError | null }
+  /** **EXPERIMENTAL**: subject to change or removal. The value as deserialized by `js.value.deserializer.builder`, or the error it threw. */
   deserializedValue: { value: V | null, error: ValueDeserializationError | null }
   timestamp: string
   attributes: number
@@ -374,7 +399,9 @@ interface MessageSetEntry<K = Buffer, V = Buffer> {
 interface RecordBatchEntry<K = Buffer, V = Buffer> {
   key: Buffer | null
   value: Buffer | null
+  /** **EXPERIMENTAL**: subject to change or removal. The key as deserialized by `js.key.deserializer.builder`, or the error it threw. */
   deserializedKey: { key: K | null, error: KeyDeserializationError | null }
+  /** **EXPERIMENTAL**: subject to change or removal. The value as deserialized by `js.value.deserializer.builder`, or the error it threw. */
   deserializedValue: { value: V | null, error: ValueDeserializationError | null }
   timestamp: string
   attributes: number
@@ -489,6 +516,7 @@ export type Consumer<K = Buffer, V = Buffer> = Client & {
   paused(): TopicPartitions[]
   resume(topics: Array<{ topic: string; partitions?: number[] }>): void
   assignment(): TopicPartition[]
+  /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
   clusterId(options?: { timeout?: number }): Promise<string>
 }
 
@@ -528,6 +556,7 @@ export type Admin = {
   }): Promise<boolean>
   deleteTopics(options: { topics: string[]; timeout?: number }): Promise<void>
   listTopics(options?: { timeout?: number }): Promise<string[]>
+  /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
   clusterId(options?: { timeout?: number }): Promise<string>
   listGroups(options?: {
     timeout?: number,
@@ -617,28 +646,34 @@ export interface KafkaJSDeleteTopicRecordsErrorPartition {
   error: KafkaJSError
 }
 
+/** **EXPERIMENTAL**: subject to change or removal. Common base of the errors thrown by `send()` when a serializer fails. */
 export class SerializationError extends KafkaJSError {
   readonly cause: Error | null
   constructor(e: Error | string, code: number)
 }
 
+/** **EXPERIMENTAL**: subject to change or removal. Thrown by `send()` when the key serializer fails. */
 export class KeySerializationError extends SerializationError {
   constructor(e: Error | string)
 }
 
+/** **EXPERIMENTAL**: subject to change or removal. Thrown by `send()` when the value serializer fails. */
 export class ValueSerializationError extends SerializationError {
   constructor(e: Error | string)
 }
 
+/** **EXPERIMENTAL**: subject to change or removal. Common base of the errors reported on a message when a deserializer fails. */
 export class DeserializationError extends KafkaJSError {
   readonly cause: Error | null
   constructor(e: Error | string, code: number)
 }
 
+/** **EXPERIMENTAL**: subject to change or removal. Reported as `deserializedKey.error` when the key deserializer fails. */
 export class KeyDeserializationError extends DeserializationError {
   constructor(e: Error | string)
 }
 
+/** **EXPERIMENTAL**: subject to change or removal. Reported as `deserializedValue.error` when the value deserializer fails. */
 export class ValueDeserializationError extends DeserializationError {
   constructor(e: Error | string)
 }

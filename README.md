@@ -117,6 +117,8 @@ async function producerStart() {
 producerStart();
 ```
 
+The Schema Registry serde integration (the `js.*.serializer.builder` and `js.*.deserializer.builder` properties) and `clusterId()` are experimental and may change in future releases.
+
 For an Avro example that also consumes and deserializes, see [sr.js](examples/kafkajs/sr.js).
 
 There are two variants of the API offered by this library. A promisified API and a callback-based API.

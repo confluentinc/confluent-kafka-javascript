@@ -411,6 +411,13 @@ export class ProtobufSerializer extends Serializer implements ProtobufSerde {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a Protobuf serializer for a Kafka producer, to be passed as the
+ * `js.key.serializer.builder` or `js.value.serializer.builder` property. The producer
+ * calls `build()` while it connects and owns the serializer it gets.
+ */
 export class KafkaProtobufSerializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
@@ -468,6 +475,11 @@ export class KafkaProtobufSerializerBuilder<T> {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Creates a {@link KafkaProtobufSerializerBuilder}.
+ */
 export function kafkaProtobufSerializerBuilder<T>(): KafkaProtobufSerializerBuilder<T> {
   return new KafkaProtobufSerializerBuilder<T>()
 }
@@ -630,6 +642,13 @@ export class ProtobufDeserializer extends Deserializer implements ProtobufSerde 
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a Protobuf deserializer for a Kafka consumer, to be passed as the
+ * `js.key.deserializer.builder` or `js.value.deserializer.builder` property. The consumer
+ * calls `build()` while it connects and owns the deserializer it gets.
+ */
 export class KafkaProtobufDeserializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
@@ -687,6 +706,11 @@ export class KafkaProtobufDeserializerBuilder<T> {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Creates a {@link KafkaProtobufDeserializerBuilder}.
+ */
 export function kafkaProtobufDeserializerBuilder<T>(): KafkaProtobufDeserializerBuilder<T> {
   return new KafkaProtobufDeserializerBuilder<T>()
 }

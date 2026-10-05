@@ -3,6 +3,8 @@ import {ClientConfig} from "../rest-service";
 import {Serde} from "./serde";
 
 /**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
  * Constructs a serde for a Kafka client from either a Schema Registry client
  * the application created, or a client configuration to create one from.
  *

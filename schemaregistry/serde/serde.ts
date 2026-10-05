@@ -212,6 +212,8 @@ export enum SubjectNameStrategyType {
 }
 
 /**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
  * ClusterIdResolver returns the id of the Kafka cluster a client is connected to.
  * It is handed to a serde by the Kafka client that owns it, and may wait on
  * broker metadata, so a serde must only invoke it when it actually needs the id.
@@ -289,6 +291,8 @@ export abstract class Serde {
   }
 
   /**
+   * **EXPERIMENTAL**: subject to change or removal.
+   *
    * Hands over the resolver for the id of the Kafka cluster this serde is used
    * with. Only the associated subject name strategy needs it; other strategies
    * ignore it. The resolver is not invoked here: the strategy calls it lazily,

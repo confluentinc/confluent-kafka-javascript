@@ -203,6 +203,7 @@ export abstract class Client<Events extends string> extends EventEmitter {
     queryWatermarkOffsets(topic: string, partition: number, timeout: number, cb?: (err: LibrdKafkaError, offsets: WatermarkOffsets) => any): any;
     queryWatermarkOffsets(topic: string, partition: number, cb?: (err: LibrdKafkaError, offsets: WatermarkOffsets) => any): any;
 
+    /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
     clusterId(timeout: number, cb?: (err: LibrdKafkaError, clusterId: string) => any): any;
 
     setSaslCredentials(username: string, password: string): void;
@@ -516,6 +517,7 @@ export interface IAdminClient {
     listTopics(cb?: (err: LibrdKafkaError, topics: string[]) => any): void;
     listTopics(options?: { timeout?: number }, cb?: (err: LibrdKafkaError, topics: string[]) => any): void;
 
+    /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
     clusterId(timeout: number, cb?: (err: LibrdKafkaError, clusterId: string) => any): void;
 
     listGroups(cb?: (err: LibrdKafkaError, result: { groups: GroupOverview[], errors: LibrdKafkaError[] }) => any): void;

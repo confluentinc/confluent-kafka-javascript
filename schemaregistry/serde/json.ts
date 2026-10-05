@@ -212,6 +212,13 @@ export class JsonSerializer extends Serializer implements JsonSerde {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a JSON serializer for a Kafka producer, to be passed as the
+ * `js.key.serializer.builder` or `js.value.serializer.builder` property. The producer
+ * calls `build()` while it connects and owns the serializer it gets.
+ */
 export class KafkaJsonSerializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
@@ -269,6 +276,11 @@ export class KafkaJsonSerializerBuilder<T> {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Creates a {@link KafkaJsonSerializerBuilder}.
+ */
 export function kafkaJsonSerializerBuilder<T>(): KafkaJsonSerializerBuilder<T> {
   return new KafkaJsonSerializerBuilder<T>()
 }
@@ -390,6 +402,13 @@ export class JsonDeserializer extends Deserializer implements JsonSerde {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a JSON deserializer for a Kafka consumer, to be passed as the
+ * `js.key.deserializer.builder` or `js.value.deserializer.builder` property. The consumer
+ * calls `build()` while it connects and owns the deserializer it gets.
+ */
 export class KafkaJsonDeserializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
@@ -447,6 +466,11 @@ export class KafkaJsonDeserializerBuilder<T> {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Creates a {@link KafkaJsonDeserializerBuilder}.
+ */
 export function kafkaJsonDeserializerBuilder<T>(): KafkaJsonDeserializerBuilder<T> {
   return new KafkaJsonDeserializerBuilder<T>()
 }

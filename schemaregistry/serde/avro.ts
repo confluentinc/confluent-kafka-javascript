@@ -237,6 +237,13 @@ export class AvroSerializer extends Serializer implements AvroSerde {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a Avro serializer for a Kafka producer, to be passed as the
+ * `js.key.serializer.builder` or `js.value.serializer.builder` property. The producer
+ * calls `build()` while it connects and owns the serializer it gets.
+ */
 export class KafkaAvroSerializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
@@ -294,6 +301,11 @@ export class KafkaAvroSerializerBuilder<T> {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Creates a {@link KafkaAvroSerializerBuilder}.
+ */
 export function kafkaAvroSerializerBuilder<T>(): KafkaAvroSerializerBuilder<T> {
   return new KafkaAvroSerializerBuilder<T>()
 }
@@ -417,6 +429,13 @@ export class AvroDeserializer extends Deserializer implements AvroSerde {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a Avro deserializer for a Kafka consumer, to be passed as the
+ * `js.key.deserializer.builder` or `js.value.deserializer.builder` property. The consumer
+ * calls `build()` while it connects and owns the deserializer it gets.
+ */
 export class KafkaAvroDeserializerBuilder<T> {
   #clientConfig?: ClientConfig | null = null
   #schemaRegistryClient?: Client | null = null
@@ -474,6 +493,11 @@ export class KafkaAvroDeserializerBuilder<T> {
   }
 }
 
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Creates a {@link KafkaAvroDeserializerBuilder}.
+ */
 export function kafkaAvroDeserializerBuilder<T>(): KafkaAvroDeserializerBuilder<T> {
   return new KafkaAvroDeserializerBuilder<T>()
 }
