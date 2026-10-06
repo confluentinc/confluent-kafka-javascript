@@ -12,6 +12,23 @@
    - Add the `js.key.serializer.builder` / `js.value.serializer.builder` producer properties and the `js.key.deserializer.builder` / `js.value.deserializer.builder` consumer properties, taking the new `kafka{Avro,Json,Protobuf}{Serializer,Deserializer}Builder()` builders. The client builds the serdes while connecting, applies them to every key and value, and closes them when it disconnects. A builder can either create a Schema Registry client from a `ClientConfig` (owned and closed together with the serde) or be given one with `setSchemaRegistryClient` (never closed by the serde). `build(config, isKey)` is handed a copy of the full client configuration and returns the serde together with the configuration it did not consume; the client is created with the properties every builder left in place, so a property consumed by any builder never reaches librdkafka.
    - The ASSOCIATED subject name strategy (the default of the builders) resolves the Kafka cluster id lazily, on the first subject lookup, through a resolver the client hands the serde once connected (`setClusterIdResolver`): connecting no longer waits on it and an explicit `subject.name.strategy.kafka.cluster.id` still takes precedence. Concurrent resolutions share a single call into librdkafka, so however many serdes or in-flight sends need the id at once, only one native worker waits on it.
    - `send()` rejects an invalid topic or messages list before serializing, and reports serializer failures as `KeySerializationError` / `ValueSerializationError` (with the original error as `cause`). Deserializer failures are reported on the message, as `deserializedKey.error` / `deserializedValue.error` (`KeyDeserializationError` / `ValueDeserializationError`), so that the record is still delivered.
+8. The promisified (KafkaJS-compatible) `producer.connect()` and `consumer.connect()`
+   now retry on transient connection errors instead of failing on the first one,
+   controlled by `retry.retries` (default 5). Each attempt is bounded by the
+   connection-setup timeout (`connectionTimeout` + `authenticationTimeout`) plus a
+   small margin rather than a fixed 30s, and the wait between attempts grows
+   exponentially from `retry.initialRetryTime` up to `retry.maxRetryTime` (with
+   jitter), as in KafkaJS. `retry.initialRetryTime`/`retry.maxRetryTime` now also
+   map to `reconnect.backoff.ms`/`reconnect.backoff.max.ms`, so the reconnection
+   attempts librdkafka makes within each connect attempt follow the same backoff.
+   Note: this changes the default behavior of `connect()` — against a
+   persistently-unreachable broker it now makes up to `retries` + 1 attempts before
+   rejecting, instead of rejecting after a single attempt. Set `retry: { retries: 0 }`
+   to restore the single-attempt behavior. Only transient connection errors are
+   retried (transport failures, all brokers down, name resolution failures and
+   timeouts); any other error, such as an authentication or configuration error,
+   fails fast. Concurrent `connect()` calls on the same client now share a single
+   in-flight connection attempt rather than the second call throwing.
 
 
 # confluent-kafka-javascript 1.10.1

@@ -321,11 +321,10 @@ describe('Producer > serializers', () => {
             }),
         };
         const slowProducer = createProducer({}, { 'js.value.serializer.builder': slowBuilder });
-        const results = await Promise.allSettled([slowProducer.connect(), slowProducer.connect()]);
+        /* Concurrent connect() calls share the one in-flight connection, so both
+         * fulfil, and the serializers are built once for that connection. */
+        await Promise.all([slowProducer.connect(), slowProducer.connect()]);
         try {
-            expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-            const rejected = results.find((r) => r.status === 'rejected');
-            expect(rejected.reason).toHaveProperty('code', ErrorCodes.ERR__STATE);
             expect(slowBuilder.build).toHaveBeenCalledTimes(1);
         } finally {
             await slowProducer.disconnect();
