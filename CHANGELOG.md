@@ -24,10 +24,10 @@
    Note: this changes the default behavior of `connect()` — against a
    persistently-unreachable broker it now makes up to `retries` + 1 attempts before
    rejecting, instead of rejecting after a single attempt. Set `retry: { retries: 0 }`
-   to restore the single-attempt behavior. As in KafkaJS, connect() retries by
-   default and only genuinely terminal errors are not retried — authentication,
-   authorization, misconfiguration, unsupported protocol/feature, and fatal errors
-   fail fast. Concurrent `connect()` calls on the same client now share a single
+   to restore the single-attempt behavior. Only transient connection errors are
+   retried (transport failures, all brokers down, name resolution failures and
+   timeouts); any other error, such as an authentication or configuration error,
+   fails fast. Concurrent `connect()` calls on the same client now share a single
    in-flight connection attempt rather than the second call throwing.
 
 

@@ -17,13 +17,13 @@ describe('isConnectRetriable', () => {
         expect(isConnectRetriable({ code: ErrorCodes.ERR__TIMED_OUT })).toBe(true);
         expect(isConnectRetriable({ code: ErrorCodes.ERR__TIMED_OUT_QUEUE })).toBe(true);
         expect(isConnectRetriable({ code: ErrorCodes.ERR__RESOLVE })).toBe(true);
-        expect(isConnectRetriable({ code: ErrorCodes.ERR__SSL })).toBe(true);
     });
 
-    it('retries by default, including unknown or unexpected errors (KafkaJS-style)', () => {
-        expect(isConnectRetriable({ code: ErrorCodes.ERR_UNKNOWN })).toBe(true);
-        expect(isConnectRetriable({ code: ErrorCodes.ERR_LEADER_NOT_AVAILABLE })).toBe(true);
-        expect(isConnectRetriable({})).toBe(true);
+    it('does not retry errors outside the list, including unknown or missing codes', () => {
+        expect(isConnectRetriable({ code: ErrorCodes.ERR__SSL })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_UNKNOWN })).toBe(false);
+        expect(isConnectRetriable({ code: ErrorCodes.ERR_LEADER_NOT_AVAILABLE })).toBe(false);
+        expect(isConnectRetriable({})).toBe(false);
     });
 
     it('does not retry terminal errors: auth, authorization, config, unsupported, fatal', () => {
@@ -39,7 +39,7 @@ describe('isConnectRetriable', () => {
         expect(isConnectRetriable({ code: ErrorCodes.ERR__STATE })).toBe(false);
     });
 
-    it('does not retry an error flagged fatal even with an unlisted code', () => {
+    it('does not retry an error flagged fatal even with a listed code', () => {
         expect(isConnectRetriable({ code: ErrorCodes.ERR__TRANSPORT, isFatal: true })).toBe(false);
         expect(isConnectRetriable({ code: ErrorCodes.ERR_UNKNOWN, fatal: true })).toBe(false);
     });
