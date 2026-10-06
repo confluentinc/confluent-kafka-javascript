@@ -102,8 +102,8 @@ export interface CommonConstructorConfig extends GlobalConfig {
 
 export class Kafka {
   constructor(config?: CommonConstructorConfig)
-  producer(config?: ProducerConstructorConfig): Producer
-  consumer(config: ConsumerConstructorConfig): Consumer
+  producer<K = Buffer | string, V = Buffer | string>(config?: ProducerConstructorConfig<K, V>): Producer<K, V>
+  consumer<K = Buffer, V = Buffer>(config: ConsumerConstructorConfig<K,V>): Consumer<K, V>
   admin(config?: AdminConstructorConfig): Admin
 }
 
@@ -138,9 +138,72 @@ export interface ProducerConfig {
   logger?: Logger,
 }
 
-type ProducerGlobalAndTopicConfig = ProducerGlobalConfig & ProducerTopicConfig;
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * A function the client hands to a serde once connected, which resolves the id
+ * of the Kafka cluster it is connected to. It is invoked lazily, by the serde,
+ * only when it needs the cluster id. Concurrent invocations share a single
+ * resolution, so however many serdes or in-flight sends need the id at once,
+ * the client asks librdkafka once. The outcome is not cached by the resolver:
+ * a failed resolution is retried on the next invocation.
+ */
+export type ClusterIdResolver = () => Promise<string>
 
-export interface ProducerConstructorConfig extends ProducerGlobalAndTopicConfig {
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Serializes message keys or values. Configured through the
+ * `js.key.serializer.builder` / `js.value.serializer.builder` producer properties.
+ */
+export interface Serializer<T> {
+  serialize(topic: string, msg: T, headers?: IHeaders): Promise<Buffer>
+  /**
+   * Called by the producer once connected, with a resolver for the id of the
+   * connected cluster. Serdes that never need it can omit this method.
+   */
+  setClusterIdResolver?(resolver: ClusterIdResolver): void
+  /**
+   * Called by the producer when it disconnects, and on connection failures,
+   * to release resources owned by the serializer (such as a Schema Registry
+   * client it created).
+   */
+  close?(): Promise<void> | void
+}
+
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a serializer for a producer while it connects, which lets the
+ * serializer take the producer's own configuration into account.
+ */
+export interface KafkaSerializerBuilder<T> {
+  /**
+   * @param config - the producer's configuration, with the builder properties
+   *   removed. Every builder is handed its own copy of the full configuration.
+   *   A builder may consume properties meant for it and must leave the rest in
+   *   place.
+   * @param isKey - whether the serializer is for message keys.
+   * @returns the serializer and the configuration left over for the producer.
+   *   The producer is created with the properties that every builder left in
+   *   place, so a property consumed by any builder never reaches librdkafka.
+   *   May be returned asynchronously: it is awaited while the producer connects.
+   */
+  build(config: ProducerConstructorConfig<unknown, unknown>, isKey: boolean):
+    [Serializer<T>, ProducerConstructorConfig<unknown, unknown>] |
+    Promise<[Serializer<T>, ProducerConstructorConfig<unknown, unknown>]>
+}
+
+interface JSProducerConfig<K, V> {
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the serializer for message keys while the producer connects. */
+  'js.key.serializer.builder'?: KafkaSerializerBuilder<K>
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the serializer for message values while the producer connects. */
+  'js.value.serializer.builder'?: KafkaSerializerBuilder<V>
+}
+
+type ProducerGlobalAndTopicConfig<K = Buffer | string, V = Buffer | string> = ProducerGlobalConfig & ProducerTopicConfig & JSProducerConfig<K, V>;
+
+export interface ProducerConstructorConfig<K = Buffer | string, V = Buffer | string> extends ProducerGlobalAndTopicConfig<K, V> {
   kafkaJS?: ProducerConfig;
 }
 
@@ -148,26 +211,26 @@ export interface IHeaders {
   [key: string]: Buffer | string | (Buffer | string)[] | undefined
 }
 
-export interface Message {
-  key?: Buffer | string | null
-  value: Buffer | string | null
+export interface Message<K = Buffer | string, V = Buffer | string> {
+  key?: K | null
+  value: V | null
   partition?: number
   headers?: IHeaders
   timestamp?: string
 }
 
-export interface ProducerRecord {
+export interface ProducerRecord<K = Buffer | string, V = Buffer | string> {
   topic: string
-  messages: Message[]
+  messages: Message<K, V>[]
 }
 
-export interface TopicMessages {
+export interface TopicMessages<K = Buffer | string, V = Buffer | string> {
   topic: string
-  messages: Message[]
+  messages: Message<K, V>[]
 }
 
-export interface ProducerBatch {
-  topicMessages?: TopicMessages[]
+export interface ProducerBatch<K = Buffer | string, V = Buffer | string> {
+  topicMessages?: TopicMessages<K, V>[]
 }
 
 export type RecordMetadata = {
@@ -195,16 +258,18 @@ export type PartitionMetadata = {
 
 export type Transaction = Producer;
 
-export type Producer = Client & {
-  send(record: ProducerRecord): Promise<RecordMetadata[]>
-  sendBatch(batch: ProducerBatch): Promise<RecordMetadata[]>
+export type Producer<K = Buffer | string, V = Buffer | string> = Client & {
+  send(record: ProducerRecord<K,V>): Promise<RecordMetadata[]>
+  sendBatch(batch: ProducerBatch<K,V>): Promise<RecordMetadata[]>
   flush(args?: { timeout?: number }): Promise<void>
+  /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
+  clusterId(options?: { timeout?: number }): Promise<string>
 
   // Transactional producer-only methods.
   transaction(): Promise<Transaction>
   commit(): Promise<void>
   abort(): Promise<void>
-  sendOffsets(args: { consumer: Consumer, topics: TopicOffsets[] }): Promise<void>
+  sendOffsets(args: { consumer: Consumer<unknown, unknown>, topics: TopicOffsets[] }): Promise<void>
   isActive(): boolean
 }
 
@@ -244,7 +309,51 @@ export interface ConsumerConfig {
   partitionAssignors?: PartitionAssignors[],
 }
 
-export interface JSConsumerConfig {
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Deserializes message keys or values. Configured through the
+ * `js.key.deserializer.builder` / `js.value.deserializer.builder` consumer properties.
+ */
+export interface Deserializer<T> {
+  deserialize(topic: string, payload: Buffer, headers?: IHeaders): Promise<T>
+  /**
+   * Called by the consumer once connected, with a resolver for the id of the
+   * connected cluster. Serdes that never need it can omit this method.
+   */
+  setClusterIdResolver?(resolver: ClusterIdResolver): void
+  /**
+   * Called by the consumer when it disconnects, and on connection failures,
+   * to release resources owned by the deserializer (such as a Schema Registry
+   * client it created).
+   */
+  close?(): Promise<void> | void
+}
+
+/**
+ * **EXPERIMENTAL**: subject to change or removal.
+ *
+ * Builds a deserializer for a consumer while it connects, which lets the
+ * deserializer take the consumer's own configuration into account.
+ */
+export interface KafkaDeserializerBuilder<T> {
+  /**
+   * @param config - the consumer's configuration, with the builder properties
+   *   removed. Every builder is handed its own copy of the full configuration.
+   *   A builder may consume properties meant for it and must leave the rest in
+   *   place.
+   * @param isKey - whether the deserializer is for message keys.
+   * @returns the deserializer and the configuration left over for the consumer.
+   *   The consumer is created with the properties that every builder left in
+   *   place, so a property consumed by any builder never reaches librdkafka.
+   *   May be returned asynchronously: it is awaited while the consumer connects.
+   */
+  build(config: ConsumerConstructorConfig<unknown, unknown>, isKey: boolean):
+    [Deserializer<T>, ConsumerConstructorConfig<unknown, unknown>] |
+    Promise<[Deserializer<T>, ConsumerConstructorConfig<unknown, unknown>]>
+}
+
+export interface JSConsumerConfig<K = Buffer, V = Buffer> {
   /**
    * Maximum batch size passed in eachBatch calls.
    * A value of -1 means no limit.
@@ -259,17 +368,26 @@ export interface JSConsumerConfig {
    * @default 1500
    */
   'js.consumer.max.cache.size.per.worker.ms'?: string | number
+
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the deserializer for message keys while the consumer connects. */
+  'js.key.deserializer.builder'?: KafkaDeserializerBuilder<K>
+  /** **EXPERIMENTAL**: subject to change or removal. Builds the deserializer for message values while the consumer connects. */
+  'js.value.deserializer.builder'?: KafkaDeserializerBuilder<V>
 }
 
-export type ConsumerGlobalAndTopicConfig = ConsumerGlobalConfig & ConsumerTopicConfig & JSConsumerConfig;
+export type ConsumerGlobalAndTopicConfig<K = Buffer, V = Buffer> = ConsumerGlobalConfig & ConsumerTopicConfig & JSConsumerConfig<K,V>;
 
-export interface ConsumerConstructorConfig extends ConsumerGlobalAndTopicConfig {
+export interface ConsumerConstructorConfig<K = Buffer, V = Buffer> extends ConsumerGlobalAndTopicConfig<K,V> {
   kafkaJS?: ConsumerConfig;
 }
 
-interface MessageSetEntry {
+interface MessageSetEntry<K = Buffer, V = Buffer> {
   key: Buffer | null
   value: Buffer | null
+  /** **EXPERIMENTAL**: subject to change or removal. The key as deserialized by `js.key.deserializer.builder`, or the error it threw. */
+  deserializedKey: { key: K | null, error: KeyDeserializationError | null }
+  /** **EXPERIMENTAL**: subject to change or removal. The value as deserialized by `js.value.deserializer.builder`, or the error it threw. */
+  deserializedValue: { value: V | null, error: ValueDeserializationError | null }
   timestamp: string
   attributes: number
   offset: string
@@ -278,9 +396,13 @@ interface MessageSetEntry {
   leaderEpoch?: number
 }
 
-interface RecordBatchEntry {
+interface RecordBatchEntry<K = Buffer, V = Buffer> {
   key: Buffer | null
   value: Buffer | null
+  /** **EXPERIMENTAL**: subject to change or removal. The key as deserialized by `js.key.deserializer.builder`, or the error it threw. */
+  deserializedKey: { key: K | null, error: KeyDeserializationError | null }
+  /** **EXPERIMENTAL**: subject to change or removal. The value as deserialized by `js.value.deserializer.builder`, or the error it threw. */
+  deserializedValue: { value: V | null, error: ValueDeserializationError | null }
   timestamp: string
   attributes: number
   offset: string
@@ -289,11 +411,11 @@ interface RecordBatchEntry {
   leaderEpoch?: number
 }
 
-export type Batch = {
+export type Batch<K = Buffer, V = Buffer> = {
   topic: string
   partition: number
   highWatermark: string
-  messages: KafkaMessage[]
+  messages: KafkaMessage<K,V>[]
   isEmpty(): boolean
   firstOffset(): string | null
   lastOffset(): string
@@ -301,12 +423,12 @@ export type Batch = {
   offsetLagLow(): string
 }
 
-export type KafkaMessage = MessageSetEntry | RecordBatchEntry
+export type KafkaMessage<K = Buffer, V = Buffer> = MessageSetEntry<K, V> | RecordBatchEntry<K, V>
 
-export interface EachMessagePayload {
+export interface EachMessagePayload<K = Buffer, V = Buffer> {
   topic: string
   partition: number
-  message: KafkaMessage
+  message: KafkaMessage<K, V>
   heartbeat(): Promise<void>
   pause(): () => void
 }
@@ -321,8 +443,8 @@ export interface TopicOffsets {
   partitions: PartitionOffset[]
 }
 
-export interface EachBatchPayload {
-  batch: Batch
+export interface EachBatchPayload<K = Buffer, V = Buffer> {
+  batch: Batch<K,V>
   resolveOffset(offset: string): void
   heartbeat(): Promise<void>
   pause(): () => void
@@ -331,9 +453,9 @@ export interface EachBatchPayload {
   isStale(): boolean
 }
 
-export type EachBatchHandler = (payload: EachBatchPayload) => Promise<void>
+export type EachBatchHandler<K = Buffer, V = Buffer> = (payload: EachBatchPayload<K,V>) => Promise<void>
 
-export type EachMessageHandler = (payload: EachMessagePayload) => Promise<void>
+export type EachMessageHandler<K = Buffer, V = Buffer> = (payload: EachMessagePayload<K,V>) => Promise<void>
 
 /**
  * @deprecated Replaced by ConsumerSubscribeTopics
@@ -342,11 +464,11 @@ export type ConsumerSubscribeTopic = { topic: string | RegExp; replace?: boolean
 
 export type ConsumerSubscribeTopics = { topics: (string | RegExp)[]; replace?: boolean }
 
-export type ConsumerRunConfig = {
+export type ConsumerRunConfig<K = Buffer, V = Buffer> = {
   eachBatchAutoResolve?: boolean,
   partitionsConsumedConcurrently?: number,
-  eachMessage?: EachMessageHandler
-  eachBatch?: EachBatchHandler
+  eachMessage?: EachMessageHandler<K,V>
+  eachBatch?: EachBatchHandler<K,V>
 }
 
 export type TopicPartitions = { topic: string; partitions: number[] }
@@ -382,10 +504,10 @@ export type ITopicMetadata = {
   authorizedOperations?: AclOperationTypes[]
 }
 
-export type Consumer = Client & {
+export type Consumer<K = Buffer, V = Buffer> = Client & {
   subscribe(subscription: ConsumerSubscribeTopics | ConsumerSubscribeTopic): Promise<void>
   stop(): Promise<void>
-  run(config?: ConsumerRunConfig): Promise<void>
+  run(config?: ConsumerRunConfig<K,V>): Promise<void>
   storeOffsets(topicPartitions: Array<TopicPartitionOffsetAndMetadata>): void
   commitOffsets(topicPartitions?: Array<TopicPartitionOffsetAndMetadata>): Promise<void>
   committed(topicPartitions?: Array<TopicPartition>, timeout?: number): Promise<TopicPartitionOffsetAndMetadata[]>
@@ -394,6 +516,8 @@ export type Consumer = Client & {
   paused(): TopicPartitions[]
   resume(topics: Array<{ topic: string; partitions?: number[] }>): void
   assignment(): TopicPartition[]
+  /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
+  clusterId(options?: { timeout?: number }): Promise<string>
 }
 
 export interface AdminConfig {
@@ -432,6 +556,8 @@ export type Admin = {
   }): Promise<boolean>
   deleteTopics(options: { topics: string[]; timeout?: number }): Promise<void>
   listTopics(options?: { timeout?: number }): Promise<string[]>
+  /** **EXPERIMENTAL**: subject to change or removal. Fetches the id of the cluster the client is connected to. */
+  clusterId(options?: { timeout?: number }): Promise<string>
   listGroups(options?: {
     timeout?: number,
     matchConsumerGroupStates?: ConsumerGroupStates[],
@@ -518,6 +644,38 @@ export interface KafkaJSDeleteTopicRecordsErrorPartition {
   partition: number
   offset: string
   error: KafkaJSError
+}
+
+/** **EXPERIMENTAL**: subject to change or removal. Common base of the errors thrown by `send()` when a serializer fails. */
+export class SerializationError extends KafkaJSError {
+  readonly cause: Error | null
+  constructor(e: Error | string, code: number)
+}
+
+/** **EXPERIMENTAL**: subject to change or removal. Thrown by `send()` when the key serializer fails. */
+export class KeySerializationError extends SerializationError {
+  constructor(e: Error | string)
+}
+
+/** **EXPERIMENTAL**: subject to change or removal. Thrown by `send()` when the value serializer fails. */
+export class ValueSerializationError extends SerializationError {
+  constructor(e: Error | string)
+}
+
+/** **EXPERIMENTAL**: subject to change or removal. Common base of the errors reported on a message when a deserializer fails. */
+export class DeserializationError extends KafkaJSError {
+  readonly cause: Error | null
+  constructor(e: Error | string, code: number)
+}
+
+/** **EXPERIMENTAL**: subject to change or removal. Reported as `deserializedKey.error` when the key deserializer fails. */
+export class KeyDeserializationError extends DeserializationError {
+  constructor(e: Error | string)
+}
+
+/** **EXPERIMENTAL**: subject to change or removal. Reported as `deserializedValue.error` when the value deserializer fails. */
+export class ValueDeserializationError extends DeserializationError {
+  constructor(e: Error | string)
 }
 
 export class KafkaJSAggregateError extends Error {

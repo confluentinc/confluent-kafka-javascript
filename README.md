@@ -72,21 +72,23 @@ API key and secret.
 
 ```javascript
 const { Kafka } = require('@confluentinc/kafka-javascript').KafkaJS;
-const { SchemaRegistryClient, SerdeType, JsonSerializer } = require('@confluentinc/schemaregistry');
+const { kafkaJsonSerializerBuilder } = require('@confluentinc/schemaregistry');
 
 async function producerStart() {
-    // autoRegisterSchemas registers the schema on first produce. Use
-    // useLatestVersion instead when the schema is already registered.
-    const registry = new SchemaRegistryClient({
-        baseURLs: ['<fill>'],
-        basicAuthCredentials: {
-            credentialsSource: 'USER_INFO',
-            // Schema Registry API key and secret, as '<key>:<secret>'. These
-            // are a separate credential from the Kafka API key used below.
-            userInfo: '<fill>:<fill>',
-        },
-    });
-    const serializer = new JsonSerializer(registry, SerdeType.VALUE, { autoRegisterSchemas: true });
+    // The producer builds the serializer while it connects and applies it to
+    // every message value. autoRegisterSchemas registers the schema on first
+    // produce. Use useLatestVersion instead when the schema is already registered.
+    const valueSerializerBuilder = kafkaJsonSerializerBuilder()
+        .setClientConfig({
+            baseURLs: ['<fill>'],
+            basicAuthCredentials: {
+                credentialsSource: 'USER_INFO',
+                // Schema Registry API key and secret, as '<key>:<secret>'. These
+                // are a separate credential from the Kafka API key used below.
+                userInfo: '<fill>:<fill>',
+            },
+        })
+        .setJsonSerializerConfig({ autoRegisterSchemas: true });
 
     const producer = new Kafka().producer({
         'bootstrap.servers': '<fill>',
@@ -94,6 +96,7 @@ async function producerStart() {
         'sasl.mechanisms': 'PLAIN',
         'sasl.username': '<fill>',
         'sasl.password': '<fill>',
+        'js.value.serializer.builder': valueSerializerBuilder,
     });
 
     await producer.connect();
@@ -103,7 +106,7 @@ async function producerStart() {
     await producer.send({
         topic: 'test-topic',
         messages: [
-            { value: await serializer.serialize('test-topic', user), key: 'user1' },
+            { value: user, key: 'user1' },
         ],
     });
 
@@ -113,6 +116,8 @@ async function producerStart() {
 
 producerStart();
 ```
+
+The Schema Registry serde integration (the `js.*.serializer.builder` and `js.*.deserializer.builder` properties) and `clusterId()` are experimental and may change in future releases.
 
 For an Avro example that also consumes and deserializes, see [sr.js](examples/kafkajs/sr.js).
 

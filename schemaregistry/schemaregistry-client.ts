@@ -258,7 +258,7 @@ export interface Client {
   ): Promise<void>;
   clearLatestCaches(): void;
   clearCaches(): void;
-  close(): void;
+  close(): Promise<void> | void;
 }
 
 /**
