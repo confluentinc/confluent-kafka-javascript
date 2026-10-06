@@ -343,6 +343,8 @@ export interface NewTopic {
         'segment.ms'?: string;
         'unclean.leader.election.enable'?: string;
         'message.downconversion.enable'?: string;
+        'confluent.value.association'?: string;
+        'confluent.key.association'?: string;
     } | { [cfg: string]: string; };
 }
 
