@@ -1,7 +1,9 @@
 jest.setTimeout(10000);
 
 const { EventEmitter } = require('events');
+const { performance } = require('perf_hooks');
 const { ErrorCodes } = require('../../../lib/kafkajs/_error');
+const { Timer } = require('../../../lib/kafkajs/_common');
 
 /* Scripted outcomes consumed by each fake client, in construction order, and the
  * clients constructed so far. Reset before each test. */
@@ -20,6 +22,7 @@ class FakeClient extends EventEmitter {
         super();
         this.config = config;
         this.name = `fake#${created.length}`;
+        this.createdAt = performance.now();
         this.outcome = plan.shift() || { type: 'ready' };
         this.connectOptions = null;
         this.disconnectCalls = 0;
@@ -91,6 +94,15 @@ function makeKafka(retry) {
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+async function until(condition, tries = 500) {
+    for (let i = 0; i < tries; i++) {
+        if (condition())
+            return;
+        await tick();
+    }
+    throw new Error('condition not met in time');
+}
 
 /* Listeners the base client keeps for itself (the fake's own 'disconnected'
  * handler) versus those the wrapper adds; after teardown only the former remain,
@@ -278,5 +290,72 @@ describe('Consumer connect() retry lifecycle', () => {
         expect(created[0].disconnectCalls).toBe(1);
         expect(created[0].isConnected()).toBe(false);
         assertDetached(created[0]);
+    });
+});
+
+describe('Producer connect() retry backoff', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('bounds each attempt and waits a growing, capped backoff between attempts', async () => {
+        /* Math.random at the midpoint makes the +/-20% jitter cancel out, so the
+         * waits are exactly the KafkaJS sequence: initial, x2, ..., capped at max. */
+        jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        const waits = jest.spyOn(Timer, 'withTimeout');
+        plan = [{ type: 'fail' }, { type: 'fail' }, { type: 'fail' }, { type: 'ready' }];
+        const producer = makeKafka({ initialRetryTime: 10, maxRetryTime: 25 }).producer();
+
+        await producer.connect();
+
+        expect(created).toHaveLength(4);
+        /* Per-attempt metadata timeout: connectionTimeout 1000 + authenticationTimeout 10000 + 1000. */
+        for (const client of created)
+            expect(client.connectOptions).toEqual({ timeout: 12000 });
+        const requested = waits.mock.calls.map(([ms]) => Math.round(ms));
+        expect(requested).toEqual([10, 20, 25]);
+        for (let i = 1; i < created.length; i++)
+            expect(created[i].createdAt - created[i - 1].createdAt).toBeGreaterThanOrEqual(requested[i - 1] - 2);
+        await producer.disconnect();
+    });
+
+    it('does not wait after the final failed attempt', async () => {
+        const waits = jest.spyOn(Timer, 'withTimeout');
+        plan = [{ type: 'fail' }, { type: 'fail' }];
+        const producer = makeKafka({ retries: 1, initialRetryTime: 10 }).producer();
+
+        await expect(producer.connect()).rejects.toMatchObject({ code: ErrorCodes.ERR__TRANSPORT });
+        expect(waits).toHaveBeenCalledTimes(1);
+    });
+
+    it('wakes from the backoff wait when disconnect() is called', async () => {
+        const waits = jest.spyOn(Timer, 'withTimeout');
+        plan = [{ type: 'fail' }];
+        const producer = makeKafka({ initialRetryTime: 10000, maxRetryTime: 10000 }).producer();
+
+        const connectPromise = producer.connect();
+        await until(() => waits.mock.calls.length === 1);
+        const started = performance.now();
+        await producer.disconnect();
+
+        await expect(connectPromise).rejects.toMatchObject({ code: ErrorCodes.ERR__STATE });
+        expect(performance.now() - started).toBeLessThan(2000);
+        expect(created).toHaveLength(1);
+    });
+});
+
+describe('Consumer connect() retry backoff', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('waits a growing backoff between attempts', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        const waits = jest.spyOn(Timer, 'withTimeout');
+        plan = [{ type: 'fail' }, { type: 'fail' }, { type: 'ready' }];
+        const consumer = makeKafka({ initialRetryTime: 10, maxRetryTime: 25 })
+            .consumer({ kafkaJS: { groupId: 'connect-retry-backoff' } });
+
+        await consumer.connect();
+
+        expect(created).toHaveLength(3);
+        expect(waits.mock.calls.map(([ms]) => Math.round(ms))).toEqual([10, 20]);
+        await consumer.disconnect();
     });
 });

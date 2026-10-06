@@ -16,10 +16,11 @@
    now retry on transient connection errors instead of failing on the first one,
    controlled by `retry.retries` (default 5). Each attempt is bounded by the
    connection-setup timeout (`connectionTimeout` + `authenticationTimeout`) plus a
-   small margin rather than a fixed 30s, and the reconnection backoff between the
-   underlying bootstrap attempts is driven by librdkafka using the `retry`
-   config (`retry.initialRetryTime`/`retry.maxRetryTime` now also map to
-   `reconnect.backoff.ms`/`reconnect.backoff.max.ms`).
+   small margin rather than a fixed 30s, and the wait between attempts grows
+   exponentially from `retry.initialRetryTime` up to `retry.maxRetryTime` (with
+   jitter), as in KafkaJS. `retry.initialRetryTime`/`retry.maxRetryTime` now also
+   map to `reconnect.backoff.ms`/`reconnect.backoff.max.ms`, so the reconnection
+   attempts librdkafka makes within each connect attempt follow the same backoff.
    Note: this changes the default behavior of `connect()` — against a
    persistently-unreachable broker it now makes up to `retries` + 1 attempts before
    rejecting, instead of rejecting after a single attempt. Set `retry: { retries: 0 }`

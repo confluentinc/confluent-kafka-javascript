@@ -3,6 +3,7 @@ jest.setTimeout(10000);
 const {
     isConnectRetriable,
     connectRetries,
+    connectRetryBackoff,
     moreInformativeConnectError,
     connectMetadataTimeout,
     kafkaJSToRdKafkaConfig,
@@ -131,5 +132,29 @@ describe('moreInformativeConnectError', () => {
         expect(moreInformativeConnectError(null, err)).toBe(err);
         expect(moreInformativeConnectError(err, null)).toBe(err);
         expect(moreInformativeConnectError(null, null)).toBe(null);
+    });
+});
+
+describe('connectRetryBackoff', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('doubles from initialRetryTime and caps at maxRetryTime (KafkaJS defaults, jitter at midpoint)', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        const waits = [0, 1, 2, 3, 4, 5, 6, 7].map((attempt) => Math.round(connectRetryBackoff(undefined, attempt)));
+        expect(waits).toEqual([300, 600, 1200, 2400, 4800, 9600, 19200, 30000]);
+    });
+
+    it('honors initialRetryTime and maxRetryTime', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        const retry = { initialRetryTime: 10, maxRetryTime: 25 };
+        expect([0, 1, 2, 3].map((attempt) => Math.round(connectRetryBackoff(retry, attempt)))).toEqual([10, 20, 25, 25]);
+    });
+
+    it('applies at most +/-20% jitter and never exceeds maxRetryTime', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+        expect(connectRetryBackoff(undefined, 0)).toBeCloseTo(240, 6);
+        jest.spyOn(Math, 'random').mockReturnValue(1);
+        expect(connectRetryBackoff(undefined, 0)).toBeCloseTo(360, 6);
+        expect(connectRetryBackoff(undefined, 7)).toBe(30000);
     });
 });
