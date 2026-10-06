@@ -71,10 +71,17 @@ describe('connectMetadataTimeout', () => {
         expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': 1000 })).toBe(2000);
     });
 
-    it('falls back to the librdkafka default when the setup timeout is absent', () => {
+    it('accepts the setup timeout as a numeric string, as raw librdkafka configs carry it', () => {
+        expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': '2000' })).toBe(3000);
+        expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': ' 2000 ' })).toBe(3000);
+    });
+
+    it('falls back to the librdkafka default when the setup timeout is absent or unusable', () => {
         // Raw librdkafka config (no kafkaJS block) never sets this key; must not be NaN/0.
         expect(connectMetadataTimeout({})).toBe(31000);
         expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': undefined })).toBe(31000);
+        expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': '' })).toBe(31000);
+        expect(connectMetadataTimeout({ 'socket.connection.setup.timeout.ms': 'abc' })).toBe(31000);
     });
 });
 
