@@ -7,6 +7,22 @@
 4. Add support for inline validation rules (#522)
 5. Add Variant, Decimal, and Timestamp CEL functions (#524)
 6. Add prebuilt binaries for linux-s390x (IBM Z), for both glibc and musl (#527)
+7. The promisified (KafkaJS-compatible) `producer.connect()` and `consumer.connect()`
+   now retry on transient connection errors instead of failing on the first one,
+   controlled by `retry.retries` (default 5). Each attempt is bounded by the
+   connection-setup timeout (`connectionTimeout` + `authenticationTimeout`) plus a
+   small margin rather than a fixed 30s, and the reconnection backoff between the
+   underlying bootstrap attempts is driven by librdkafka using the `retry`
+   config (`retry.initialRetryTime`/`retry.maxRetryTime` now also map to
+   `reconnect.backoff.ms`/`reconnect.backoff.max.ms`).
+   Note: this changes the default behavior of `connect()` — against a
+   persistently-unreachable broker it now makes up to `retries` + 1 attempts before
+   rejecting, instead of rejecting after a single attempt. Set `retry: { retries: 0 }`
+   to restore the single-attempt behavior. As in KafkaJS, connect() retries by
+   default and only genuinely terminal errors are not retried — authentication,
+   authorization, misconfiguration, unsupported protocol/feature, and fatal errors
+   fail fast. Concurrent `connect()` calls on the same client now share a single
+   in-flight connection attempt rather than the second call throwing.
 
 
 # confluent-kafka-javascript 1.10.1
