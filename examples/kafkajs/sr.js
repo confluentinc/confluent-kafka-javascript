@@ -3,8 +3,20 @@ const { Kafka } = require('@confluentinc/kafka-javascript').KafkaJS;
 
 // Note: The @confluentinc/schemaregistry will need to be installed separately to run this example,
 //       as it isn't a dependency of confluent-kafka-javascript.
-const { SchemaRegistryClient, SerdeType, AvroSerializer, AvroDeserializer} = require('@confluentinc/schemaregistry');
+const {
+    SchemaRegistryClient,
+    kafkaAvroSerializerBuilder,
+    kafkaAvroDeserializerBuilder,
+} = require('@confluentinc/schemaregistry');
 
+// Note: The Schema Registry serde integration used below (the serializer and
+//       deserializer builder properties) is experimental and may change in
+//       future releases.
+//
+// The Schema Registry client is owned by the application: it registers the
+// schemas below and is shared with the serializer and deserializer through
+// setSchemaRegistryClient, so neither of them closes it. To let a serde create
+// and own its own client instead, use setClientConfig (see the README).
 const registry = new SchemaRegistryClient({ baseURLs: ['<fill>'] })
 const kafka = new Kafka({
     kafkaJS: {
@@ -18,13 +30,28 @@ const kafka = new Kafka({
     }
 });
 
+const topicName = 'test-topic';
+const subjectName = topicName + '-value';
+
+// The producer builds the serializer while it connects and applies it to every
+// message value, so send() takes the plain object. useLatestVersion picks up the
+// schema registered below rather than registering a new one.
+let producer = kafka.producer({
+    'js.value.serializer.builder': kafkaAvroSerializerBuilder()
+        .setSchemaRegistryClient(registry)
+        .setAvroSerializerConfig({ useLatestVersion: true }),
+});
+
+// Likewise the consumer builds the deserializer while it connects and applies
+// it to every message value; the result is reported on message.deserializedValue.
 let consumer = kafka.consumer({
     kafkaJS: {
         groupId: "test-group",
         fromBeginning: true,
     },
+    'js.value.deserializer.builder': kafkaAvroDeserializerBuilder()
+        .setSchemaRegistryClient(registry),
 });
-let producer = kafka.producer();
 
 const schemaA = {
     type: 'record',
@@ -43,9 +70,6 @@ const schemaB = {
     fields: [{ name: 'id', type: 'int' }],
 };
 
-const topicName = 'test-topic';
-const subjectName = topicName + '-value';
-
 const run = async () => {
     // Register schemaB.
     await registry.register(
@@ -59,7 +83,7 @@ const run = async () => {
     const version = response.version
 
     // Register schemaA, which references schemaB.
-    const id = await registry.register(
+    await registry.register(
         subjectName,
         {
             schemaType: 'AVRO',
@@ -74,25 +98,18 @@ const run = async () => {
         }
     )
 
-    // Create an Avro serializer
-    const ser = new AvroSerializer(registry, SerdeType.VALUE, { useLatestVersion: true });
-
-    // Produce a message with schemaA.
+    // Produce a message with schemaA. The value is serialized by the producer.
     await producer.connect()
-    const outgoingMessage = {
-        key: 'key',
-        value: await ser.serialize(topicName, { id: 1, b: { id: 2 } }),
-    }
     await producer.send({
         topic: topicName,
-        messages: [outgoingMessage]
+        messages: [{
+            key: 'key',
+            value: { id: 1, b: { id: 2 } },
+        }]
     });
     console.log("Producer sent its message.")
     await producer.disconnect();
     producer = null;
-
-    // Create an Avro deserializer
-    const deser = new AvroDeserializer(registry, SerdeType.VALUE, {});
 
     await consumer.connect()
     await consumer.subscribe({ topic: topicName })
@@ -100,11 +117,15 @@ const run = async () => {
     let messageRcvd = false;
     await consumer.run({
         eachMessage: async ({ message }) => {
-            const decodedMessage = {
-                ...message,
-                value: await deser.deserialize(topicName, message.value)
-            };
-            console.log("Consumer received message.\nBefore decoding: " + JSON.stringify(message) + "\nAfter decoding: " + JSON.stringify(decodedMessage));
+            // The raw bytes stay in message.value; a deserializer that failed
+            // reports its error on deserializedValue rather than throwing.
+            const { value, error } = message.deserializedValue;
+            if (error) {
+                console.error("Consumer could not decode the message value:", error);
+            } else {
+                console.log("Consumer received message.\nRaw value: " + message.value.toString('hex') +
+                    "\nDecoded value: " + JSON.stringify(value));
+            }
             messageRcvd = true;
         },
     });

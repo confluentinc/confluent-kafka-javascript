@@ -56,7 +56,7 @@ module.exports = {
         });
       },
       'has necessary methods from superclass': function() {
-        var methods = ['connect', 'disconnect', 'configureCallbacks', 'getMetadata'];
+        var methods = ['connect', 'disconnect', 'configureCallbacks', 'getMetadata', 'clusterId'];
         methods.forEach(function(m) {
           t.equal(typeof(client[m]), 'function', 'Client is missing ' + m + ' method');
         });

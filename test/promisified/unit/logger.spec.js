@@ -89,6 +89,8 @@ describe('user-supplied logger receives a string as the first arg on error callb
     const logger = makeLogger();
     const producer = new Kafka({ kafkaJS: { brokers: ['x:1'], logger } }).producer();
     producer.connect().catch(() => {});
+    /* The client is created once the configuration, which may involve asynchronous builders, is ready. */
+    await new Promise((resolve) => setImmediate(resolve));
 
     const err = brokerError();
     RdKafkaMock.__captured.producer.emit('event.error', err);
@@ -101,6 +103,7 @@ describe('user-supplied logger receives a string as the first arg on error callb
     const kafka = new Kafka({ kafkaJS: { brokers: ['x:1'], logger } });
     const consumer = kafka.consumer({ kafkaJS: { groupId: 'g' } });
     consumer.connect().catch(() => {});
+    await new Promise((resolve) => setImmediate(resolve));
 
     const err = brokerError();
     RdKafkaMock.__captured.consumer.emit('event.error', err);
