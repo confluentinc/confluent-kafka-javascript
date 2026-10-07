@@ -1,4 +1,4 @@
-# confluent-kafka-javascript 1.11.0 (RC1)
+# confluent-kafka-javascript 1.11.0
 
 ## Enhancements
 1. Support generating a JSON Schema title from a JSON payload (#505)
