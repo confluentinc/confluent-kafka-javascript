@@ -265,6 +265,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -302,6 +304,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -339,6 +343,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -376,6 +382,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -410,6 +418,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -446,6 +456,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -501,6 +513,8 @@ blocks:
                 - 22.2.0,127
                 - 23.2.0,131
                 - 24.3.0,137
+                - 25.0.0,141
+                - 26.0.0,147
           commands:
             - $env:NODE_VERSION = $env:NODE_VERSION_ABI.Split(',')[0]
             - $env:NODE_ABI = $env:NODE_VERSION_ABI.Split(',')[1]
