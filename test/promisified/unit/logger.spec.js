@@ -71,14 +71,19 @@ function expectStringFirstArg(mockFn, err) {
   expect(mockFn).toHaveBeenCalled();
   const [firstArg, secondArg] = mockFn.mock.calls[mockFn.mock.calls.length - 1];
   expect(firstArg).toEqual(`Error: ${err.message}`);
+  /* The stack is forwarded as the error object rather than being
+   * interpolated into the message. */
+  expect(firstArg).not.toContain(err.stack);
   expect(secondArg).toEqual(expect.objectContaining({
     fac: 'BINDING',
     name: expect.any(String),
     timestamp: expect.any(Number),
+    error: err,
   }));
 }
 
-describe('user-supplied logger receives a string as the first arg on error callbacks', () => {
+describe('user-supplied logger receives a string as the first arg and the ' +
+         'error object in the extras on error callbacks', () => {
   beforeEach(() => {
     RdKafkaMock.__captured.producer = null;
     RdKafkaMock.__captured.consumer = null;
