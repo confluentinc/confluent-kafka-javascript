@@ -1,3 +1,8 @@
+# confluent-kafka-javascript (unreleased)
+
+## Fixes
+1. Stop retaining produce `opaque` values when no delivery report callback is registered, which leaked Persistent handles (#272)
+
 # confluent-kafka-javascript 1.11.0
 
 ## Enhancements
