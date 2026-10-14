@@ -4,9 +4,22 @@
   "private": true,
   "description": "Syntax checker for the LogicalTypes DDL grammar, usable as an embeddable module or via the browser demo page.",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "generate": "bash scripts/generate-parser.sh",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "build:demo": "esbuild demo/main.ts --bundle --outfile=demo/bundle.js --format=iife",
     "typecheck": "tsc --noEmit"
   },
