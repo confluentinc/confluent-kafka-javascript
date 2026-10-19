@@ -1,4 +1,4 @@
-const { Lock, createKafkaJsErrorFromLibRdKafkaError } = require('../../../lib/kafkajs/_common');
+const { Lock, BackgroundErrorListeners, createKafkaJsErrorFromLibRdKafkaError } = require('../../../lib/kafkajs/_common');
 const LibrdKafkaError = require('../../../lib/error');
 const { SequentialPromises } = require('../testhelpers');
 
@@ -267,5 +267,65 @@ describe('createKafkaJsErrorFromLibRdKafkaError', () => {
         expect(err.fatal).toBe(false);
         expect(err.retriable).toBe(true);
         expect(err.abortable).toBe(false);
+    });
+});
+
+describe('BackgroundErrorListeners', () => {
+    const error = new Error('background error');
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    let logger;
+
+    beforeEach(() => {
+        logger = { error: jest.fn() };
+    });
+
+    it('calls every listener with the error', async () => {
+        const listeners = new BackgroundErrorListeners();
+        const first = jest.fn();
+        const second = jest.fn();
+        listeners.add(first);
+        listeners.add(second);
+
+        listeners.notify(error, logger, {});
+        await flush();
+
+        expect(first).toHaveBeenCalledWith(error);
+        expect(second).toHaveBeenCalledWith(error);
+    });
+
+    it('stops calling a listener once it is removed', async () => {
+        const listeners = new BackgroundErrorListeners();
+        const listener = jest.fn();
+        const remove = listeners.add(listener);
+
+        remove();
+        listeners.notify(error, logger, {});
+        await flush();
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('rejects a listener that is not a function', () => {
+        const listeners = new BackgroundErrorListeners();
+
+        expect(() => listeners.add('not a function')).toThrow(TypeError);
+    });
+
+    it('logs a listener that throws or rejects and still calls the others', async () => {
+        const listeners = new BackgroundErrorListeners();
+        const last = jest.fn();
+        listeners.add(() => { throw new Error('throwing listener'); });
+        listeners.add(async () => { throw new Error('rejecting listener'); });
+        listeners.add(last);
+
+        listeners.notify(error, logger, {});
+        await flush();
+
+        expect(last).toHaveBeenCalledWith(error);
+        expect(logger.error).toHaveBeenCalledTimes(2);
+        expect(logger.error.mock.calls.map(([message]) => message)).toEqual([
+            expect.stringContaining('throwing listener'),
+            expect.stringContaining('rejecting listener'),
+        ]);
     });
 });
