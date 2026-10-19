@@ -246,6 +246,15 @@ describe('createKafkaJsErrorFromLibRdKafkaError', () => {
         expect(err.abortable).toBe(true);
     });
 
+    it('treats ERR__FATAL as fatal', () => {
+        const err = createKafkaJsErrorFromLibRdKafkaError(LibrdKafkaError.create({
+            code: LibrdKafkaError.codes.ERR__FATAL,
+            message: 'Fatal error: Broker: Static consumer fenced by other consumer with same group.instance.id',
+        }));
+
+        expect(err.fatal).toBe(true);
+    });
+
     it('keeps the flags of an error that already uses the KafkaJS names', () => {
         const err = createKafkaJsErrorFromLibRdKafkaError({
             code: LibrdKafkaError.codes.ERR__STATE,
