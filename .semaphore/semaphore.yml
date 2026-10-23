@@ -530,7 +530,14 @@ blocks:
             - sem-version node 20
             - cd tools/logical-types-checker
             - npm install
-            - npm publish
+            - |
+              PKG=$(node -p "require('./package.json').name")
+              VER=$(node -p "require('./package.json').version")
+              if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+                echo "$PKG@$VER already published, skipping"
+              else
+                npm publish
+              fi
 
 after_pipeline:
   task:
