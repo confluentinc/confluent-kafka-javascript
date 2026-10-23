@@ -20,7 +20,9 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepack": "npm run build",
     "build:demo": "esbuild demo/main.ts --bundle --outfile=demo/bundle.js --format=iife",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "antlr4ng": "^3.0.16"

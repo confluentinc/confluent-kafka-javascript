@@ -513,7 +513,7 @@ blocks:
             - npm install
             - npm run generate
             - npm run typecheck
-            - npm run build
+            - npm test
 
   - name: "Logical types checker: Publish"
     dependencies:
