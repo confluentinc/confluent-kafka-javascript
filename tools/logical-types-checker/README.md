@@ -63,3 +63,4 @@ npm run generate
 ```
 
 This regenerates `src/generated/`, which is committed.
+
