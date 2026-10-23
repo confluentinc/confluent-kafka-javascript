@@ -630,6 +630,41 @@ blocks:
             - tar -czvf releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz releases
             - artifact push project "releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/releases.${SEMAPHORE_GIT_TAG_NAME}.tar.gz"
 
+  - name: "Logical types checker: Validate"
+    dependencies: []
+    run:
+      when: "change_in(['/tools/logical-types-checker'])"
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu24-04-amd64-1
+      jobs:
+        - name: "Typecheck and build"
+          commands:
+            - sem-version node 20
+            - cd tools/logical-types-checker
+            - npm install
+            - npm run generate
+            - npm run typecheck
+            - npm run build
+
+  - name: "Logical types checker: Publish"
+    dependencies:
+      - "Logical types checker: Validate"
+    run:
+      when: "branch = 'master' AND change_in(['/tools/logical-types-checker'])"
+    task:
+      agent:
+        machine:
+          type: s1-prod-ubuntu24-04-amd64-1
+      jobs:
+        - name: "Publish npm package"
+          commands:
+            - sem-version node 20
+            - cd tools/logical-types-checker
+            - npm install
+            - npm publish
+
 after_pipeline:
   task:
     agent:

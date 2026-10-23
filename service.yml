@@ -5,6 +5,10 @@ git:
   enable: true
 codeowners:
   enable: true
+code_artifact:
+  enable: true
+  package_paths:
+    - "npm-internal/npm/cflt-internal/logical-types-checker"
 semaphore:
   enable: true
   pipeline_enable: false
