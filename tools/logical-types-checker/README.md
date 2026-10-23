@@ -33,6 +33,15 @@ const result = checkSyntax(`
 
 On invalid input, `result.errors` is a list of `{ line, column, message }`.
 
+## Testing
+
+```sh
+npm test
+```
+
+Builds `dist/` and runs `test/*.test.mjs` with Node's built-in test runner
+against it. CI runs the same in the "Logical types checker: Validate" block.
+
 ## Demo page
 
 ```sh
