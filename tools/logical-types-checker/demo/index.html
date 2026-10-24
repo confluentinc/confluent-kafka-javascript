@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>LogicalTypes syntax checker</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  textarea { width: 100%; height: 16rem; font-family: monospace; font-size: 0.9rem; box-sizing: border-box; }
+  pre { white-space: pre-wrap; padding: 0.75rem; border-radius: 4px; }
+  .valid { background: #e6f4ea; color: #1a7f37; }
+  .invalid { background: #fdecea; color: #b3261e; }
+  button { margin: 0.75rem 0; padding: 0.4rem 1rem; }
+</style>
+</head>
+<body>
+  <h1>LogicalTypes syntax checker</h1>
+  <p>Paste LogicalTypes DDL below and click Check. This validates grammar syntax only — not the semantic rules the Java visitor applies.</p>
+  <textarea id="input">NAMESPACE com.example;
+
+STRUCT Foo (
+  bar STRING NOT NULL
+);
+
+TYPE Foo;
+</textarea>
+  <br>
+  <button id="check">Check</button>
+  <pre id="output"></pre>
+  <script src="./bundle.js"></script>
+</body>
+</html>
