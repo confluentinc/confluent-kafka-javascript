@@ -138,7 +138,7 @@ blocks:
             - make lint
         - name: "Docs"
           commands:
-            - make docs
+            - make docs-myst
 
   - name: "(SR) Linux amd64: test, e2e"
     run:
