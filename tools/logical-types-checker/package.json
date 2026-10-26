@@ -15,6 +15,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "registry": "https://confluent-519856050701.d.codeartifact.us-west-2.amazonaws.com/npm/npm-internal/"
+  },
   "scripts": {
     "generate": "bash scripts/generate-parser.sh",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
