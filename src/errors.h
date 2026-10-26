@@ -54,6 +54,9 @@ class Baton {
 v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &);
 v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &,
                                    const std::string &);
+v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &, std::string,
+                                   bool isFatal, bool isRetriable,
+                                   bool isTxnRequiresAbort);
 
 }  // namespace NodeKafka
 
