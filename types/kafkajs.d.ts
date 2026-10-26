@@ -596,7 +596,7 @@ export type Admin = {
 }
 
 
-export function isKafkaJSError(error: Error): boolean;
+export function isKafkaJSError(error: any): error is KafkaJSError;
 
 export const ErrorCodes: typeof CODES.ERRORS;
 
