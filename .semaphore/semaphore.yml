@@ -664,12 +664,14 @@ blocks:
             - cd tools/logical-types-checker
             - npm install
             - |
+              REGISTRY="https://confluent-519856050701.d.codeartifact.us-west-2.amazonaws.com/npm/npm-internal/"
+              echo "//confluent-519856050701.d.codeartifact.us-west-2.amazonaws.com/npm/npm-internal/:_authToken=${CODEARTIFACT_AUTH_TOKEN}" >> ~/.npmrc
               PKG=$(node -p "require('./package.json').name")
               VER=$(node -p "require('./package.json').version")
-              if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+              if npm view "$PKG@$VER" version --registry="$REGISTRY" >/dev/null 2>&1; then
                 echo "$PKG@$VER already published, skipping"
               else
-                npm publish
+                npm publish --registry="$REGISTRY"
               fi
 
 after_pipeline:
