@@ -67,6 +67,7 @@ import { EnumValueContext } from "./LogicalTypesParser.js";
 import { PrimitiveTypeExprContext } from "./LogicalTypesParser.js";
 import { VariantTypeExprContext } from "./LogicalTypesParser.js";
 import { RowTypeExprContext } from "./LogicalTypesParser.js";
+import { EnumTypeExprContext } from "./LogicalTypesParser.js";
 import { UnionTypeExprContext } from "./LogicalTypesParser.js";
 import { MapTypeExprContext } from "./LogicalTypesParser.js";
 import { QualifiedNameExprContext } from "./LogicalTypesParser.js";
@@ -513,6 +514,13 @@ export class LogicalTypesVisitor<Result> extends AbstractParseTreeVisitor<Result
      * @return the visitor result
      */
     visitRowTypeExpr?: (ctx: RowTypeExprContext) => Result;
+    /**
+     * Visit a parse tree produced by the `EnumTypeExpr`
+     * labeled alternative in `LogicalTypesParser.typeExpr`.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    visitEnumTypeExpr?: (ctx: EnumTypeExprContext) => Result;
     /**
      * Visit a parse tree produced by the `UnionTypeExpr`
      * labeled alternative in `LogicalTypesParser.typeExpr`.
