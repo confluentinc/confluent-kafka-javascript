@@ -46,6 +46,9 @@ blocks:
         - name: "Build from source and test for musl"
           commands:
             - .semaphore/docker_run_with_volumes.sh node:18-alpine /v/.semaphore/build-docker-alpine.sh
+        - name: "Build from source for musl (Node 26)"
+          commands:
+            - .semaphore/docker_run_with_volumes.sh node:26-alpine /v/.semaphore/build-docker-alpine.sh
 
   - name: "Linux arm64 (musl): Build and test"
     run:
@@ -265,11 +268,14 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            - export DEBIAN_RELEASE=$([ "$NODE_VERSION" -ge 25 ] && echo bookworm || echo bullseye)
+            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-${DEBIAN_RELEASE} /v/.semaphore/build-docker-debian.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -302,11 +308,14 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            - export DEBIAN_RELEASE=$([ "$NODE_VERSION" -ge 25 ] && echo bookworm || echo bullseye)
+            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-${DEBIAN_RELEASE} /v/.semaphore/build-docker-debian.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -339,6 +348,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -376,6 +387,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -410,6 +423,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -446,6 +461,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -501,6 +518,8 @@ blocks:
                 - 22.2.0,127
                 - 23.2.0,131
                 - 24.3.0,137
+                - 25.9.0,141
+                - 26.13.0,147
           commands:
             - $env:NODE_VERSION = $env:NODE_VERSION_ABI.Split(',')[0]
             - $env:NODE_ABI = $env:NODE_VERSION_ABI.Split(',')[1]
@@ -543,11 +562,14 @@ blocks:
                 - 22.2.0,127
                 - 23.2.0,131
                 - 24.3.0,137
+                - 25.9.0,141
+                - 26.13.0,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:20.04 /v/.semaphore/build-docker-s390x.sh
+            - export UBUNTU_IMAGE=$([ "${NODE_VERSION%%.*}" -ge 25 ] && echo ubuntu:22.04 || echo ubuntu:20.04)
+            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ${UBUNTU_IMAGE} /v/.semaphore/build-docker-s390x.sh
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             # `artifact push` gives up after ~55s, which is not enough to ride out the
             # intermittent DNS resolution failures seen from this pool. Losing a build
@@ -590,6 +612,8 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 25,141
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)

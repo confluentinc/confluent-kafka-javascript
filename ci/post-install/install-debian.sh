@@ -5,7 +5,7 @@ export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 
 apt update
-apt install -y bash curl
+apt install -y bash curl libatomic1
 
 . /v/ci/post-install/_install_nvm.sh
 . /v/ci/post-install/_install_ckjs.sh

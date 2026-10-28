@@ -23,11 +23,15 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 # perl and patch are needed because librdkafka's mklove builds libcrypto and libcurl
-# from source; gcc-10 matches the compiler the bullseye-based targets use.
-apt-get install -y build-essential gcc-10 g++-10 perl patch wget curl xz-utils python3 \
-    ca-certificates file binutils
-update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
-    --slave /usr/bin/g++ g++ /usr/bin/g++-10
+# from source.
+GCC_VERSION=10
+if [ "${NODE_VERSION%%.*}" -ge 25 ]; then
+    GCC_VERSION=12
+fi
+apt-get install -y build-essential gcc-${GCC_VERSION} g++-${GCC_VERSION} perl patch wget curl \
+    xz-utils python3 ca-certificates file binutils libatomic1
+update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 \
+    --slave /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION}
 
 # Download the Node tarball and verify it against the official published SHA-256 sum
 # before extracting, rather than piping the download straight into tar.
