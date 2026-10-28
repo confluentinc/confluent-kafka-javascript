@@ -31,18 +31,18 @@ The following configurations are supported:
 
 * Linux (x64 and arm64) - we support both musl and glibc based distributions:
 
-| Distribution                              | Supported Node Versions |
-| ----------------------------------------- | ----------------------- |
-| Debian Bullseye/Ubuntu 20.04              | 18, 20, 21, 22, 23, 24  |
-| Debian Bookworm/Ubuntu 22.04              | 18, 20, 21, 22, 23, 24  |
-| Alpine Linux 3.20+                        | 18, 20, 21, 22, 23, 24  |
-| AlmaLinux 9/Rocky Linux 9/CentOS Stream 9 | 18, 20, 21, 22, 23, 24  |
+| Distribution                              | Supported Node Versions    |
+| ----------------------------------------- | -------------------------- |
+| Debian Bullseye/Ubuntu 20.04              | 18, 20, 21, 22, 23, 24, 26 |
+| Debian Bookworm/Ubuntu 22.04              | 18, 20, 21, 22, 23, 24, 26 |
+| Alpine Linux 3.20+                        | 18, 20, 21, 22, 23, 24, 26 |
+| AlmaLinux 9/Rocky Linux 9/CentOS Stream 9 | 18, 20, 21, 22, 23, 24, 26 |
 
 Other distributions will probably work given a modern version of gcc/glibc, but we don't test the pre-built binaries with them.
 
-* Linux (s390x/IBM Z) - glibc and musl based distributions, Node versions 18, 20, 21, 22, 23 and 24. The pre-built binaries are tested on Ubuntu 20.04, 22.04, 24.04 and 26.04, Debian Trixie, Alpine Linux, and AlmaLinux 9/Rocky Linux 9/CentOS Stream 9.
-* macOS - arm64/m1. macOS (Intel) is supported on a best-effort basis. Node versions 18, 20, 21, 22, 23 and 24 are supported.
-* Windows - x64. Node versions 18, 20, 21, 22, 23 and 24 are supported.
+* Linux (s390x/IBM Z) - glibc and musl based distributions, Node versions 18, 20, 21, 22, 23 and 24, plus Node 26 on glibc (Node 26 has no musl build for s390x). The pre-built binaries are tested on Ubuntu 20.04, 22.04, 24.04 and 26.04, Debian Trixie, Alpine Linux, and AlmaLinux 9/Rocky Linux 9/CentOS Stream 9.
+* macOS - arm64/m1. macOS (Intel) is supported on a best-effort basis. Node versions 18, 20, 21, 22, 23, 24 and 26 are supported.
+* Windows - x64. Node versions 18, 20, 21, 22, 23, 24 and 26 are supported.
 
 > [!WARNING]
 > Pre-built binary support will be dropped after the EOL of the node version or the OS.
