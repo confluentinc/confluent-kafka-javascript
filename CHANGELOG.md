@@ -1,3 +1,9 @@
+# confluent-kafka-javascript 1.12.0 (unreleased)
+
+## Enhancements
+1. Add prebuilt binaries for Node.js 26 on every supported platform except s390x musl, which Node 26 does not support (#566)
+
+
 # confluent-kafka-javascript 1.11.0
 
 ## Enhancements
