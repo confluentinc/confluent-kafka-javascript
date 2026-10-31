@@ -2028,7 +2028,7 @@ export class LogicalTypesParser extends antlr.Parser {
                 this.state = 465;
                 this.match(LogicalTypesParser.T__1);
                 this.state = 466;
-                this.check_expr();
+                this.c_expr();
                 this.state = 467;
                 this.match(LogicalTypesParser.IN);
                 this.state = 468;
@@ -4183,7 +4183,7 @@ export class LogicalTypesParser extends antlr.Parser {
         505,1,0,0,0,453,454,5,78,0,0,454,455,5,2,0,0,455,456,3,38,19,0,456,
         457,5,3,0,0,457,460,3,38,19,0,458,459,5,3,0,0,459,461,3,38,19,0,
         460,458,1,0,0,0,460,461,1,0,0,0,461,462,1,0,0,0,462,463,5,4,0,0,
-        463,505,1,0,0,0,464,465,5,69,0,0,465,466,5,2,0,0,466,467,3,38,19,
+        463,505,1,0,0,0,464,465,5,69,0,0,465,466,5,2,0,0,466,467,3,66,33,
         0,467,468,5,53,0,0,468,469,3,38,19,0,469,470,5,4,0,0,470,505,1,0,
         0,0,471,472,5,87,0,0,472,474,5,2,0,0,473,475,7,4,0,0,474,473,1,0,
         0,0,474,475,1,0,0,0,475,476,1,0,0,0,476,479,3,38,19,0,477,478,5,
@@ -5623,17 +5623,14 @@ export class FuncPositionContext extends Func_expr_common_subexprContext {
     public POSITION(): antlr.TerminalNode {
         return this.getToken(LogicalTypesParser.POSITION, 0)!;
     }
-    public check_expr(): Check_exprContext[];
-    public check_expr(i: number): Check_exprContext | null;
-    public check_expr(i?: number): Check_exprContext[] | Check_exprContext | null {
-        if (i === undefined) {
-            return this.getRuleContexts(Check_exprContext);
-        }
-
-        return this.getRuleContext(i, Check_exprContext);
+    public c_expr(): C_exprContext {
+        return this.getRuleContext(0, C_exprContext)!;
     }
     public IN(): antlr.TerminalNode {
         return this.getToken(LogicalTypesParser.IN, 0)!;
+    }
+    public check_expr(): Check_exprContext {
+        return this.getRuleContext(0, Check_exprContext)!;
     }
     public override accept<Result>(visitor: LogicalTypesVisitor<Result>): Result | null {
         if (visitor.visitFuncPosition) {
