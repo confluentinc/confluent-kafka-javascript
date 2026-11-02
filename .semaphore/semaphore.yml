@@ -666,6 +666,8 @@ blocks:
             - |
               REGISTRY="https://confluent-519856050701.d.codeartifact.us-west-2.amazonaws.com/npm/npm-internal/"
               echo "//confluent-519856050701.d.codeartifact.us-west-2.amazonaws.com/npm/npm-internal/:_authToken=${CODEARTIFACT_AUTH_TOKEN}" >> ~/.npmrc
+              echo "@cflt-internal:registry=${REGISTRY}" >> ~/.npmrc
+              npm config get @cflt-internal:registry
               PKG=$(node -p "require('./package.json').name")
               VER=$(node -p "require('./package.json').version")
               if npm view "$PKG@$VER" version --registry="$REGISTRY" >/dev/null 2>&1; then
