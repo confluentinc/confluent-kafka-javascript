@@ -25,7 +25,7 @@ ifeq ($(BUILDTYPE),Debug)
 GYPBUILDARGS=--debug
 endif
 
-.PHONY: all clean lint test lib docs e2e ghpages check
+.PHONY: all clean lint test lib docs docs-myst e2e ghpages check
 
 all: lint lib test e2e
 
@@ -72,6 +72,9 @@ endef
 
 docs: node_modules/.dirstamp
 	@./util/generate-docs.sh
+
+docs-myst: node_modules/.dirstamp
+	@./util/generate-docs-myst.sh
 
 release-patch:
 	@$(call release,patch)
