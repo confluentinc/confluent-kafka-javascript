@@ -36,7 +36,7 @@
     "@bufbuild/protoc-gen-es": "^2.12.0",
     "@eslint/js": "^9.39.4",
     "@hapi/boom": "^10.0.1",
-    "@types/eslint__js": "^8.42.3",
+    "@types/eslint__js": "^9.0.0",
     "@types/jest": "^29.5.13",
     "@types/node": "^20.19.41",
     "axios-mock-adapter": "^2.1.0",
