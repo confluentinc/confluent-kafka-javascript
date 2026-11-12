@@ -53,7 +53,7 @@ Installation on any of these platforms is meant to be seamless, without any C/C+
 npm install @confluentinc/kafka-javascript
 ```
 
-In case your system configuration is not within the supported ones, check the detailed [installation instructions](./INTRODUCTION.md#Installation-Instructions) for more information.
+In case your system configuration is not within the supported ones, check the detailed [installation instructions](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/INTRODUCTION.md#installation-instructions) for more information.
 
 Yarn and pnpm support is experimental.
 
@@ -119,20 +119,20 @@ producerStart();
 
 The Schema Registry serde integration (the `js.*.serializer.builder` and `js.*.deserializer.builder` properties) and `clusterId()` are experimental and may change in future releases.
 
-For an Avro example that also consumes and deserializes, see [sr.js](examples/kafkajs/sr.js).
+For an Avro example that also consumes and deserializes, see [sr.js](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/examples/kafkajs/sr.js).
 
 There are two variants of the API offered by this library. A promisified API and a callback-based API.
 
-1. If you're starting afresh, you should use the [promisified API](INTRODUCTION.md#promisified-api).
-2. If you're migrating from `kafkajs`, you can use the [migration guide](MIGRATION.md#kafkajs) to get started quickly.
-3. If you're migrating from `node-rdkafka`, you can use the [migration guide](MIGRATION.md#node-rdkafka).
+1. If you're starting afresh, you should use the [promisified API](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/INTRODUCTION.md#promisified-api).
+2. If you're migrating from `kafkajs`, you can use the [migration guide](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/MIGRATION.md#kafkajs) to get started quickly.
+3. If you're migrating from `node-rdkafka`, you can use the [migration guide](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/MIGRATION.md#node-rdkafka).
 
-An in-depth reference may be found at [INTRODUCTION.md](INTRODUCTION.md).
+An in-depth reference may be found at [INTRODUCTION.md](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/INTRODUCTION.md).
 
 ## Contributing
 
 Bug reports and feedback is appreciated in the form of Github Issues.
-For guidelines on contributing please see [CONTRIBUTING.md](CONTRIBUTING.md)
+For guidelines on contributing please see [CONTRIBUTING.md](https://github.com/confluentinc/confluent-kafka-javascript/blob/master/CONTRIBUTING.md)
 
 ## Librdkafka Version
 
