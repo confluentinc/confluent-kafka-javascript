@@ -33,7 +33,7 @@
   "license": "MIT",
   "devDependencies": {
     "@bufbuild/buf": "^1.69.0",
-    "@bufbuild/protoc-gen-es": "^2.12.0",
+    "@bufbuild/protoc-gen-es": "^2.16.0",
     "@eslint/js": "^9.39.4",
     "@hapi/boom": "^10.0.1",
     "@types/eslint__js": "^8.42.3",
@@ -71,10 +71,10 @@
     "serialize-javascript": "^7.0.5",
     "uuid": "^11.1.1",
     "diff": "^8.0.3",
-    "node-releases": "2.0.60",
+    "node-releases": "2.0.63",
     "browserslist": "4.29.5",
-    "baseline-browser-mapping": "2.11.34",
-    "electron-to-chromium": "1.5.467",
+    "baseline-browser-mapping": "2.11.35",
+    "electron-to-chromium": "1.5.478",
     "@istanbuljs/load-nyc-config": {
       "js-yaml": "3.15.2"
     }
