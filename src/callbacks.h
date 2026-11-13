@@ -57,6 +57,8 @@ class Dispatcher {
 struct event_t {
   RdKafka::Event::Type type;
   std::string message;
+  RdKafka::ErrorCode err;
+  bool fatal;
 
   RdKafka::Event::Severity severity;
   std::string fac;
