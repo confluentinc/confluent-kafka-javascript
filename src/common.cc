@@ -1557,6 +1557,56 @@ v8::Local<v8::Array> FromDescribeTopicsResult(
 }
 
 /**
+ * @brief Converts a rd_kafka_DescribeCluster_result_t* into a v8 object.
+ */
+v8::Local<v8::Object> FromDescribeClusterResult(
+    const rd_kafka_DescribeCluster_result_t* result) {
+  /* Return object type:
+    {
+      clusterId?: string,
+      controller?: Node,
+      nodes: Node[],
+      authorizedOperations?: AclOperationType[]
+    }
+  */
+  v8::Local<v8::Object> returnObject = Nan::New<v8::Object>();
+
+  const char* cluster_id = rd_kafka_DescribeCluster_result_cluster_id(result);
+  if (cluster_id) {
+    Nan::Set(returnObject, Nan::New("clusterId").ToLocalChecked(),
+             Nan::New<v8::String>(cluster_id).ToLocalChecked());
+  }
+
+  const rd_kafka_Node_t* controller =
+      rd_kafka_DescribeCluster_result_controller(result);
+  if (controller) {
+    Nan::Set(returnObject, Nan::New("controller").ToLocalChecked(),
+             Conversion::Util::ToV8Object(controller));
+  }
+
+  size_t node_cnt;
+  const rd_kafka_Node_t** nodes =
+      rd_kafka_DescribeCluster_result_nodes(result, &node_cnt);
+  v8::Local<v8::Array> nodesArray = Nan::New<v8::Array>();
+  for (size_t i = 0; i < node_cnt; i++) {
+    Nan::Set(nodesArray, i, Conversion::Util::ToV8Object(nodes[i]));
+  }
+  Nan::Set(returnObject, Nan::New("nodes").ToLocalChecked(), nodesArray);
+
+  size_t authorized_operations_cnt;
+  const rd_kafka_AclOperation_t* authorized_operations =
+      rd_kafka_DescribeCluster_result_authorized_operations(
+          result, &authorized_operations_cnt);
+  if (authorized_operations) {
+    Nan::Set(returnObject, Nan::New("authorizedOperations").ToLocalChecked(),
+             Conversion::Util::ToV8Array(authorized_operations,
+                                         authorized_operations_cnt));
+  }
+
+  return returnObject;
+}
+
+/**
  * @brief Converts a rd_kafka_ListOffsets_result_t* into a v8 Array.
  */
 v8::Local<v8::Array> FromListOffsetsResult(
