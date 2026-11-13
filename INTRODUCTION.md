@@ -245,8 +245,8 @@ It's also possible to modify the assignment of partitions, or pause consumption 
 const rebalance_cb = (err, assignment, assignmentFns) => {
   switch (err.code) {
     case ErrorCodes.ERR__ASSIGN_PARTITIONS:
-      // Change the assignment as needed - this mostly boils down to changing the offset to start consumption from, though
-      // you are free to do anything.
+      // Set starting offsets without changing the partition set when using
+      // cooperative rebalancing, including group.protocol=consumer.
       if (assignment.length > 0) {
         assignment[0].offset = 34;
       }
@@ -261,7 +261,12 @@ const rebalance_cb = (err, assignment, assignmentFns) => {
 };
 ```
 
-Subscriptions can be changed anytime, and the running consumer triggers a rebalance whenever that happens. The current assignment of partitions to the consumer can be checked with the `assign` method.
+The KafkaJS-compatible `assignmentFns` helpers automatically choose the native
+eager or incremental assignment APIs for the rebalance protocol, including
+`group.protocol=consumer`. If you do not call a helper, the wrapper applies the
+assignment automatically.
+
+Subscriptions can be changed anytime, and the running consumer triggers a rebalance whenever that happens. The current assignment of partitions to the consumer can be checked with the `assignment` method.
 
 #### Committing Offsets
 
@@ -817,23 +822,45 @@ The first parameter is the global config, while the second parameter is the opti
 
 The `group.id` and `bootstrap.servers` properties are required for a consumer.
 
+For manual assignment, call `assign()` without calling `subscribe()`, and use
+`unassign()` to clear the assignment. This mode remains supported with
+`group.protocol=consumer`; the consumer does not join a group or receive group
+rebalance callbacks. The incremental assignment rules below apply to subscribed
+consumers, not to this manual mode.
+
 #### Rebalancing
 
 Rebalancing is managed internally by `librdkafka` by default. If you would like to override this functionality, you may provide your own logic as a rebalance callback.
+
+For subscribed consumers, cooperative rebalances, including those using
+`group.protocol=consumer` (KIP-848), require `incrementalAssign()` and
+`incrementalUnassign()` instead of `assign()` and `unassign()`. The callback's
+partition list contains only the partitions being added or revoked, not the full
+assignment. Pass that list unchanged, even if empty; starting offsets may be set
+when assigning. Use `rebalanceProtocol()` to distinguish cooperative from eager
+rebalances:
 
 ```js
 const consumer = new Kafka.KafkaConsumer({
   'group.id': 'kafka',
   'bootstrap.servers': 'localhost:9092',
-  'rebalance_cb': (err, assignment) => {
+  'rebalance_cb': function(err, assignment) {
 
-    if (err.code === ErrorCodes.ERR__ASSIGN_PARTITIONS) {
+    if (err.code === Kafka.CODES.ERRORS.ERR__ASSIGN_PARTITIONS) {
       // Note: this can throw when you are disconnected. Take care and wrap it in
       // a try catch if that matters to you
-      this.assign(assignment);
-    } else if (err.code == ErrorCodes.ERRORS.ERR__REVOKE_PARTITIONS){
+      if (this.rebalanceProtocol() === 'COOPERATIVE') {
+        this.incrementalAssign(assignment);
+      } else {
+        this.assign(assignment);
+      }
+    } else if (err.code === Kafka.CODES.ERRORS.ERR__REVOKE_PARTITIONS) {
       // Same as above
-      this.unassign();
+      if (this.rebalanceProtocol() === 'COOPERATIVE') {
+        this.incrementalUnassign(assignment);
+      } else {
+        this.unassign();
+      }
     } else {
       // We had a real error
       console.error(err);
