@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "src/errors.h"
 #include "src/kafka-consumer.h"
 
 using v8::Local;
@@ -130,12 +131,16 @@ void Dispatcher::RemoveCallback(const v8::Local<v8::Function> &cb) {
 event_t::event_t(const RdKafka::Event &event) {
   message = "";
   fac = "";
+  err = RdKafka::ERR_NO_ERROR;
+  fatal = false;
 
   type = event.type();
 
   switch (type = event.type()) {
     case RdKafka::Event::EVENT_ERROR:
       message = RdKafka::err2str(event.err());
+      err = event.err();
+      fatal = event.fatal();
     break;
     case RdKafka::Event::EVENT_STATS:
       message = event.str();
@@ -208,10 +213,8 @@ void EventDispatcher::Flush() {
     switch (_events[i].type) {
       case RdKafka::Event::EVENT_ERROR:
         argv[0] = Nan::New("error").ToLocalChecked();
-        argv[1] = Nan::Error(_events[i].message.c_str());
-
-        // if (event->err() == RdKafka::ERR__ALL_BROKERS_DOWN). Stop running
-        // This may be better suited to the node side of things
+        argv[1] = RdKafkaError(_events[i].err, _events[i].message,
+                               _events[i].fatal, false, false);
         break;
       case RdKafka::Event::EVENT_STATS:
         argv[0] = Nan::New("stats").ToLocalChecked();

@@ -3,6 +3,7 @@ const {
     createProducer,
     createTopic,
 } = require('../testhelpers');
+const { ErrorCodes } = require('../../../lib').KafkaJS;
 
 describe('Producer > Transactional producer', () => {
     let producer1, producer2, topicName, transactionalId, message;
@@ -46,5 +47,22 @@ describe('Producer > Transactional producer', () => {
                 await transaction2.commit();
             }
         );
+    });
+
+    describe('when a newer producer with the same transactional id connects', () => {
+        it('fails the fenced producer with a fatal error', async () => {
+            producer1 = newProducer();
+            await producer1.connect();
+            producer2 = newProducer();
+            await producer2.connect();
+
+            const transaction = await producer1.transaction();
+            await transaction.send({ topic: topicName, messages: [message] }).catch(() => {});
+
+            await expect(transaction.commit()).rejects.toMatchObject({
+                code: ErrorCodes.ERR__FENCED,
+                fatal: true,
+            });
+        });
     });
 });

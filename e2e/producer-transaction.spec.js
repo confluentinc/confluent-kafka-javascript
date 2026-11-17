@@ -8,6 +8,7 @@
  */
 
 var Kafka = require('../');
+var t = require('assert');
 
 var kafkaBrokerList = process.env.KAFKA_HOST || 'localhost:9092';
 
@@ -326,6 +327,83 @@ describe('Transactional Producer', function () {
             return;
           }
           done();
+        });
+      });
+    });
+  });
+});
+
+describe('Fenced transactional producer', function () {
+  var transactionalId = 'noderdkafka_fenced_' + Date.now() + '_' + Math.round(Math.random() * 1000);
+  var topic = 'transaction_fenced_' + transactionalId;
+  var fenced;
+  var fencing;
+
+  function createTransactionalProducer() {
+    var producer = new Kafka.Producer({
+      'metadata.broker.list': kafkaBrokerList,
+      'transactional.id': transactionalId,
+    });
+    producer.setPollInterval(100);
+    return producer;
+  }
+
+  afterEach(function (done) {
+    fenced.disconnect(function () {
+      fencing.disconnect(function () {
+        done();
+      });
+    });
+  });
+
+  it('emits a fatal event.error carrying the librdkafka error code', function (done) {
+    fenced = createTransactionalProducer();
+    fencing = createTransactionalProducer();
+
+    fenced.on('event.error', function onError(err) {
+      if (!err.isFatal) {
+        return;
+      }
+      fenced.removeListener('event.error', onError);
+      try {
+        t.strictEqual(err.code, Kafka.CODES.ERRORS.ERR__FENCED);
+        t.strictEqual(err.isFatal, true);
+        t.strictEqual(err.origin, 'local');
+        done();
+      } catch (e) {
+        done(e);
+      }
+    });
+
+    fenced.connect({}, function (err) {
+      if (err) {
+        done(err);
+        return;
+      }
+      fenced.initTransactions(function (err) {
+        if (err) {
+          done(err);
+          return;
+        }
+        fencing.connect({}, function (err) {
+          if (err) {
+            done(err);
+            return;
+          }
+          fencing.initTransactions(function (err) {
+            if (err) {
+              done(err);
+              return;
+            }
+            fenced.beginTransaction(function (err) {
+              if (err) {
+                done(err);
+                return;
+              }
+              fenced.produce(topic, null, Buffer.from('fenced'));
+              fenced.commitTransaction(function () {});
+            });
+          });
         });
       });
     });
