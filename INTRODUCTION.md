@@ -823,10 +823,11 @@ The first parameter is the global config, while the second parameter is the opti
 The `group.id` and `bootstrap.servers` properties are required for a consumer.
 
 For manual assignment, call `assign()` without calling `subscribe()`, and use
-`unassign()` to clear the assignment. This mode remains supported with
-`group.protocol=consumer`; the consumer does not join a group or receive group
-rebalance callbacks. The incremental assignment rules below apply to subscribed
-consumers, not to this manual mode.
+`unassign()` to clear the assignment. With `group.protocol=consumer`, this is
+supported only before the first `subscribe()` call; the consumer does not join a
+group or receive group rebalance callbacks. After the first `subscribe()`, even
+after `unsubscribe()`, use `incrementalAssign()` and `incrementalUnassign()`;
+`assign()` and `unassign()` remain unavailable.
 
 #### Rebalancing
 
