@@ -265,11 +265,18 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            # Node 26's headers need a newer gcc than bullseye has, see build-docker-almalinux.sh.
+            - |
+              if [ "$NODE_ABI" -ge 147 ]; then
+                .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} almalinux:8 /v/.semaphore/build-docker-almalinux.sh
+              else
+                .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+              fi
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -302,11 +309,18 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+            # Node 26's headers need a newer gcc than bullseye has, see build-docker-almalinux.sh.
+            - |
+              if [ "$NODE_ABI" -ge 147 ]; then
+                .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} almalinux:8 /v/.semaphore/build-docker-almalinux.sh
+              else
+                .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-bullseye /v/.semaphore/build-docker-debian.sh
+              fi
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             - artifact push workflow "build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}" --destination "releases/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}"
 
@@ -339,6 +353,7 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -376,6 +391,7 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -410,6 +426,7 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -446,6 +463,7 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
@@ -501,6 +519,7 @@ blocks:
                 - 22.2.0,127
                 - 23.2.0,131
                 - 24.3.0,137
+                - 26.3.0,147
           commands:
             - $env:NODE_VERSION = $env:NODE_VERSION_ABI.Split(',')[0]
             - $env:NODE_ABI = $env:NODE_VERSION_ABI.Split(',')[1]
@@ -512,6 +531,10 @@ blocks:
             - $env:ARTIFACT_KEY = "confluent-kafka-javascript-${env:SEMAPHORE_GIT_TAG_NAME}-node-v${env:NODE_ABI}-${env:PLATFORM}-${env:LIBC}-${env:ARCHITECTURE}.tar.gz"
             - echo "$env:ARTIFACT_KEY"
             - npm config delete registry # we have no requirement for internal packages.
+            # Node 26 Windows builds turn on clang thin LTO, and the node-gyp 12 bundled with every
+            # Node 26 release so far passes those flags to MSVC, which fails to link (LNK1117 on
+            # /opt:lldltojobs). Turn it off for the addon, as node-gyp 13 does (nodejs/node-gyp#3331).
+            - if ([int]$env:NODE_ABI -ge 147) { $env:npm_config_enable_thin_lto = "false" }
             - npm ci # node-pre-gyp will fallback to build here, because new tag implies no release yet.
             - npx node-pre-gyp package
             - ls "build/stage/${env:SEMAPHORE_GIT_TAG_NAME}/${env:ARTIFACT_KEY}"
@@ -543,11 +566,18 @@ blocks:
                 - 22.2.0,127
                 - 23.2.0,131
                 - 24.3.0,137
+                - 26.3.0,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:20.04 /v/.semaphore/build-docker-s390x.sh
+            # Node 26's headers need a newer gcc than ubuntu:20.04 has, see build-docker-almalinux.sh.
+            - |
+              if [ "$NODE_ABI" -ge 147 ]; then
+                .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} almalinux:8 /v/.semaphore/build-docker-almalinux.sh
+              else
+                .semaphore/docker_run_with_volumes.sh -e NODE_VERSION=${NODE_VERSION} ubuntu:20.04 /v/.semaphore/build-docker-s390x.sh
+              fi
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             # `artifact push` gives up after ~55s, which is not enough to ride out the
             # intermittent DNS resolution failures seen from this pool. Losing a build
@@ -582,6 +612,7 @@ blocks:
       jobs:
         - name: "Release"
           matrix:
+            # No Node 26: Node publishes no musl build or alpine image for s390x from 26 on.
             - env_var: NODE_VERSION_ABI
               values:
                 - 18,108
