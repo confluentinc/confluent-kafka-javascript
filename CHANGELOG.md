@@ -1,3 +1,11 @@
+# confluent-kafka-javascript 1.11.1
+
+## Fixes
+1. Fix `pause()` in the promisified (KafkaJS-compatible) consumer skipping prefetched messages, and rewinding committed offsets after a rebalance (#569).
+   - Messages prefetched for a partition with nothing consumed yet in the current assignment, such as a partition no worker had started on, were dropped by `pause()` without a seek back, so they were never delivered. With `eachBatch`, the skipped offsets could also be committed.
+   - When a partition moved to another member and came back, `pause()` (or clearing the cache) sought back to the offset this member had last consumed before the rebalance. With `autoCommit` on, that seek committed the old offset and rewound the group. With `autoCommit` off, it delivered the other member's messages again.
+
+
 # confluent-kafka-javascript 1.11.0
 
 ## Enhancements
