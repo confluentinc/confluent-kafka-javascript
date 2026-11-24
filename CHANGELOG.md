@@ -1,3 +1,9 @@
+
+# Unreleased
+
+## Fixes
+1. Reject `max.poll.interval.ms` above 12 hours in the promisified consumer with a clear `ERR__INVALID_ARG` error, as the value is doubled before being passed to librdkafka (#177)
+
 # confluent-kafka-javascript 1.11.0
 
 ## Enhancements
@@ -29,9 +35,6 @@
    timeouts); any other error, such as an authentication or configuration error,
    fails fast. Concurrent `connect()` calls on the same client now share a single
    in-flight connection attempt rather than the second call throwing.
-
-## Fixes
-1. Fix a confusing error when configuring `max.poll.interval.ms` (or `rebalanceTimeout`) above 12 hours in the promisified consumer. The consumer passes twice the configured value to librdkafka, whose maximum is 24 hours, so the maximum configurable value is 12 hours (43200000 ms). Values above that are now rejected with an `ERR__INVALID_ARG` error that names the configured property and explains the doubling, instead of librdkafka reporting the internally doubled value. [#177](https://github.com/confluentinc/confluent-kafka-javascript/issues/177)
 
 
 # confluent-kafka-javascript 1.10.1
