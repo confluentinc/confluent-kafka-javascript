@@ -52,6 +52,21 @@ describe('Admin > describeGroups', () => {
         );
     });
 
+    it('should not crash on a group described with an error', async () => {
+        await admin.connect();
+
+        // A broker serving ConsumerGroupDescribe (KIP-848) answers an empty group id with a per-group error
+        // (older brokers describe it as a DEAD group). librdkafka builds such an error description without a
+        // partition assignor (NULL), which used to crash the process with a segfault (#531).
+        const { groups } = await admin.describeGroups(['', 'not-a-real-group']);
+
+        expect(groups.map(group => group.groupId)).toEqual(['', 'not-a-real-group']);
+        expect(groups[0].protocol).toEqual('');
+        expect(groups[0].partitionAssignor).toEqual('');
+        expect(groups[1].error).toBeUndefined();
+        expect(groups[1].state).toEqual(ConsumerGroupStates.DEAD);
+    });
+
     it('should not accept empty or null groups array', async () => {
         await admin.connect();
 
