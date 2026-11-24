@@ -1,4 +1,5 @@
-const { Lock } = require('../../../lib/kafkajs/_common');
+const { Lock, createKafkaJsErrorFromLibRdKafkaError } = require('../../../lib/kafkajs/_common');
+const LibrdKafkaError = require('../../../lib/error');
 const { SequentialPromises } = require('../testhelpers');
 
 describe('Lock', () => {
@@ -223,5 +224,48 @@ describe('Lock', () => {
                 throw new Error('shouldn\'t happen');
             });
         await expect(throwing).rejects.toThrow('shouldn\'t happen');
+    });
+});
+
+describe('createKafkaJsErrorFromLibRdKafkaError', () => {
+
+    it('maps the flags of an error created by the native layer', () => {
+        const librdKafkaError = LibrdKafkaError.create({
+            code: LibrdKafkaError.codes.ERR__FATAL,
+            message: 'Local: Fatal error',
+            isFatal: true,
+            isRetriable: false,
+            isTxnRequiresAbort: true,
+        });
+
+        const err = createKafkaJsErrorFromLibRdKafkaError(librdKafkaError);
+
+        expect(err.code).toBe(LibrdKafkaError.codes.ERR__FATAL);
+        expect(err.fatal).toBe(true);
+        expect(err.retriable).toBe(false);
+        expect(err.abortable).toBe(true);
+    });
+
+    it('treats ERR__FATAL as fatal', () => {
+        const err = createKafkaJsErrorFromLibRdKafkaError(LibrdKafkaError.create({
+            code: LibrdKafkaError.codes.ERR__FATAL,
+            message: 'Fatal error: Broker: Static consumer fenced by other consumer with same group.instance.id',
+        }));
+
+        expect(err.fatal).toBe(true);
+    });
+
+    it('keeps the flags of an error that already uses the KafkaJS names', () => {
+        const err = createKafkaJsErrorFromLibRdKafkaError({
+            code: LibrdKafkaError.codes.ERR__STATE,
+            message: 'Local: Erroneous state',
+            fatal: false,
+            retriable: true,
+            abortable: false,
+        });
+
+        expect(err.fatal).toBe(false);
+        expect(err.retriable).toBe(true);
+        expect(err.abortable).toBe(false);
     });
 });
