@@ -370,6 +370,22 @@ An example is made available [here](./examples/kafkajs/sr.js).
   }
   ```
 
+  **Background Errors**:
+
+   The instrumentation events KafkaJS uses to report errors that happen outside
+   any call, such as `consumer.events.CRASH`, are not supported. Instead, the
+   producer and the consumer pass these errors to the listeners registered with
+   `onBackgroundError`, which returns a function that removes the listener.
+   Each listener receives a `KafkaJSError`. When its `fatal` flag is set, the
+   client cannot recover: a consumer stops processing messages, and the
+   application should disconnect the client and create a new one, or exit.
+
+  ```javascript
+  const removeListener = consumer.onBackgroundError(async (error) => {
+    if (error.fatal) { /* disconnect, then create a new consumer or exit */ }
+  });
+  ```
+
   **Error Type Changes**:
 
    Some possible subtypes of `KafkaJSError` have been removed,

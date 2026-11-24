@@ -111,6 +111,7 @@ type Client = {
   connect(): Promise<void>
   disconnect(): Promise<void>
   logger(): Logger
+  onBackgroundError(listener: (error: KafkaJSError) => void | Promise<void>): () => void
   setSaslCredentialProvider(authInfo: { username: string, password: string }): void
   dependentAdmin(): Admin
 }
