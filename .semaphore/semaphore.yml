@@ -612,7 +612,6 @@ blocks:
       jobs:
         - name: "Release"
           matrix:
-            # No Node 26: Node publishes no musl build or alpine image for s390x from 26 on.
             - env_var: NODE_VERSION_ABI
               values:
                 - 18,108
@@ -621,11 +620,18 @@ blocks:
                 - 22,127
                 - 23,131
                 - 24,137
+                - 26,147
           commands:
             - export NODE_VERSION=$(echo $NODE_VERSION_ABI | cut -d, -f1)
             - export NODE_ABI=$(echo $NODE_VERSION_ABI | cut -d, -f2)
             - export ARTIFACT_KEY="confluent-kafka-javascript-${SEMAPHORE_GIT_TAG_NAME}-node-v${NODE_ABI}-${PLATFORM}-${LIBC}-${ARCHITECTURE}.tar.gz"
-            - .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
+            # node:26-alpine has no s390x image, so Node 26 comes from Alpine's own package.
+            - |
+              if [ "$NODE_ABI" -ge 147 ]; then
+                .semaphore/docker_run_with_volumes.sh alpine:3.24 /v/.semaphore/build-docker-alpine.sh
+              else
+                .semaphore/docker_run_with_volumes.sh node:${NODE_VERSION}-alpine /v/.semaphore/build-docker-alpine.sh
+              fi
             - ls build/stage/${SEMAPHORE_GIT_TAG_NAME}/${ARTIFACT_KEY}
             # Same DNS-flakiness mitigation as the glibc s390x block: artifact push gives
             # up too fast for this pool's intermittent resolver.
