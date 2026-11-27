@@ -211,6 +211,7 @@ class ConnectionMetadata : public ErrorAwareWorker {
   bool m_all_topics;
 
   RdKafka::Metadata* m_metadata;
+  std::string m_cluster_id;
 };
 
 class ConnectionQueryWatermarkOffsets : public ErrorAwareWorker {

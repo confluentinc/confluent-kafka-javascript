@@ -170,7 +170,7 @@ TopicPartitionOffsetSpecv8ArrayToTopicPartitionList(
 
 namespace Metadata {
 
-v8::Local<v8::Object> ToV8Object(RdKafka::Metadata*);
+v8::Local<v8::Object> ToV8Object(RdKafka::Metadata*, const std::string&);
 
 }  // namespace Metadata
 

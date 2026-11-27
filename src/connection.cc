@@ -304,7 +304,8 @@ Baton Connection::OffsetsForTimes(
 }
 
 Baton Connection::GetMetadata(
-  bool all_topics, std::string topic_name, int timeout_ms) {
+  bool all_topics, std::string topic_name, int timeout_ms,
+  std::string* cluster_id) {
   RdKafka::Topic* topic = NULL;
   RdKafka::ErrorCode err;
 
@@ -328,6 +329,10 @@ Baton Connection::GetMetadata(
     if (IsConnected()) {
       // Always send true - we
       err = m_client->metadata(all_topics, topic, &metadata, timeout_ms);
+      if (err == RdKafka::ERR_NO_ERROR) {
+        // Read the cache populated by the metadata request above.
+        *cluster_id = m_client->clusterid(0);
+      }
     } else {
       err = RdKafka::ERR__STATE;
     }
