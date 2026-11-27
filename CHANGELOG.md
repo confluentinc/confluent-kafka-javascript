@@ -1,5 +1,7 @@
-
 # Unreleased
+
+## Enhancements
+1. Add prebuilt binaries for Node.js 26 (#566)
 
 ## Fixes
 1. Reject `max.poll.interval.ms` above 12 hours in the promisified consumer with a clear `ERR__INVALID_ARG` error, as the value is doubled before being passed to librdkafka (#574)

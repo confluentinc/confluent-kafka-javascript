@@ -5,6 +5,12 @@
 
 apk add -U ca-certificates openssl ncurses coreutils python3 make gcc g++ libgcc linux-headers grep util-linux binutils findutils perl patch musl-dev bash
 
+# A plain alpine image has no Node. It is used for Node 26 on s390x, which has
+# no node:26-alpine image; Node then comes from Alpine's own package.
+if ! command -v node > /dev/null 2>&1; then
+    apk add nodejs-current npm
+fi
+
 # /v is the volume mount point for the project root
 cd /v
 
