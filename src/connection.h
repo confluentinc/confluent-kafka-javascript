@@ -54,7 +54,7 @@ class Connection : public Nan::ObjectWrap {
   // Baton<RdKafka::Topic*>
   Baton CreateTopic(std::string);
   Baton CreateTopic(std::string, RdKafka::Conf*);
-  Baton GetMetadata(bool, std::string, int);
+  Baton GetMetadata(bool, std::string, int, std::string*);
   Baton ClusterId(int timeout_ms, std::string* clusterid);
   Baton QueryWatermarkOffsets(std::string, int32_t, int64_t*, int64_t*, int);
   Baton OffsetsForTimes(std::vector<RdKafka::TopicPartition*> &, int);

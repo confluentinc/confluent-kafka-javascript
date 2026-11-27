@@ -625,7 +625,8 @@ namespace Metadata {
  * @brief RdKafka::Metadata to v8::Object
  *
  */
-v8::Local<v8::Object> ToV8Object(RdKafka::Metadata* metadata) {
+v8::Local<v8::Object> ToV8Object(RdKafka::Metadata* metadata,
+  const std::string& cluster_id) {
   v8::Local<v8::Object> obj = Nan::New<v8::Object>();
 
   v8::Local<v8::Array> broker_data = Nan::New<v8::Array>();
@@ -730,6 +731,11 @@ v8::Local<v8::Object> ToV8Object(RdKafka::Metadata* metadata) {
 
   Nan::Set(obj, Nan::New("topics").ToLocalChecked(), topic_data);
   Nan::Set(obj, Nan::New("brokers").ToLocalChecked(), broker_data);
+
+  if (!cluster_id.empty()) {
+    Nan::Set(obj, Nan::New("clusterId").ToLocalChecked(),
+      Nan::New<v8::String>(cluster_id).ToLocalChecked());
+  }
 
   return obj;
 }

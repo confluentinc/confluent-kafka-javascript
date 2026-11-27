@@ -10,6 +10,7 @@
 var Kafka = require('../');
 var t = require('assert');
 var crypto = require('crypto');
+var promisify = require('node:util').promisify;
 
 var eventListener = require('./listener');
 
@@ -21,7 +22,29 @@ describe('Producer', function() {
 
   var producer;
 
+  it('should omit an unavailable cluster id from metadata', async function() {
+    var legacyProducer = new Kafka.Producer({
+      'test.mock.num.brokers': 1,
+      'api.version.request': false,
+      'broker.version.fallback': '0.9.0.1'
+    });
+
+    try {
+      var connect = promisify(legacyProducer.connect.bind(legacyProducer));
+      var metadata = await connect({});
+      t.strictEqual(Object.hasOwn(metadata, 'clusterId'), false);
+
+      var getMetadata = promisify(legacyProducer.getMetadata.bind(legacyProducer));
+      metadata = await getMetadata({});
+      t.strictEqual(Object.hasOwn(metadata, 'clusterId'), false);
+    } finally {
+      await promisify(legacyProducer.disconnect.bind(legacyProducer))();
+    }
+  });
+
   describe('with dr_cb', function() {
+    var readyMetadata;
+
     beforeEach(function(done) {
       producer = new Kafka.Producer({
         'client.id': 'kafka-test',
@@ -29,8 +52,12 @@ describe('Producer', function() {
         'dr_cb': true,
         'debug': 'all'
       });
-      producer.connect({}, function(err) {
+      producer.once('ready', function(info, metadata) {
+        readyMetadata = metadata;
+      });
+      producer.connect({}, function(err, metadata) {
         t.ifError(err);
+        t.strictEqual(metadata, readyMetadata);
         done();
       });
 
@@ -53,16 +80,21 @@ describe('Producer', function() {
         t.notStrictEqual(metadata.orig_broker_id, undefined, 'Broker id is not set');
         t.equal(Array.isArray(metadata.brokers), true);
         t.equal(Array.isArray(metadata.topics), true);
+        t.strictEqual(metadata.clusterId, readyMetadata.clusterId);
 
         done();
       });
     });
 
     it('should return the cluster id', function(done) {
+      t.strictEqual(typeof readyMetadata.clusterId, 'string');
+      t.ok(readyMetadata.clusterId.length > 0);
+
       producer.clusterId(5000, function(err, clusterId) {
         t.ifError(err);
         t.equal(typeof clusterId, 'string');
         t.ok(clusterId.length > 0, 'Cluster id is empty');
+        t.strictEqual(clusterId, readyMetadata.clusterId);
 
         // librdkafka caches the cluster id from the metadata request made
         // while connecting, so a cache-only lookup must return the same value.

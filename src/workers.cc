@@ -92,7 +92,8 @@ ConnectionMetadata::ConnectionMetadata(
 ConnectionMetadata::~ConnectionMetadata() {}
 
 void ConnectionMetadata::Execute() {
-  Baton b = m_connection->GetMetadata(m_all_topics, m_topic, m_timeout_ms);
+  Baton b = m_connection->GetMetadata(
+    m_all_topics, m_topic, m_timeout_ms, &m_cluster_id);
 
   if (b.err() == RdKafka::ERR_NO_ERROR) {
     // No good way to do this except some stupid string delimiting.
@@ -111,7 +112,7 @@ void ConnectionMetadata::HandleOKCallback() {
 
   // This is a big one!
   v8::Local<v8::Value> argv[argc] = { Nan::Null(),
-    Conversion::Metadata::ToV8Object(m_metadata)};
+    Conversion::Metadata::ToV8Object(m_metadata, m_cluster_id)};
 
   callback->Call(argc, argv);
 

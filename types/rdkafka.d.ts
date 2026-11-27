@@ -61,6 +61,8 @@ export interface Metadata {
     orig_broker_name: string;
     topics: TopicMetadata[];
     brokers: BrokerMetadata[];
+    /** Kafka cluster ID, when available. */
+    clusterId?: string;
 }
 
 export interface WatermarkOffsets {
